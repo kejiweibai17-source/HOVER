@@ -1,0 +1,80 @@
+.introduction {
+    height: 100vh;
+    width: 100vw;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: fixed;
+    z-index: 99999999999;
+    background-color: #141516;
+
+    svg {
+        position: absolute;
+        top: 0;
+        width: 100%;
+        height: calc(100% + 300px);
+
+        path {
+            fill: #141516;
+        }
+    }
+
+    p {
+        display: flex;
+        color: white;
+        font-size: 42px;
+        align-items: center;
+        position: absolute;
+        z-index: 1;
+
+        span {
+            display: block;
+            width: 10px;
+            height: 10px;
+            background-color: white;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+    }
+}
+
+.introduction {
+    position: relative;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background-color: black;
+    /* 黑色背景 */
+    color: white;
+    /* 文字顏色白色 */
+}
+
+motion.p {
+    font-size: 2rem;
+    font-weight: bold;
+    margin-bottom: 10px;
+    /* 文字與進度條之間的距離 */
+}
+
+.progressBarContainer {
+    width: 10%;
+    /* **進度條縮短至原來的一半** */
+    height: 5px;
+    /* 進度條高度 */
+    background: rgba(255, 255, 255, 0.2);
+    /* 淡灰色背景 */
+    border-radius: 10px;
+    overflow: hidden;
+    margin-top: 85px;
+    /* 縮小進度條與文字的距離 */
+}
+
+.progressBar {
+    height: 100%;
+    background: white;
+    /* **進度條顏色設為白色** */
+    transition: width 0.1s ease-in-out;
+}

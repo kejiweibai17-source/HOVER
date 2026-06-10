@@ -1,0 +1,356 @@
+.hover-home {
+  background: #dfe0e5;
+  color: #000;
+  font-family: Inter, "Helvetica Neue", Arial, sans-serif;
+  overflow-x: hidden;
+}
+
+.hover-home *,
+.hover-home *::before,
+.hover-home *::after {
+  box-sizing: border-box;
+}
+
+.hover-home img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.hover-home a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.hover-home ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.hover-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 1000;
+  background: #dfe0e5;
+}
+
+.hover-header__inner {
+  max-width: 1920px;
+  margin: 0 auto;
+  padding: 20px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  position: relative;
+}
+
+.hover-header__logo {
+  font-family: "Inria Serif", Georgia, serif;
+  font-size: 40px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.hover-header__nav {
+  display: none;
+  gap: 40px;
+  margin-top: 12px;
+}
+
+.hover-header__nav a {
+  font-size: 15px;
+  letter-spacing: 0.04em;
+}
+
+.hover-header__icons {
+  position: absolute;
+  right: 16px;
+  top: 24px;
+  display: flex;
+  gap: 16px;
+  align-items: center;
+}
+
+.hover-header__bar {
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #2a514d;
+  color: #f0f0f0;
+  font-size: 15px;
+}
+
+.hover-main {
+  padding-top: 120px;
+}
+
+.hover-hero {
+  position: relative;
+  width: 100%;
+  overflow: hidden;
+}
+
+.hover-hero__image {
+  width: 100%;
+  height: min(85vh, 923px);
+  object-fit: cover;
+  object-position: top;
+}
+
+.hover-hero__cta {
+  position: absolute;
+  left: 50%;
+  bottom: 64px;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: #fff;
+  font-family: "Inria Serif", Georgia, serif;
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.hover-hero__cta span:last-child {
+  width: 130px;
+  height: 1px;
+  background: #fff;
+  margin-top: 8px;
+}
+
+.hover-section {
+  max-width: 1920px;
+  margin: 0 auto;
+  padding: 48px 16px;
+}
+
+.hover-section__title {
+  font-size: 24px;
+  margin: 0 0 32px;
+  letter-spacing: 0.04em;
+}
+
+.hover-products {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px 16px;
+}
+
+.hover-product__image-wrap {
+  position: relative;
+  aspect-ratio: 404 / 479;
+  overflow: hidden;
+  background: #d4d4d4;
+}
+
+.hover-product__image-wrap img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hover-product__category {
+  margin: 16px 0 4px;
+  font-size: 14px;
+}
+
+.hover-product__name {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+.hover-product__price {
+  margin-top: 8px;
+  display: flex;
+  gap: 16px;
+  font-size: 14px;
+}
+
+.hover-product__price-old {
+  color: #b3b3b3;
+  text-decoration: line-through;
+}
+
+.hover-product__price-new {
+  color: #252525;
+  font-weight: 800;
+}
+
+.hover-brand {
+  display: grid;
+  grid-template-columns: 1fr;
+}
+
+.hover-brand__image-wrap {
+  position: relative;
+  min-height: 400px;
+}
+
+.hover-brand__image-wrap img {
+  width: 100%;
+  height: 100%;
+  min-height: 400px;
+  object-fit: cover;
+}
+
+.hover-brand__overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-family: "Inria Serif", Georgia, serif;
+  font-size: 60px;
+  font-weight: 700;
+}
+
+.hover-brand__content {
+  background: #fff;
+  padding: 48px 32px;
+}
+
+.hover-brand__vertical {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+  font-size: 28px;
+}
+
+.hover-brand__vertical p {
+  writing-mode: vertical-rl;
+  margin: 0;
+}
+
+.hover-brand__text {
+  color: #4d4b48;
+  font-size: 14px;
+  line-height: 1.8;
+  max-width: 360px;
+}
+
+.hover-categories {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.hover-category {
+  position: relative;
+  aspect-ratio: 482 / 554;
+  overflow: hidden;
+}
+
+.hover-category img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hover-category__label {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 32px;
+  text-align: center;
+  color: #fff;
+  font-size: 24px;
+  font-weight: 700;
+}
+
+.hover-people__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.hover-people__item {
+  aspect-ratio: 481 / 669;
+  overflow: hidden;
+}
+
+.hover-people__item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.hover-footer {
+  background: #2a514d;
+  color: #fff;
+  padding: 64px 24px;
+}
+
+.hover-footer__logo {
+  font-family: "Inria Serif", Georgia, serif;
+  font-size: 96px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  line-height: 1;
+  margin-bottom: 48px;
+}
+
+.hover-footer__grid {
+  display: grid;
+  gap: 32px;
+}
+
+.hover-footer__col h3 {
+  font-size: 24px;
+  letter-spacing: 0.2em;
+  margin: 0 0 24px;
+}
+
+.hover-footer__col li {
+  margin-bottom: 16px;
+  font-size: 20px;
+  letter-spacing: 0.15em;
+}
+
+.hover-footer__bottom {
+  margin-top: 64px;
+  padding-top: 32px;
+  border-top: 1px solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  font-size: 15px;
+  letter-spacing: 0.15em;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+@media (min-width: 768px) {
+  .hover-header__nav {
+    display: flex;
+  }
+
+  .hover-products {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 32px 24px;
+  }
+
+  .hover-brand {
+    grid-template-columns: 58% 42%;
+  }
+
+  .hover-categories {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .hover-people__grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .hover-footer__grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .hover-footer__bottom {
+    flex-direction: row;
+    justify-content: space-between;
+  }
+}

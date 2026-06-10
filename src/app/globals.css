@@ -1,0 +1,176 @@
+@import 'tailwindcss/base';
+@import 'tailwindcss/components';
+@import 'tailwindcss/utilities';
+
+@layer base {
+  :root {
+    --hover-bg: #DFE0E5;
+    --hover-header-height: 116px;
+  }
+
+  html,
+  body {
+    font-family: "GenWanMinTW", "Noto Serif TC", serif;
+    background-color: var(--hover-bg);
+  }
+}
+@font-face {
+  font-family: 'DF-01';
+  src: url('/fonts/DF-01.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+
+@font-face {
+  font-family: "ResourceHanRoundedCN-Heavy";
+  src: url("/fonts/ResourceHanRoundedCN-Heavy.woff2") format("woff2"),
+       url("/fonts/ResourceHanRoundedCN-Heavy.woff") format("woff");
+  font-weight: bold;
+  font-style: normal;
+  font-display: swap;
+}
+ 
+
+.slider {
+  position: relative;
+  width: 100vw;
+  height: 100svh;
+  color: #fff;
+  overflow: hidden;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.slider-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  user-select: none;
+  z-index: 2;
+}
+
+.slide-title {
+  position: absolute;
+  top: 45%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  text-align: center;
+}
+
+.slide-description {
+  position: absolute;
+  top: 60%;
+  left: 60%;
+  transform: translate(-50%, -50%);
+  width: 25%;
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+.slide-info p {
+  text-transform: uppercase;
+}
+
+.slide-title h1 {
+  display: flex;
+  justify-content: center;
+  font-size: 90px;
+  gap: 0.2em;
+}
+
+.slide-title h1 .word {
+  display: flex;
+}
+
+.slide-title h1 .char {
+  display: block;
+}
+
+.char,
+.line {
+  overflow: hidden;
+}
+
+.char span,
+.line span {
+  display: inline-block;
+  will-change: transform;
+  position: relative;
+}
+
+@media (max-width: 1000px) {
+  .slide-title {
+    top: 50%;
+  }
+
+  .slide-description {
+    width: 75%;
+    text-align: center;
+    top: unset;
+    bottom: 5%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+  }
+}
+@layer utilities {
+  @keyframes ants {
+    from { stroke-dashoffset: 0; }
+    to   { stroke-dashoffset: -4; } /* 2 + 2 = 4 → 無斷點 */
+  }
+  .animate-ants {
+    animation: ants 0.4s linear infinite;
+    will-change: stroke-dashoffset;
+  }
+}
+@layer utilities {
+  .text-outline-shadow {
+    color: white; /* 讓文字本身透明，只顯示外框 */
+    text-shadow:
+      rgb(0, 0, 0) 1.5px 0px 0px,
+      rgb(0, 0, 0) 2.834871px 0.981584px 0px,
+      rgb(0, 0, 0) 2.357662px 1.855109px 0px,
+      rgb(0, 0, 0) 1.620907px 2.524413px 0px,
+      rgb(0, 0, 0) 0.705713px 2.915814px 0px,
+      rgb(0, 0, 0) -0.287171px 2.986224px 0px,
+      rgb(0, 0, 0) -1.248441px 2.727892px 0px,
+      rgb(0, 0, 0) -2.072274px 2.169258px 0px,
+      rgb(0, 0, 0) -2.66798px 1.371818px 0px,
+      rgb(0, 0, 0) -2.969977px 0.42336px 0px,
+      rgb(0, 0, 0) -2.945022px -0.571704px 0px,
+      rgb(0, 0, 0) -2.59586px -1.503831px 0px,
+      rgb(0, 0, 0) -1.960931px -2.270407px 0px,
+      rgb(0, 0, 0) -1.11013px -2.787044px 0px,
+      rgb(0, 0, 0) -0.137119px -2.996865px 0px,
+      rgb(0, 0, 0) 0.850987px -2.876773px 0px,
+      rgb(0, 0, 0) 1.74541px -2.439988px 0px,
+      rgb(0, 0, 0) 2.447689px -1.734595px 0px,
+      rgb(0, 0, 0) 2.880511px -0.838247px 0px;
+  }
+}
+
+/* Lenis smooth scroll */
+html.lenis,
+html.lenis body {
+  height: auto;
+}
+
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+
+.lenis.lenis-smooth [data-lenis-prevent] {
+  overscroll-behavior: contain;
+}
+
+.lenis.lenis-stopped {
+  overflow: hidden;
+}
