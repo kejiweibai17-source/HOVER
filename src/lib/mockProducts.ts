@@ -25,7 +25,7 @@ const IMAGES = [
   "/images/hover/category-2.jpg",
 ];
 
-const PRODUCTS: Omit<MockProduct, "id">[] = [
+const PRODUCTS: Omit<MockProduct, "id" | "images">[] = [
   {
     slug: "hover-classic-tee-black",
     name: "HOVER CLASSIC TEE",
