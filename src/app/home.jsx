@@ -135,8 +135,7 @@ const PEOPLE = [
 
 /* ─── Section 2 · Hero ───────────────────────────────────────────────── */
 
-const HERO_BANNER_SRC =
-  "https://united-arrows-global.com/cdn/shop/files/ec_pc_top_w_vol1.jpg?v=1779932233&width=2400";
+const HERO_BANNER_SRC = "/images/hover/hero.jpg";
 
 function HeroSection() {
   return (
