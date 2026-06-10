@@ -11,7 +11,7 @@ const SITE_URL =
 export const metadata: Metadata = {
   title: "所有商品｜HOVER 服飾品牌",
   description:
-    "瀏覽 HOVER 全系列服飾，包含上衣、帽子、褲子、包袋等，不被性別框架限制的日常穿搭。",
+    "瀏覽 HOVER 全系列服飾，包含上衣、帽子、襪品、包袋等，以舒適剪裁與簡約質感，為日常穿搭帶來更多可能。",
   keywords: ["HOVER", "服飾", "穿搭", "日常", "帽T", "短袖", "包袋"],
   alternates: {
     canonical: `${SITE_URL}/products`,

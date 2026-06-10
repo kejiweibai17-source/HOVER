@@ -391,11 +391,11 @@ function BrandStorySection() {
 
         {/* Description */}
         <p className="mt-8 max-w-[280px] text-right text-[12px] leading-[2] tracking-wide text-[#4d4b48] md:text-[13px]">
-          HOVER 是一個不被性別框架限制的日常服飾品牌。
+          HOVER 是一個為日常而設計的服飾品牌。
           <br />
           我們精選兼具舒適、質感與實穿性的服飾單品，
           <br />
-          讓每個人都能依照自己的生活節奏，自在選擇穿搭。
+          在輕盈與穩定之間，找到屬於你的日常風格。
         </p>
       </div>
     </section>
