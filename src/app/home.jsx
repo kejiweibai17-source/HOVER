@@ -216,6 +216,9 @@ function ProductCard({ product, onQuickView }) {
     onQuickView(product);
   };
 
+  const hoverImage = product.gallery?.[1] ?? product.image;
+  const hasHoverImage = hoverImage !== product.image;
+
   return (
     <article className="group relative flex flex-col">
       {/* Image + badges + hover actions */}
@@ -225,9 +228,20 @@ function ProductCard({ product, onQuickView }) {
             src={product.image}
             alt={product.name}
             fill
-            className="object-cover transition-transform duration-500 group-hover:scale-105"
+            className={`object-cover transition-opacity duration-500 ${
+              hasHoverImage ? "opacity-100 group-hover:opacity-0" : ""
+            }`}
             sizes="(max-width: 768px) 50vw, 25vw"
           />
+          {hasHoverImage && (
+            <Image
+              src={hoverImage}
+              alt={`${product.name} alternate view`}
+              fill
+              className="object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+              sizes="(max-width: 768px) 50vw, 25vw"
+            />
+          )}
         </Link>
 
         {/* NEW badge */}
@@ -256,12 +270,12 @@ function ProductCard({ product, onQuickView }) {
           />
         </button>
 
-        {/* Shopify-style hover overlay */}
-        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-black/10 px-4 opacity-100 transition-all duration-300 md:bg-black/0 md:opacity-0 md:group-hover:bg-black/25 md:group-hover:opacity-100">
+        {/* Hover actions — bottom-right */}
+        <div className="absolute bottom-3 right-3 z-10 flex flex-col items-end gap-2 opacity-100 transition-opacity duration-300 md:opacity-0 md:group-hover:opacity-100">
           <button
             type="button"
             onClick={handleQuickView}
-            className="w-full max-w-[180px] bg-white py-2.5 text-[11px] font-semibold tracking-[0.14em] text-black transition-colors hover:bg-[#f5f5f5]"
+            className="min-w-[120px] bg-white px-4 py-2.5 text-[11px] font-semibold tracking-[0.14em] text-black shadow-sm transition-colors hover:bg-[#f5f5f5]"
           >
             快速查看
           </button>
@@ -269,7 +283,7 @@ function ProductCard({ product, onQuickView }) {
             type="button"
             onClick={handleAddToCart}
             disabled={product.soldOut}
-            className={`w-full max-w-[180px] py-2.5 text-[11px] font-semibold tracking-[0.14em] transition-colors ${
+            className={`min-w-[120px] px-4 py-2.5 text-[11px] font-semibold tracking-[0.14em] shadow-sm transition-colors ${
               product.soldOut
                 ? "cursor-not-allowed bg-[#ccc] text-white"
                 : "bg-[#2a514d] text-white hover:bg-[#1e3d3a]"
