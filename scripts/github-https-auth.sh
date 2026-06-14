@@ -13,6 +13,24 @@
 
 set -euo pipefail
 
+ensure_git_config() {
+  # 避免 gh / Cursor askpass 覆蓋 Keychain 多帳號設定
+  git config --global --unset-all credential.https://github.com.helper 2>/dev/null || true
+  git config --global --unset-all credential.https://gist.github.com.helper 2>/dev/null || true
+  git config --global credential.helper osxkeychain
+  git config --global credential.useHttpPath false
+  git config --global url."https://gh-keji@github.com/kejiweibai17-source/".insteadOf \
+    "https://github.com/kejiweibai17-source/" 2>/dev/null || \
+    git config --global url."https://gh-keji@github.com/kejiweibai17-source/".insteadOf \
+      "https://github.com/kejiweibai17-source/"
+  git config --global url."https://gh-bob@github.com/bob1127/".insteadOf \
+    "https://github.com/bob1127/" 2>/dev/null || \
+    git config --global url."https://gh-bob@github.com/bob1127/".insteadOf \
+      "https://github.com/bob1127/"
+}
+
+ensure_git_config
+
 KNOWN_ACCOUNTS=(
   "kejiweibai17-source:gh-keji"
   "bob1127:gh-bob"
@@ -65,6 +83,7 @@ echo "涵蓋範圍     : https://github.com/${ACCOUNT}/*"
 echo ""
 
 if [[ -z "${TOKEN}" ]]; then
+  echo "請到 https://github.com/settings/tokens 產生 Classic PAT（勾選 repo）"
   read -r -s -p "Personal Access Token（PAT，輸入時不顯示）: " TOKEN
   echo ""
 fi
@@ -94,9 +113,13 @@ echo ""
 
 if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   echo "測試目前專案連線..."
-  if git ls-remote origin HEAD >/dev/null 2>&1; then
-    echo "連線成功，可以執行：git push -u origin main"
+  if GIT_ASKPASS= SSH_ASKPASS= git ls-remote origin HEAD >/dev/null 2>&1; then
+    echo "連線成功。請執行："
+    echo "  GIT_ASKPASS= SSH_ASKPASS= git push -u origin main"
   else
-    echo "讀取成功但可能需要寫入權限；請確認 PAT 已勾選 repo 權限。" >&2
+    echo "連線失敗，請確認：" >&2
+    echo "  1. PAT 是否由 ${ACCOUNT} 帳號產生，且已勾選 repo 權限" >&2
+    echo "  2. Token 是否已過期或被撤銷" >&2
+    exit 1
   fi
 fi
