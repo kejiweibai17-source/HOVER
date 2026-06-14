@@ -7,17 +7,16 @@ const FOOTER_COLS = [
   {
     title: "關於我們",
     links: [
-      { label: "品牌故事", href: "/about" },
-      { label: "最新消息", href: "/blog" },
+      { label: "品牌故事", href: "/brand" },
+      { label: "聯絡我們", href: "/contact" },
     ],
   },
   {
     title: "顧客服務",
     links: [
-      { label: "會員制度", href: "/benefits" },
+      { label: "會員中心", href: "/account" },
       { label: "如何購買", href: "/products" },
-      { label: "申請退貨", href: "/returns" },
-      { label: "常見問題", href: "/qa" },
+      { label: "購物袋", href: "/cart" },
     ],
   },
   {

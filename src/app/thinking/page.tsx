@@ -73,7 +73,7 @@ function ThankYouContent() {
     <div className="min-h-screen bg-gray-50 pb-16">
       <header className="border-b bg-white">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center">
-          <img src="/images/logo/logo-y.png" alt="UFLOW" className="h-7" />
+          <img src="/images/logo/logo-y.png" alt="HOVER" className="h-7" />
         </div>
       </header>
       <main className="max-w-6xl mx-auto px-4 pt-8 grid lg:grid-cols-12 gap-8">

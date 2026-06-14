@@ -289,10 +289,10 @@ export default function ContactPage() {
               <span className="text-xl font-bold tracking-[0.2em]">EMAIL</span>
             </div>
             <a
-              href="mailto:uflowspace@gmail.com"
+              href="mailto:service@hoverofficial.com"
               className="text-2xl md:text-3xl lg:text-4xl font-bold mb-6 hover:text-blue-400 transition-colors duration-300"
             >
-              uflowspace@gmail.com
+              service@hoverofficial.com
             </a>
             <p className="text-stone-700 text-sm tracking-widest bg-white/10 px-4 py-2 rounded-full">
               我們將於 24 小時內回覆

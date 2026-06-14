@@ -15,19 +15,19 @@ const SITE_URL = getSiteUrl();
 // 🌟 首頁動態 FAQ 資料
 const homeFAQs = [
   {
-    question: "UFLOW 的保健食品與市售產品有何不同？",
+    question: "HOVER 的服飾有什麼特色？",
     answer:
-      "我們堅持「科學調配、足量攝取」與成分全透明。嚴選如微脂體穀胱甘肽、韓國 GABAEX、義大利速可包覆鎂、專利益萃質等國際大廠專利原料，拒絕無效添加，針對亞洲體質打造有感的健康輔助方案。",
+      "HOVER 精選兼具舒適、質感與實穿性的日常服飾，以簡約剪裁與中性風格為主，適合依照生活節奏自在穿搭。",
   },
   {
-    question: "產品是哪裡製造的？食用安全嗎？",
+    question: "如何選擇適合的尺寸？",
     answer:
-      "我們的產品皆在台灣符合 ISO22000 與 HACCP 規範的專業廠房製造，全系列產品皆通過第三方公正檢驗，不含西藥與重金屬，確保您每日食用安全無虞。",
+      "每款商品頁面皆提供尺寸指南，建議參考肩寬、胸寬、衣長等數據挑選。若仍有疑問，歡迎透過聯絡我們頁面洽詢客服。",
   },
   {
     question: "訂購後大約幾天可以收到商品？有退換貨服務嗎？",
     answer:
-      "現貨商品一般於訂單確認後 1-3 個工作天內出貨。全館單筆滿 NT$ 2,000 即享免運費。若收到商品包裝破損或內容有異，請於 7 日內聯繫 UFLOW 客服進行退換貨。惟因保健食品退貨後可能涉及衛生安全疑慮，除非商品本身有瑕疵，否則辦理退換貨時，請務必確保產品為全新且未拆封（封膜完整，且產品不得有任何明顯破損或污漬）。",
+      "現貨商品一般於訂單確認後 1–3 個工作天內出貨。全館單筆滿 NT$2,000 享免運。若收到商品有瑕疵或錯誤，請於 7 日內聯繫 HOVER 客服協助處理。",
   },
 ];
 
@@ -79,16 +79,16 @@ export default async function Page() {
     "@type": "WebSite",
     "@id": `${SITE_URL}/#website`,
     url: SITE_URL,
-    name: "UFLOW",
-    alternateName: "UFLOW 慶安有福保健食品",
-    description: "功能性保健食品與營養補給｜專為亞洲體質研發・安心第三方檢驗",
+    name: "HOVER",
+    alternateName: "HOVER 威爾特",
+    description: "輕盈穩定的日常服飾選品｜上衣、帽款、襪品、包袋",
     publisher: { "@id": `${SITE_URL}/#organization` },
     inLanguage: "zh-TW",
     potentialAction: {
       "@type": "SearchAction",
       target: {
         "@type": "EntryPoint",
-        urlTemplate: `${SITE_URL}/search?q={search_term_string}`,
+        urlTemplate: `${SITE_URL}/products?q={search_term_string}`,
       },
       "query-input": "required name=search_term_string",
     },
@@ -98,31 +98,24 @@ export default async function Page() {
     "@context": "https://schema.org",
     "@type": "Organization",
     "@id": `${SITE_URL}/#organization`,
-    name: "慶安有福有限公司",
-    alternateName: "UFLOW",
+    name: "停機坪國際文創股份有限公司",
+    alternateName: "HOVER",
     url: SITE_URL,
     logo: {
       "@type": "ImageObject",
-      url: `${SITE_URL}/images/logo/uflow.png`,
+      url: `${SITE_URL}/images/logo/logo.svg`,
     },
-    image: `${SITE_URL}/images/logo/uflow.png`,
+    image: `${SITE_URL}/images/hover/hero.jpg`,
     description:
-      "UFLOW 專注於功能性保健食品與日常營養補給。主打科學調配、足量攝取，嚴選國際大廠專利原料，全系列通過第三方檢驗。",
-    email: "uflowspace@gmail.com",
-    telephone: "+886-978-138-979",
+      "HOVER 是一個為日常而設計的服飾品牌，精選兼具舒適、質感與實穿性的服飾單品。",
+    email: "service@hoverofficial.com",
     contactPoint: {
       "@type": "ContactPoint",
-      telephone: "+886-978-138-979",
       contactType: "customer service",
-      email: "uflowspace@gmail.com",
+      email: "service@hoverofficial.com",
       areaServed: "TW",
       availableLanguage: ["Traditional Chinese", "English"],
     },
-    sameAs: [
-      "https://www.facebook.com/uflow",
-      "https://www.instagram.com/uflow",
-      "https://line.me/R/ti/p/@uflow",
-    ],
   };
 
   const schemaWebPage = {
@@ -130,11 +123,11 @@ export default async function Page() {
     "@type": "WebPage",
     "@id": `${SITE_URL}/#webpage`,
     url: SITE_URL,
-    name: "UFLOW｜科學足量保健食品",
+    name: "HOVER 威爾特｜輕盈穩定的日常服飾選品",
     isPartOf: { "@id": `${SITE_URL}/#website` },
     about: { "@id": `${SITE_URL}/#organization` },
     description:
-      "UFLOW 專注於功能性保健食品。主打微脂體肽晶芙蓉、日夜節奏管理 GABA鎂鎂香蜂草、專利維他菌合生元。拒絕無效添加，讓你補得安心、每日有感。",
+      "探索 HOVER 新作與熱銷單品——上衣、帽款、襪品到包袋。以舒適剪裁與簡約質感，陪你依照生活節奏自在穿搭。",
   };
 
   const schemaFAQ = {
@@ -155,27 +148,14 @@ export default async function Page() {
     "@context": "https://schema.org",
     "@type": "ItemList",
     "@id": `${SITE_URL}/#collection`,
-    name: "UFLOW 主打科學專利保健食品",
-    description:
-      "為您推薦 UFLOW 最受歡迎的養顏美容、日夜調理與消化道健康食品。",
+    name: "HOVER 精選商品",
+    description: "探索 HOVER 熱銷服飾與配件。",
     itemListElement: [
       {
         "@type": "ListItem",
         position: 1,
-        url: `${SITE_URL}/products/肽晶芙蓉`,
-        name: "肽晶芙蓉",
-      },
-      {
-        "@type": "ListItem",
-        position: 2,
-        url: `${SITE_URL}/products/gaba鎂鎂香蜂草`,
-        name: "GABA 鎂鎂香蜂草",
-      },
-      {
-        "@type": "ListItem",
-        position: 3,
-        url: `${SITE_URL}/products/synbiotics`,
-        name: "維他菌合生元",
+        url: `${SITE_URL}/products`,
+        name: "全系列商品",
       },
     ],
   };

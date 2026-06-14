@@ -178,7 +178,7 @@ export async function POST(req: Request) {
         if (coupon?.code) meta_data.push({ key: "_used_coupon_code", value: coupon.code });
 
         const fee_lines = [];
-        if (claimedMemberDiscount > 0) fee_lines.push({ name: "UFLOW 會員專屬優惠", total: String(-claimedMemberDiscount) });
+        if (claimedMemberDiscount > 0) fee_lines.push({ name: "HOVER 會員優惠", total: String(-claimedMemberDiscount) });
         if (claimedCouponDiscount > 0 && coupon?.code) fee_lines.push({ name: `優惠券折抵 (${coupon.code})`, total: String(-claimedCouponDiscount) });
 
         const wcOrderPayload = {
@@ -232,11 +232,11 @@ export async function POST(req: Request) {
           {
             id: `PKG_${orderId}`,
             amount: Number(finalGatewayAmount),
-            name: "UFLOW 訂單",
+            name: "HOVER 訂單",
             products: [
               {
                 id: "ORDER_TOTAL",
-                name: "UFLOW 官方商城訂單總計",
+                name: "HOVER 官方商城訂單總計",
                 quantity: 1,
                 price: Number(finalGatewayAmount) 
               }

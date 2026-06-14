@@ -3,7 +3,7 @@ import fs from "fs";
 import path from "path";
 import { fetchAllProducts } from "@/lib/woo"; // 你的 WooCommerce 抓取函式
 
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://www.uflow.space";
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
 /**
  * 🔍 自動遞迴掃描 app 目錄下的所有靜態路由
@@ -80,44 +80,5 @@ export default async function sitemap() {
     priority: 0.9,
   }));
 
-// ============================================================================
-  // 3. 動態抓取 WordPress 所有文章網址
-  // ============================================================================
-  let posts = [];
-  try {
-    const wpApiUrl = process.env.WORDPRESS_API_URL || "https://inf.fjg.mybluehost.me/website_4ad5d5f2/wp-json/wp/v2";
-    
-    // 🚨 終極快取破壞者 (Cache Buster)！
-    // 我們在網址後面加上 &_t=當下時間，確保每次發送的網址都長得不一樣
-    const timestamp = new Date().getTime();
-    const fetchUrl = `${wpApiUrl}/posts?per_page=100&_t=${timestamp}`;
-    
-    const res = await fetch(fetchUrl, {
-      cache: "no-store", 
-      headers: {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        Accept: "application/json",
-      },
-    });
-
-    if (res.ok) {
-        posts = await res.json();
-    } else {
-        console.error("WP API 抓取失敗，狀態碼:", res.status);
-    }
-  } catch (error) {
-    console.error("Sitemap 文章抓取失敗:", error);
-  }
-
-  const postRoutes = posts.map((post) => ({
-    url: `${SITE_URL}/blog/${post.slug}`,
-    lastModified: new Date(post.modified || post.date),
-    changeFrequency: "weekly",
-    priority: 0.7,
-  }));
-
-  // ============================================================================
-  // 4. 大合流輸出
-  // ============================================================================
-  return [...staticRoutes, ...productRoutes, ...postRoutes];
+  return [...staticRoutes, ...productRoutes];
 }

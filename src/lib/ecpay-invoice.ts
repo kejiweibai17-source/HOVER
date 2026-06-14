@@ -69,7 +69,7 @@ export async function issueEcpayInvoice(input: IssueInvoiceInput) {
     MerchantID,
     RelateNumber: input.relateNumber,
     CustomerEmail: input.customerEmail,
-    CustomerName: "UFLOW顧客", // 💡 綠界防呆：即使不列印，也給一個預設名稱防止擋件
+    CustomerName: "HOVER顧客", // 綠界防呆：即使不列印，也給一個預設名稱防止擋件
     Print: "0",
     Donation: "0",
     CarrierType: "",

@@ -289,8 +289,13 @@ function MetricBlock({ title, value, subtext }) {
 }
 
 function getTierDisplay(tierName) {
-  if (!tierName || tierName === "U銅貴賓") return "HOVER好友";
-  return tierName;
+  const map = {
+    U銅貴賓: "HOVER好友",
+    U銀貴賓: "HOVER白銀",
+    U金貴賓: "HOVER黃金",
+    UVIP貴賓: "HOVER VIP",
+  };
+  return map[tierName] || tierName || "HOVER好友";
 }
 
 function HoverUnderlineField({ label, value, type = "text" }) {
@@ -1177,14 +1182,14 @@ export default function AccountPage() {
                     </div>
                     <p className="text-[13px] leading-relaxed text-[#555]">
                       {membership?.nextNeedAmount != null && membership?.nextTierName
-                        ? `再消費滿 ${formatMoneyNT(membership.nextNeedAmount).replace("NT$ ", "NT$")} 即可升級成${membership.nextTierName}`
+                        ? `再消費滿 ${formatMoneyNT(membership.nextNeedAmount).replace("NT$ ", "NT$")} 即可升級成${getTierDisplay(membership.nextTierName)}`
                         : "您已達最高會員等級"}
                     </p>
                     <Link
                       href="/brand"
                       className="mt-2 inline-flex items-center gap-1 text-[12px] text-[#555] underline-offset-2 hover:underline"
                     >
-                      查看會員優惠資訊 ▶
+                      了解品牌與會員制度 ▶
                     </Link>
                   </div>
                   <div className="grid flex-1 grid-cols-2 gap-6 sm:grid-cols-4 sm:gap-4">
@@ -1308,159 +1313,84 @@ export default function AccountPage() {
                   </div>
                 </div>
 
-                {/* 推薦計畫 & 優惠券 — 保留原有功能 */}
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-3 lg:gap-8">
-                  <div className="lg:col-span-2 flex flex-col gap-6">
-                    <ShellCard
-                      title="推薦計畫"
-                      right={<StatusPill status="金牌大使推薦" type="tier" />}
-                    >
-                      {referralLoading ? (
-                        <p className="text-sm text-[#6d7175]">
-                          讀取推薦資訊中...
-                        </p>
-                      ) : !referral ? (
-                        <p className="text-sm text-[#6d7175]">尚無推薦資訊</p>
-                      ) : (
-                        <div className="space-y-4 sm:space-y-5">
-                          <div className="bg-emerald-50/50 border border-emerald-100 rounded-lg p-3 sm:p-4 text-sm text-emerald-900 leading-relaxed">
-                            親友註冊可得{" "}
-                            <strong className="text-emerald-700">
-                              NT$ {referral.friendReward}
-                            </strong>{" "}
-                            購物金，親友首單完成後你可得{" "}
-                            <strong className="text-emerald-700">
-                              NT$ {referral.ambassadorReward}
-                            </strong>{" "}
-                            抵用金。
-                          </div>
-                          {/* 💡 推薦碼輸入框加入 min-w-0 與 break-all 防破版 */}
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="w-full min-w-0">
-                              <p className="text-xs text-[#6d7175] mb-1">
-                                您的推薦碼
-                              </p>
-                              <div className="flex items-center justify-between border border-[#c9cccf] rounded-md px-3 py-2 bg-[#f9fafb] w-full">
-                                <code className="text-sm font-mono font-bold text-[#008060] break-all truncate mr-2">
-                                  {referral.refCode}
-                                </code>
-                                <button
-                                  onClick={() =>
-                                    navigator.clipboard.writeText(
-                                      referral.refCode,
-                                    )
-                                  }
-                                  className="text-[#5c5f62] hover:text-[#008060] transition-colors shrink-0"
-                                >
-                                  <Copy size={16} />
-                                </button>
-                              </div>
-                            </div>
-                            <div className="w-full min-w-0">
-                              <p className="text-xs text-[#6d7175] mb-1">
-                                推薦連結
-                              </p>
-                              <div className="flex items-center gap-2 w-full">
-                                <input
-                                  readOnly
-                                  value={referral.referralLink}
-                                  className="flex-1 min-w-0 border border-[#c9cccf] rounded-md px-3 py-2 text-sm bg-[#f9fafb] outline-none font-mono text-xs"
-                                />
-                                <button
-                                  onClick={() =>
-                                    navigator.clipboard.writeText(
-                                      referral.referralLink,
-                                    )
-                                  }
-                                  className="bg-white border border-[#c9cccf] shadow-sm text-[#202223] px-3 py-2 rounded-md hover:bg-[#f6f6f7] transition-colors font-medium text-sm shrink-0"
-                                >
-                                  複製
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                    </ShellCard>
-                  </div>
-
-                  <div className="lg:col-span-1 flex flex-col gap-4 sm:gap-5 w-full">
-                    <ShellCard title="狀態與詳情">
-                      <div className="flex flex-col gap-3">
-                        <div className="flex justify-between items-center border-b border-[#ebebeb] pb-3">
-                          <span className="text-[#6d7175] text-sm">
-                            帳戶狀態
-                          </span>
-                          <StatusPill status="正常運作" type="account" />
-                        </div>
-                        <div className="flex justify-between items-center border-b border-[#ebebeb] pb-3">
-                          <span className="text-[#6d7175] text-sm">
-                            折扣優惠
-                          </span>
-                          <span className="font-bold text-emerald-600 text-sm">
-                            {membership?.discountLabel || "—"}
-                          </span>
-                        </div>
-                        <div className="pt-1">
-                          <span className="text-[#6d7175] text-sm block mb-2">
-                            生日
-                          </span>
-                          {!customer?.birthday ? (
-                            !isSettingBirthday ? (
-                              <button
-                                onClick={() => setIsSettingBirthday(true)}
-                                className="w-full border border-dashed border-[#c9cccf] bg-[#f9fafb] hover:bg-white text-[#202223] py-2 rounded-md text-sm font-medium transition-colors"
-                              >
-                                設定生日
-                              </button>
-                            ) : (
-                              <div className="flex flex-col gap-2">
-                                <input
-                                  type="date"
-                                  value={birthdayInput}
-                                  onChange={(e) =>
-                                    setBirthdayInput(e.target.value)
-                                  }
-                                  className="w-full border border-[#c9cccf] rounded-md px-3 py-2 text-sm outline-none"
-                                />
-                                <div className="flex gap-2">
-                                  <button
-                                    onClick={handleUpdateBirthday}
-                                    disabled={birthdayLoading}
-                                    className="flex-1 bg-[#008060] text-white text-sm py-2 rounded-md hover:bg-[#006e52]"
-                                  >
-                                    {birthdayLoading ? "..." : "儲存"}
-                                  </button>
-                                  <button
-                                    onClick={() => setIsSettingBirthday(false)}
-                                    className="flex-1 bg-white border border-[#c9cccf] text-[#202223] text-sm py-2 rounded-md hover:bg-[#f6f6f7]"
-                                  >
-                                    取消
-                                  </button>
-                                </div>
-                                <p className="text-[10px] text-rose-500 italic mt-1">
-                                  * 生日填寫後將無法修改
-                                </p>
-                              </div>
-                            )
-                          ) : (
-                            <div className="font-bold text-[#202223] text-sm bg-gray-50 px-3 py-2 rounded border border-gray-100 flex items-center gap-2">
-                              <span className="text-rose-400">🎂</span>{" "}
-                              {customer.birthday}
-                            </div>
-                          )}
-                        </div>
+                {/* 狀態與優惠券 — 左右排版 */}
+                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-8">
+                  <ShellCard title="狀態與詳情">
+                    <div className="flex flex-col gap-3">
+                      <div className="flex justify-between items-center border-b border-[#ebebeb] pb-3">
+                        <span className="text-[#6d7175] text-sm">
+                          帳戶狀態
+                        </span>
+                        <StatusPill status="正常運作" type="account" />
                       </div>
-                    </ShellCard>
+                      <div className="flex justify-between items-center border-b border-[#ebebeb] pb-3">
+                        <span className="text-[#6d7175] text-sm">
+                          折扣優惠
+                        </span>
+                        <span className="font-bold text-emerald-600 text-sm">
+                          {membership?.discountLabel || "—"}
+                        </span>
+                      </div>
+                      <div className="pt-1">
+                        <span className="text-[#6d7175] text-sm block mb-2">
+                          生日
+                        </span>
+                        {!customer?.birthday ? (
+                          !isSettingBirthday ? (
+                            <button
+                              onClick={() => setIsSettingBirthday(true)}
+                              className="w-full border border-dashed border-[#c9cccf] bg-[#f9fafb] hover:bg-white text-[#202223] py-2 rounded-md text-sm font-medium transition-colors"
+                            >
+                              設定生日
+                            </button>
+                          ) : (
+                            <div className="flex flex-col gap-2">
+                              <input
+                                type="date"
+                                value={birthdayInput}
+                                onChange={(e) =>
+                                  setBirthdayInput(e.target.value)
+                                }
+                                className="w-full border border-[#c9cccf] rounded-md px-3 py-2 text-sm outline-none"
+                              />
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={handleUpdateBirthday}
+                                  disabled={birthdayLoading}
+                                  className="flex-1 bg-[#008060] text-white text-sm py-2 rounded-md hover:bg-[#006e52]"
+                                >
+                                  {birthdayLoading ? "..." : "儲存"}
+                                </button>
+                                <button
+                                  onClick={() => setIsSettingBirthday(false)}
+                                  className="flex-1 bg-white border border-[#c9cccf] text-[#202223] text-sm py-2 rounded-md hover:bg-[#f6f6f7]"
+                                >
+                                  取消
+                                </button>
+                              </div>
+                              <p className="text-[10px] text-rose-500 italic mt-1">
+                                * 生日填寫後將無法修改
+                              </p>
+                            </div>
+                          )
+                        ) : (
+                          <div className="font-bold text-[#202223] text-sm bg-gray-50 px-3 py-2 rounded border border-gray-100 flex items-center gap-2">
+                            <span className="text-rose-400">🎂</span>{" "}
+                            {customer.birthday}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </ShellCard>
 
-                    <ShellCard title="獎勵與優惠券">
+                  <ShellCard title="獎勵與優惠券">
                       <div className="flex flex-col gap-4">
                         <div className="flex items-center justify-between border-b border-[#ebebeb] pb-3">
                           <div>
                             <p className="text-sm font-medium text-[#202223]">
                               {membership?.tierName === "U銅貴賓"
-                                ? "註冊 / 升等禮"
-                                : "專屬升等禮"}
+                                ? "註冊禮 / 會員禮"
+                                : "專屬會員禮"}
                             </p>
                             <p className="text-xs font-bold text-amber-600 mt-0.5">
                               {membership?.upgradeGift ?? 0} 元
@@ -1570,14 +1500,10 @@ export default function AccountPage() {
                                     </span>
                                     <p className="text-[11px] text-[#6d7175] mt-1 font-medium truncate w-full">
                                       {c.kind === "upgrade"
-                                        ? "升等禮金"
+                                        ? "會員禮金"
                                         : c.kind === "birthday"
                                           ? "生日禮金"
-                                          : isAmbassadorCoupon(c.code, c.kind)
-                                            ? "推薦大使獎勵"
-                                            : isFriendCoupon(c.code, c.kind)
-                                              ? "新會員首購獎勵"
-                                              : "專屬折扣碼"}
+                                          : "折扣券"}
                                     </p>
                                   </div>
                                   <button
@@ -1595,7 +1521,6 @@ export default function AccountPage() {
                         </div>
                       </div>
                     </ShellCard>
-                  </div>
                 </div>
               </>
             )}

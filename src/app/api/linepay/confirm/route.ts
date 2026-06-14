@@ -114,8 +114,8 @@ export async function GET(req: Request) {
         
         // 🔄 恢復動態抓取真實顧客資料 (V2 AES 支援所有中文與特殊符號，不需淨化！)
         const rawName = (wcOrder.billing.last_name || "") + (wcOrder.billing.first_name || "");
-        const customerName = rawName || "UFLOW客戶";
-        const customerEmail = wcOrder.billing.email || "service@uflow.com.tw";
+        const customerName = rawName || "HOVER客戶";
+        const customerEmail = wcOrder.billing.email || "service@hoverofficial.com";
         const customerPhone = wcOrder.billing.phone || "0900000000"; 
         
         let customerAddr = wcOrder.billing.address_1 || "";
@@ -137,7 +137,7 @@ export async function GET(req: Request) {
           InvoiceRemark: "LINEPay",
           Items: [
             {
-              ItemName: "UFLOW官方商城訂單",
+              ItemName: "HOVER官方商城訂單",
               ItemCount: 1,
               ItemWord: "式",
               ItemPrice: amount,

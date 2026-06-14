@@ -2,7 +2,7 @@
 
 module.exports = {
   // 1. 你的正式網域
-  siteUrl: process.env.NEXT_PUBLIC_SITE_URL || 'https://www.uflow.space',
+  siteUrl: process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000',
   
   // 2. 自動產生 robots.txt
   generateRobotsTxt: true, 

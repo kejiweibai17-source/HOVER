@@ -414,7 +414,7 @@ const TW_CITIES = {
 const currency = (n) =>
   `NT$${(Math.round((Number(n) || 0) * 100) / 100).toLocaleString("zh-TW")}`;
 
-// 會員折扣表
+// 會員折扣表（後端 tier 名稱對應，邏輯保留）
 const TIER_DISCOUNTS = {
   U銅貴賓: 1,
   U銀貴賓: 0.98,
@@ -422,43 +422,6 @@ const TIER_DISCOUNTS = {
   UVIP貴賓: 0.9,
   UVVIP貴賓: 0.88,
 };
-
-// 工具函數
-function isUpgradeCode(code) {
-  return String(code || "")
-    .toLowerCase()
-    .startsWith("ufup-");
-}
-function isBirthdayCode(code) {
-  return String(code || "")
-    .toLowerCase()
-    .startsWith("ufbd-");
-}
-function isReferralAmbCode(code) {
-  return String(code || "")
-    .toLowerCase()
-    .startsWith("ufamb-");
-}
-function isReferralFriendCode(code) {
-  return String(code || "")
-    .toLowerCase()
-    .startsWith("uffrd-");
-}
-
-function couponTitleByKindOrCode(c) {
-  const code = String(c?.code || "");
-  const kind = String(c?.kind || "").toLowerCase();
-  const amount = Number(c?.amount) || 0;
-  if (kind === "upgrade" || isUpgradeCode(code))
-    return `升等禮金 - ${currency(amount)}`;
-  if (kind === "birthday" || isBirthdayCode(code))
-    return `專屬生日禮 - ${currency(amount)}`;
-  if (kind === "ref_ambassador_200" || isReferralAmbCode(code))
-    return `推薦回饋金 - ${currency(amount)}`;
-  if (kind === "ref_friend_50" || isReferralFriendCode(code))
-    return `新客註冊禮 - ${currency(amount)}`;
-  return `專屬折扣碼 - ${currency(amount)}`;
-}
 
 // 核心計算邏輯
 function calcPricing(
@@ -550,155 +513,128 @@ function Select({ label, error, options = [], value, onChange, placeholder }) {
   );
 }
 
-function CouponPicker({
-  title = "可用折價券",
-  subtitle,
-  coupons,
-  applied,
-  onApply,
-  onClear,
-  loading,
-  emptyText = "目前沒有可用折價券",
-}) {
+/* 購物車折扣券展示（設計稿，尚未串接邏輯） */
+const MOCK_CART_COUPONS = [
+  {
+    id: "hover-coupon-1",
+    tag: "全館",
+    label: "滿額折抵",
+    value: "200",
+    unit: "NT$",
+    condition: "滿 NT$2,000 可使用",
+    expires: "2026.12.31 前有效",
+  },
+  {
+    id: "hover-coupon-2",
+    tag: "會員",
+    label: "會員專屬",
+    value: "10",
+    unit: "%",
+    condition: "指定商品適用",
+    expires: "2026.12.31 前有效",
+  },
+  {
+    id: "hover-coupon-3",
+    tag: "運費",
+    label: "免運券",
+    value: "免運",
+    unit: "",
+    condition: "滿 NT$1,500 享免運",
+    expires: "長期有效",
+  },
+];
+
+function HoverCouponCard({ coupon, selected, onSelect }) {
   return (
-    <div className="mb-6">
-      <div className="flex items-start justify-between mb-3">
-        <div>
-          <div className="text-sm font-black text-gray-900 tracking-wide">
-            {title}
+    <button
+      type="button"
+      onClick={() => onSelect?.(coupon.id)}
+      className={`group relative flex w-full items-stretch overflow-hidden rounded-sm border bg-white text-left transition-all ${
+        selected
+          ? "border-[#ee4d2d] shadow-[0_2px_8px_rgba(238,77,45,0.12)]"
+          : "border-[#e8e8e8] hover:border-[#ee4d2d]/40"
+      }`}
+    >
+      {/* 左側票券缺口 */}
+      <span className="pointer-events-none absolute -left-[5px] top-1/2 z-10 h-[10px] w-[10px] -translate-y-1/2 rounded-full border border-[#e8e8e8] bg-hover-bg" />
+      <span className="pointer-events-none absolute -right-[5px] top-1/2 z-10 h-[10px] w-[10px] -translate-y-1/2 rounded-full border border-[#e8e8e8] bg-hover-bg" />
+
+      {/* 折扣面額 */}
+      <div className="flex w-[92px] shrink-0 flex-col items-center justify-center border-r border-dashed border-[#e8e8e8] bg-[#fff8f6] px-2 py-4">
+        {coupon.unit === "NT$" ? (
+          <div className="flex flex-col items-center leading-none text-[#ee4d2d]">
+            <span className="text-[10px] font-semibold">NT$</span>
+            <span className="text-[26px] font-bold tracking-tight">
+              {coupon.value}
+            </span>
           </div>
-          {subtitle && (
-            <div className="text-[11px] text-gray-400 mt-0.5">{subtitle}</div>
-          )}
-        </div>
-        {applied ? (
-          <button
-            type="button"
-            className="text-xs font-black text-gray-500 underline underline-offset-4 hover:text-gray-900"
-            onClick={onClear}
-          >
-            取消套用
-          </button>
-        ) : null}
+        ) : coupon.unit === "%" ? (
+          <div className="flex items-end leading-none text-[#ee4d2d]">
+            <span className="text-[28px] font-bold tracking-tight">
+              {coupon.value}
+            </span>
+            <span className="mb-1 text-[12px] font-semibold">折</span>
+          </div>
+        ) : (
+          <span className="text-[18px] font-bold text-[#ee4d2d]">
+            {coupon.value}
+          </span>
+        )}
+        <span className="mt-1 text-[10px] text-[#888]">{coupon.label}</span>
       </div>
 
-      {loading ? (
-        <div className="text-xs text-gray-400 animate-pulse">讀取錢包中…</div>
-      ) : coupons.length === 0 ? (
-        <div className="text-xs text-gray-400 bg-gray-50 p-4 rounded-xl border border-gray-100 text-center">
-          {emptyText}
-        </div>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {coupons.map((c) => {
-            const isActive =
-              String(applied?.code || "").toLowerCase() ===
-              String(c.code || "").toLowerCase();
-            const amount = Number(c.amount) || 0;
-            const kind = String(c.kind || "").toLowerCase();
-            const code = String(c.code || "").toLowerCase();
-
-            let theme = {
-              bar: "bg-gray-800",
-              text: "text-gray-800",
-              light: "bg-gray-50",
-              border: "border-gray-200",
-              ring: "ring-gray-800",
-              label: "專屬優惠",
-            };
-            if (kind === "upgrade" || code.startsWith("ufup-"))
-              theme = {
-                bar: "bg-amber-500",
-                text: "text-amber-700",
-                light: "bg-amber-50",
-                border: "border-amber-200",
-                ring: "ring-amber-500",
-                label: "升等禮金",
-              };
-            else if (kind === "birthday" || code.startsWith("ufbd-"))
-              theme = {
-                bar: "bg-rose-500",
-                text: "text-rose-700",
-                light: "bg-rose-50",
-                border: "border-rose-200",
-                ring: "ring-rose-500",
-                label: "專屬生日禮",
-              };
-            else if (
-              kind.includes("ref") ||
-              code.startsWith("ufamb-") ||
-              code.startsWith("uffrd-")
-            )
-              theme = {
-                bar: "bg-[#2a514d]",
-                text: "text-[#2a514d]",
-                light: "bg-[#eef4f3]",
-                border: "border-emerald-200",
-                ring: "ring-[#2a514d]",
-                label: "購物抵用金",
-              };
-
-            return (
-              <button
-                key={c.code}
-                type="button"
-                onClick={() => onApply(c)}
-                className={`relative w-full flex items-stretch rounded-xl border transition-all overflow-hidden text-left bg-white ${isActive ? `ring-2 ${theme.ring} border-transparent shadow-md scale-[0.98]` : "border-gray-200 hover:shadow-md hover:border-gray-300"}`}
-              >
-                <div className={`w-3 flex-shrink-0 ${theme.bar}`}></div>
-                <div className="flex-1 min-w-0 p-3.5 py-4">
-                  <div
-                    className={`text-[11px] font-bold ${theme.text} mb-1 tracking-wider truncate`}
-                  >
-                    {theme.label}
-                  </div>
-                  <div className="flex items-baseline gap-1 mb-1.5">
-                    <span className="text-sm font-bold text-gray-900">NT$</span>
-                    <span className="text-2xl font-black text-gray-900 tracking-tight truncate">
-                      {amount}
-                    </span>
-                  </div>
-                  <div className="text-[10px] text-gray-400 font-mono tracking-widest uppercase truncate w-full">
-                    {c.code}
-                  </div>
-                </div>
-                <div
-                  className={`w-[76px] border-l-[1.5px] border-dashed ${theme.border} ${theme.light} flex flex-col items-center justify-center gap-1 shrink-0 px-2 py-3`}
-                >
-                  {isActive ? (
-                    <>
-                      <CheckCircle2 className={`w-5 h-5 ${theme.text}`} />
-                      <span className={`text-[11px] font-black ${theme.text}`}>
-                        已套用
-                      </span>
-                    </>
-                  ) : (
-                    <span className="text-[13px] font-bold text-gray-400 hover:text-gray-700 transition-colors text-center leading-tight">
-                      點擊
-                      <br />
-                      使用
-                    </span>
-                  )}
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {applied ? (
-        <div className="mt-3 text-[11px] text-gray-500 bg-gray-50 px-3 py-2 rounded-lg border border-gray-100 flex justify-between items-center">
-          <span>
-            已套用：
-            <span className="font-bold text-gray-900 uppercase">
-              {applied.code}
-            </span>
+      {/* 券面資訊 */}
+      <div className="min-w-0 flex-1 px-3 py-3">
+        <div className="mb-1 flex items-center gap-2">
+          <span className="rounded-sm bg-[#ee4d2d]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#ee4d2d]">
+            {coupon.tag}
           </span>
-          <span className="font-black text-[#2a514d]">
-            - {currency(applied.amount)}
-          </span>
+          {selected && (
+            <span className="text-[10px] font-medium text-[#2a514d]">已選取</span>
+          )}
         </div>
-      ) : null}
+        <p className="text-[12px] font-medium text-black">{coupon.condition}</p>
+        <p className="mt-1 text-[10px] text-[#999]">{coupon.expires}</p>
+      </div>
+
+      {/* 右側動作 */}
+      <div className="flex w-[56px] shrink-0 items-center justify-center border-l border-dashed border-[#e8e8e8] px-1">
+        <span
+          className={`text-[11px] font-semibold leading-tight ${
+            selected ? "text-[#ee4d2d]" : "text-[#888] group-hover:text-[#ee4d2d]"
+          }`}
+        >
+          {selected ? "已選" : "使用"}
+        </span>
+      </div>
+    </button>
+  );
+}
+
+function HoverCouponSection() {
+  const [selectedId, setSelectedId] = useState(null);
+
+  return (
+    <div className="mb-6 border-b border-[#e8e8e8] pb-6">
+      <div className="mb-3">
+        <p className="text-[13px] font-semibold text-black">折扣券</p>
+        <p className="mt-0.5 text-[11px] text-[#888]">選擇優惠券套用至訂單</p>
+      </div>
+
+      <div className="flex flex-col gap-2.5">
+        {MOCK_CART_COUPONS.map((coupon) => (
+          <HoverCouponCard
+            key={coupon.id}
+            coupon={coupon}
+            selected={selectedId === coupon.id}
+            onSelect={setSelectedId}
+          />
+        ))}
+      </div>
+
+      <p className="mt-3 text-[10px] leading-relaxed text-[#aaa]">
+        * 折扣券功能即將上線，目前僅供預覽設計
+      </p>
     </div>
   );
 }
@@ -833,6 +769,112 @@ function HoverSelect({ error, options = [], placeholder, value, onChange }) {
   );
 }
 
+function CartBreadcrumb({ currentStep, onStepClick }) {
+  const steps = [
+    { step: 1, zh: "購物袋", en: "SHOPPING BAG" },
+    { step: 2, zh: "結帳", en: "CHECKOUT" },
+  ];
+
+  return (
+    <nav
+      aria-label="購物流程"
+      className="mx-auto max-w-[1200px] px-4 pb-10 pt-8 md:px-8"
+    >
+      {/* Text trail */}
+      <ol className="mb-6 flex items-center justify-center gap-1.5 text-[11px] tracking-wide text-[#888]">
+        <li>
+          <a href="/" className="transition-colors hover:text-black">
+            HOME
+          </a>
+        </li>
+        {steps.map((s) => {
+          const isActive = currentStep === s.step;
+          const isPast = currentStep > s.step;
+          const canClick = isPast && onStepClick;
+
+          return (
+            <li key={s.step} className="flex items-center gap-1.5">
+              <span aria-hidden className="text-[#ccc]">
+                /
+              </span>
+              {canClick ? (
+                <button
+                  type="button"
+                  onClick={() => onStepClick(s.step)}
+                  className="transition-colors hover:text-black"
+                >
+                  {s.en}
+                </button>
+              ) : (
+                <span className={isActive ? "font-medium text-black" : ""}>
+                  {s.en}
+                </span>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+
+      {/* Step indicator */}
+      <ol className="flex items-center justify-center">
+        {steps.map((s, i) => {
+          const isActive = currentStep === s.step;
+          const isPast = currentStep > s.step;
+          const canClick = isPast && onStepClick;
+
+          return (
+            <li key={s.step} className="flex items-center">
+              {i > 0 && (
+                <span
+                  aria-hidden
+                  className={`mx-4 h-px w-10 md:mx-6 md:w-16 ${
+                    isPast || isActive ? "bg-black" : "bg-[#ddd]"
+                  }`}
+                />
+              )}
+              {canClick ? (
+                <button
+                  type="button"
+                  onClick={() => onStepClick(s.step)}
+                  className="group flex flex-col items-center gap-2 transition-opacity hover:opacity-70"
+                >
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full border border-black bg-black text-[12px] font-semibold text-white">
+                    {s.step}
+                  </span>
+                  <span className="text-[12px] font-medium text-black">
+                    {s.zh}
+                  </span>
+                </button>
+              ) : (
+                <div className="flex flex-col items-center gap-2">
+                  <span
+                    className={`flex h-7 w-7 items-center justify-center rounded-full border text-[12px] font-semibold ${
+                      isActive
+                        ? "border-black bg-black text-white"
+                        : "border-[#ccc] bg-white text-[#bbb]"
+                    }`}
+                  >
+                    {s.step}
+                  </span>
+                  <span
+                    className={`text-[12px] ${
+                      isActive
+                        ? "font-medium text-black"
+                        : "text-[#bbb]"
+                    }`}
+                  >
+                    {s.zh}
+                  </span>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
+  );
+}
+
 function getItemMeta(it) {
   const opts = it.options ? Object.values(it.options).filter(Boolean) : [];
   if (opts.length >= 2) return { color: opts[0], size: opts[1] };
@@ -847,21 +889,11 @@ function CartStep({
   onRemove,
   onNext,
   pricing,
-  coupons,
-  couponLoading,
-  referralCoupons,
-  referralLoading,
-  appliedCoupon,
-  onApplyCoupon,
-  onClearCoupon,
   membership,
 }) {
   if (items.length === 0) {
     return (
-      <div className="flex flex-col items-center py-32 text-center">
-        <p className="mb-8 text-[13px] tracking-[0.3em] text-[#555] uppercase">
-          SHOPPING BAG
-        </p>
+      <div className="flex flex-col items-center pb-32 pt-8 text-center">
         <ShoppingBag className="mb-6 h-14 w-14 text-[#bbb]" />
         <p className="mb-2 text-[16px] font-medium text-black">購物袋是空的</p>
         <a
@@ -876,11 +908,6 @@ function CartStep({
 
   return (
     <div className="mx-auto max-w-[1100px] px-4 pb-16 md:px-8">
-      {/* Title */}
-      <p className="py-8 text-center text-[13px] tracking-[0.3em] text-[#555] uppercase">
-        SHOPPING BAG
-      </p>
-
       <div className="grid grid-cols-1 gap-12 lg:grid-cols-[1fr_340px]">
         {/* ── Product list ────────────────────────────────── */}
         <div>
@@ -980,20 +1007,7 @@ function CartStep({
         {/* ── Order summary ────────────────────────────────── */}
         <aside className="lg:sticky lg:top-8 self-start">
           <div className="bg-white px-6 py-7">
-            {/* Coupon (collapsible, shown if available) */}
-            {([...coupons, ...referralCoupons]).length > 0 && (
-              <div className="mb-6 border-b border-[#e8e8e8] pb-6">
-                <CouponPicker
-                  title="可用折價券"
-                  subtitle="點擊即可套用折扣"
-                  coupons={[...coupons, ...referralCoupons]}
-                  applied={appliedCoupon}
-                  onApply={onApplyCoupon}
-                  onClear={onClearCoupon}
-                  loading={couponLoading || referralLoading}
-                />
-              </div>
-            )}
+            <HoverCouponSection />
 
             {/* Pricing rows */}
             <div className="space-y-3 text-[13px]">
@@ -1009,15 +1023,6 @@ function CartStep({
                   <span className="text-[#555]">{membership?.tierName} 折扣</span>
                   <span className="text-[#c90000]">
                     - NT$ {pricing.memberDiscountAmount.toLocaleString()}
-                  </span>
-                </div>
-              )}
-
-              {pricing.couponDiscount > 0 && (
-                <div className="flex items-center justify-between">
-                  <span className="text-[#555]">折價券折抵</span>
-                  <span className="text-[#c90000]">
-                    - NT$ {pricing.couponDiscount.toLocaleString()}
                   </span>
                 </div>
               )}
@@ -1081,53 +1086,17 @@ function CheckoutStep({
   setPayMethod,
   onPrev,
   onClearCart,
-  coupons,
-  couponLoading,
-  referralCoupons,
-  referralLoading,
-  appliedCoupon,
-  onApplyCoupon,
-  onClearCoupon,
   membership,
-  isLoggedIn, // 🌟 接收是否登入的狀態
+  isLoggedIn,
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
   const [invoiceType, setInvoiceType] = useState("cloud");
-  const [couponInput, setCouponInput] = useState("");
-  const [couponApplying, setCouponApplying] = useState(false);
 
   const displayName = [addr.lastName, addr.firstName].filter(Boolean).join("").trim();
   const setDisplayName = (v) => setAddr({ ...addr, lastName: v, firstName: "" });
 
-  const applyManualCoupon = async () => {
-    const code = couponInput.trim();
-    if (!code) return;
-    setCouponApplying(true);
-    try {
-      const res = await fetch(
-        `/api/checkout/validate-coupon?code=${encodeURIComponent(code)}`,
-      );
-      const data = await res.json();
-      if (data.valid) {
-        onApplyCoupon({
-          code: data.code,
-          amount: data.amount,
-          kind: "",
-          title: couponTitleByKindOrCode(data),
-        });
-      } else {
-        alert(data.message || "折扣碼無效");
-      }
-    } catch {
-      alert("折扣碼驗證失敗，請稍後再試");
-    } finally {
-      setCouponApplying(false);
-    }
-  };
-
-  const activityDiscount =
-    (pricing.memberDiscountAmount || 0) + (pricing.couponDiscount || 0);
+  const activityDiscount = pricing.memberDiscountAmount || 0;
 
   // 🚨 【護城河 1】：前往地圖前，強制手動儲存至 sessionStorage
   const saveStateBeforeMap = () => {
@@ -1253,9 +1222,7 @@ function CheckoutStep({
       },
       shipMethod,
       payMethod,
-      coupon: appliedCoupon
-        ? { code: appliedCoupon.code, amount: appliedCoupon.amount }
-        : null,
+      coupon: null,
       total: pricing.total,
       memberDiscount: pricing.memberDiscountAmount,
     };
@@ -1299,11 +1266,7 @@ function CheckoutStep({
   };
 
   return (
-    <div className="mx-auto max-w-[1200px] px-4 pb-20 pt-8 md:px-8">
-      <p className="mb-10 text-center text-[13px] tracking-[0.3em] text-[#555] uppercase">
-        CHECKOUT
-      </p>
-
+    <div className="mx-auto max-w-[1200px] px-4 pb-20 md:px-8">
       <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:gap-16">
         {/* ── Left: shipping & customer ── */}
         <div className="space-y-10">
@@ -1548,69 +1511,7 @@ function CheckoutStep({
               })}
             </div>
 
-            {/* 折扣碼 */}
-            <div className="mt-6 flex items-end gap-3">
-              <div className="flex-1">
-                <HoverUnderlineInput
-                  placeholder="輸入折扣碼"
-                  value={couponInput}
-                  onChange={(e) => setCouponInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      applyManualCoupon();
-                    }
-                  }}
-                />
-                {appliedCoupon && (
-                  <p className="mt-1 text-[11px] text-[#2a514d]">
-                    已套用：{appliedCoupon.code}（-
-                    {currency(appliedCoupon.amount)}）
-                    <button
-                      type="button"
-                      onClick={onClearCoupon}
-                      className="ml-2 underline hover:opacity-70"
-                    >
-                      取消
-                    </button>
-                  </p>
-                )}
-              </div>
-              <button
-                type="button"
-                onClick={applyManualCoupon}
-                disabled={couponApplying || !couponInput.trim()}
-                className="shrink-0 bg-[#2a514d] px-5 py-2 text-[12px] font-semibold text-white transition-colors hover:bg-[#1e3d3a] disabled:opacity-50"
-              >
-                {couponApplying ? "..." : "完成"}
-              </button>
-            </div>
-
-            {/* 錢包折價券 */}
-            {(coupons.length > 0 || referralCoupons.length > 0) && (
-              <div className="mt-4">
-                {couponLoading || referralLoading ? (
-                  <p className="text-[11px] text-[#888]">讀取錢包中…</p>
-                ) : (
-                  <div className="flex flex-wrap gap-2">
-                    {[...coupons, ...referralCoupons].map((c) => (
-                      <button
-                        key={c.code}
-                        type="button"
-                        onClick={() => onApplyCoupon(c)}
-                        className={`border px-3 py-1 text-[11px] transition-colors ${
-                          appliedCoupon?.code === c.code
-                            ? "border-[#2a514d] bg-[#2a514d] text-white"
-                            : "border-[#bbb] text-[#555] hover:border-[#2a514d]"
-                        }`}
-                      >
-                        {c.title || c.code}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+            <HoverCouponSection />
           </section>
 
           {/* 金額明細 */}
@@ -1670,13 +1571,7 @@ function CartContent() {
   const [items, setItems] = useState([]);
   const [itemsLoaded, setItemsLoaded] = useState(false);
   const [step, setStep] = useState(1);
-  const [couponLoading, setCouponLoading] = useState(false);
-  const [coupons, setCoupons] = useState([]);
-  const [referralLoading, setReferralLoading] = useState(false);
-  const [referralCoupons, setReferralCoupons] = useState([]);
-  const [appliedCoupon, setAppliedCoupon] = useState(null);
 
-  // 🌟 新增登入狀態
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   const [pricing, setPricing] = useState({
@@ -1775,15 +1670,7 @@ function CartContent() {
     setShipMethod(_ship);
     setPayMethod(_pay);
     setStep(_step);
-    setItems(_items); // ✅ 設定被保留的商品清單
-
-    const savedCoupon = sessionStorage.getItem("cart_coupon");
-    if (savedCoupon) {
-      try {
-        const parsed = JSON.parse(savedCoupon);
-        if (parsed?.code) setAppliedCoupon(parsed);
-      } catch {}
-    }
+    setItems(_items);
 
     setItemsLoaded(true);
 
@@ -1831,77 +1718,18 @@ function CartContent() {
   }, [contact, addr, shipMethod, payMethod, step, items, itemsLoaded]);
 
   useEffect(() => {
-    const loadAllCoupons = async () => {
-      setCouponLoading(true);
-      setReferralLoading(true);
-      try {
-        const res = await fetch("/api/account/coupons/available", {
-          cache: "no-store",
-          credentials: "include",
-        });
-        const data = await res.json();
-        const arr =
-          res.ok && data?.ok && Array.isArray(data.available)
-            ? data.available
-            : [];
-        const referral = [];
-        const normal = [];
-        arr.forEach((c) => {
-          const code = String(c.code || "").toLowerCase();
-          const kind = String(c.kind || "").toLowerCase();
-          const item = {
-            code: c.code,
-            amount: Number(c.amount) || 0,
-            kind: c.kind || "",
-            title: couponTitleByKindOrCode(c),
-          };
-          if (
-            code.startsWith("ufamb-") ||
-            code.startsWith("uffrd-") ||
-            kind === "ref_ambassador_200" ||
-            kind === "ref_friend_50"
-          ) {
-            referral.push(item);
-          } else {
-            normal.push(item);
-          }
-        });
-        setCoupons(normal);
-        setReferralCoupons(referral);
-        setAppliedCoupon((prev) => {
-          if (!prev?.code) return null;
-          const code = String(prev.code).toLowerCase();
-          const isValid = [...normal, ...referral].some(
-            (c) => String(c.code).toLowerCase() === code,
-          );
-          return isValid ? prev : null;
-        });
-      } catch (err) {
-        setCoupons([]);
-        setReferralCoupons([]);
-      } finally {
-        setCouponLoading(false);
-        setReferralLoading(false);
-      }
-    };
-    loadAllCoupons();
-  }, []);
-
-  useEffect(() => {
     if (!itemsLoaded) return;
-    const discount = appliedCoupon?.amount || 0;
-    // 🌟 修正運費判斷邏輯：宅配 105，超商 0
     const shippingBase = shipMethod === "000" ? 105 : 0;
 
     setPricing(
       calcPricing(
         items,
         { shippingBase, freeShipThreshold: 1500 },
-        discount,
+        0,
         discountRate,
       ),
     );
-  }, [items, itemsLoaded, appliedCoupon, discountRate, shipMethod]);
+  }, [items, itemsLoaded, discountRate, shipMethod]);
 
   // ✅ 修正數量增減與移除，先更新 Local State，再更新 Store
   const updateQty = (id, newQty) => {
@@ -1927,13 +1755,10 @@ function CartContent() {
     if (typeof storeClearCart === "function") storeClearCart();
   };
 
-  const applyCoupon = (c) => {
-    setAppliedCoupon(c);
-    sessionStorage.setItem("cart_coupon", JSON.stringify(c));
-  };
-  const clearCoupon = () => {
-    setAppliedCoupon(null);
-    sessionStorage.removeItem("cart_coupon");
+  const goToStep = (targetStep) => {
+    if (targetStep >= step) return;
+    sessionStorage.setItem("checkout_step", String(targetStep));
+    setStep(targetStep);
   };
 
   if (!itemsLoaded)
@@ -1945,6 +1770,28 @@ function CartContent() {
 
   return (
     <div className="min-h-screen bg-hover-bg">
+      {items.length > 0 ? (
+        <CartBreadcrumb currentStep={step} onStepClick={goToStep} />
+      ) : (
+        <nav
+          aria-label="購物流程"
+          className="mx-auto max-w-[1200px] px-4 pt-8 md:px-8"
+        >
+          <ol className="flex items-center justify-center gap-1.5 text-[11px] tracking-wide text-[#888]">
+            <li>
+              <a href="/" className="transition-colors hover:text-black">
+                HOME
+              </a>
+            </li>
+            <li className="flex items-center gap-1.5">
+              <span aria-hidden className="text-[#ccc]">
+                /
+              </span>
+              <span className="font-medium text-black">SHOPPING BAG</span>
+            </li>
+          </ol>
+        </nav>
+      )}
       <main>
         <AnimatePresence mode="wait">
           {step === 1 ? (
@@ -1957,13 +1804,6 @@ function CartContent() {
               <CartStep
                 items={items}
                 pricing={pricing}
-                coupons={coupons}
-                couponLoading={couponLoading}
-                referralCoupons={referralCoupons}
-                referralLoading={referralLoading}
-                appliedCoupon={appliedCoupon}
-                onApplyCoupon={applyCoupon}
-                onClearCoupon={clearCoupon}
                 onUpdateQty={updateQty}
                 onRemove={removeItem}
                 onNext={() => {
@@ -1983,13 +1823,6 @@ function CartContent() {
               <CheckoutStep
                 items={items}
                 pricing={pricing}
-                coupons={coupons}
-                couponLoading={couponLoading}
-                referralCoupons={referralCoupons}
-                referralLoading={referralLoading}
-                appliedCoupon={appliedCoupon}
-                onApplyCoupon={applyCoupon}
-                onClearCoupon={clearCoupon}
                 contact={contact}
                 setContact={setContact}
                 addr={addr}
@@ -2004,7 +1837,7 @@ function CartContent() {
                 }}
                 onClearCart={clearCart}
                 membership={membership}
-                isLoggedIn={isLoggedIn} // 🌟 傳遞登入狀態給 CheckoutStep
+                isLoggedIn={isLoggedIn}
               />
             </motion.div>
           )}

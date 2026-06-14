@@ -12,7 +12,7 @@ const RESET_SECRET = process.env.RESET_TOKEN_SECRET!;
 
 // 🚀 智慧網址判斷機制 (防呆 + 自動抓取正式環境)
 const getBaseUrl = () => {
-  let url = process.env.NEXT_PUBLIC_SITE_URL || "https://www.uflow.space";
+  let url = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
   
   // 防呆：自動修復 .env 中可能手滑打錯的 hhttp
   if (url.startsWith("hhttp")) {
@@ -231,7 +231,7 @@ export async function POST(req: Request) {
         <div style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
           <h2 style="color: #222; border-bottom: 2px solid #f58a9c; padding-bottom: 10px;">會員註冊信箱驗證</h2>
           <p>親愛的會員您好：</p>
-          <p>感謝您註冊 UFLOW 慶安有福，請點擊下方按鈕完成信箱驗證：</p>
+          <p>感謝您註冊 HOVER，請點擊下方按鈕完成信箱驗證：</p>
           
           <div style="margin: 30px 0; text-align: center;">
             <a href="${url.toString()}" target="_blank"
@@ -258,15 +258,15 @@ export async function POST(req: Request) {
           </div>
           
           <div style="margin-top: 40px; font-size: 12px; color: #999; text-align: center;">
-            <p>UFLOW 慶安有福 | 您的健康生活夥伴</p>
+            <p>HOVER 威爾特 | 官方網站</p>
           </div>
         </div>
       `;
 
       const info = await transporter.sendMail({
-        from: `"UFLOW 慶安有福" <${mailFrom}>`, // 加上寄件者名稱更正式
+        from: `"HOVER 威爾特" <${mailFrom}>`,
         to: createdEmail,
-        subject: "UFLOW – 會員信箱驗證",
+        subject: "HOVER – 會員信箱驗證",
         html,
       });
 

@@ -123,14 +123,14 @@ export async function POST(req: Request) {
         <p>如果按鈕無法點擊，請將以下連結複製到瀏覽器開啟：</p>
         <p style="word-break: break-all;">${url.toString()}</p>
         <p>此連結將在 30 分鐘後失效。如非您本人操作，請忽略本信件。</p>
-        <p style="margin-top: 24px;">UFLOW 官方網站</p>
+        <p style="margin-top: 24px;">HOVER 官方網站</p>
       </div>
     `;
 
     await transporter.sendMail({
       from: mailFrom,
       to: email,
-      subject: "UFLOW – 重設密碼連結",
+      subject: "HOVER – 重設密碼連結",
       html,
     });
 

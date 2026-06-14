@@ -143,7 +143,7 @@ export async function POST(req: Request) {
             customerEmail,
             salesAmount: tradeAmount,
             items: [{
-              ItemName: "UFLOW保健食品",
+              ItemName: "HOVER官方商城訂單",
               ItemCount: 1,
               ItemWord: "式",
               ItemPrice: tradeAmount,
