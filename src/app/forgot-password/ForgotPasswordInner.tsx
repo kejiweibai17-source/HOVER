@@ -46,7 +46,7 @@ export default function ForgotPasswordInner() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-white px-4">
       <div className="bg-white p-8 rounded-xl shadow-md w-full max-w-md space-y-4">
         <h2 className="text-2xl font-semibold text-center">忘記密碼</h2>
         <p className="text-sm text-slate-600 text-center">

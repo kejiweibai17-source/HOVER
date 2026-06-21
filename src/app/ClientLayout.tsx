@@ -21,6 +21,9 @@ function ScrollToTopOnNav() {
 }
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
+  const hideAnnouncement = pathname === "/cart";
+
   useEffect(() => {
     AOS.init({ duration: 800, once: false });
   }, []);
@@ -31,7 +34,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
         <ScrollToTopOnNav />
 
         {/* Global HOVER header — fixed, always visible */}
-        <HoverHeader />
+        <HoverHeader hideAnnouncement={hideAnnouncement} />
 
         {/* Page content — offset for fixed header height (116px) */}
         <main className="bg-hover-bg pt-[var(--hover-header-height,116px)] transition-[padding-top] duration-500 ease-out">

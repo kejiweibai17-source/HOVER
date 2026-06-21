@@ -4,7 +4,7 @@
 import React, { useState } from "react";
 import Image from "next/image";
 import { Link } from "next-view-transitions";
-import { useRouter } from "next/navigation";
+import { useRouter, useParams } from "next/navigation";
 import { Heart, Minus, Plus } from "lucide-react";
 import { useCartStore } from "@/lib/cartStore";
 import { useWishlistStore } from "@/lib/wishlistStore";
@@ -103,6 +103,8 @@ function Accordion({
 
 export default function ProductClient({ product, faqs = [] }: ProductProps) {
   const router = useRouter();
+  const params = useParams();
+  const productSlug = typeof params.slug === "string" ? params.slug : "";
   const addItem = useCartStore((s) => s.addItem);
   const toggleItem = useWishlistStore((s) => s.toggleItem);
   const hasItem = useWishlistStore((s) => s.hasItem);
@@ -157,6 +159,8 @@ export default function ProductClient({ product, faqs = [] }: ProductProps) {
       price: displayPrice,
       qty,
       image: gallery[0] || "",
+      slug: productSlug,
+      options: { 顏色: selectedColor, 尺寸: selectedSize },
     });
     setTimeout(() => setAdding(false), 1000);
   };
@@ -167,8 +171,21 @@ export default function ProductClient({ product, faqs = [] }: ProductProps) {
 
   return (
     <div className="bg-hover-bg">
+      {/* Breadcrumb — top left */}
+      <nav className="mx-auto flex max-w-[1650px] items-center gap-1 px-4 pt-6 text-[11px] text-[#888] md:px-8">
+        <Link href="/" className="hover:text-black">
+          HOME
+        </Link>
+        <span>&gt;</span>
+        <Link href="/products" className="hover:text-black">
+          ALL ITEMS
+        </Link>
+        <span>&gt;</span>
+        <span className="text-black">{product.name}</span>
+      </nav>
+
       {/* ── 2-col layout ─────────────────────────────────────────────── */}
-      <div className="mx-auto flex max-w-[1650px] flex-col gap-8 px-4 py-8 md:flex-row md:items-start md:gap-12 md:px-8 md:py-12">
+      <div className="mx-auto flex max-w-[1650px] flex-col gap-8 px-4 py-6 md:flex-row md:items-start md:gap-12 md:px-8 md:py-8">
         {/* ── Left: scrollable image gallery ─────────────────────────── */}
         <div className="w-full md:w-[50%]">
           {/* 前三張大圖 */}
@@ -214,7 +231,7 @@ export default function ProductClient({ product, faqs = [] }: ProductProps) {
         </div>
 
         {/* ── Right: sticky product info ─────────────────────────────── */}
-        <div className="w-full md:sticky md:top-[136px]  md:w-[50%] md:self-start">
+        <div className="w-full md:sticky md:top-[var(--hover-header-height,116px)] md:w-[50%] md:self-start">
           {/* Name + wishlist */}
           <div className="mb-4 flex items-start justify-between gap-4">
             <h1 className="text-[20px] font-bold uppercase leading-snug text-black">
@@ -255,7 +272,7 @@ export default function ProductClient({ product, faqs = [] }: ProductProps) {
           </div>
 
           {/* Color selector */}
-          <div className="mb-5">
+          <div className="mb-10">
             <p className="mb-2 text-[14px] text-black">{selectedColor}</p>
             <div className="flex gap-3">
               {COLORS.map((c) => (
@@ -277,13 +294,13 @@ export default function ProductClient({ product, faqs = [] }: ProductProps) {
 
           {/* Size selector */}
           <div className="mb-4">
-            <div className="flex gap-3 flex-wrap">
+            <div className="flex flex-wrap gap-3">
               {SIZES.map((s) => (
                 <button
                   key={s}
                   type="button"
                   onClick={() => setSelectedSize(s)}
-                  className={`flex h-[39px] w-[55px] items-center justify-center border text-[16px] font-bold transition-colors ${
+                  className={`flex h-[35px] w-[35px] items-center justify-center border-2 text-[13px] font-bold transition-all ${
                     selectedSize === s
                       ? "border-black bg-black text-white"
                       : "border-black bg-transparent text-black hover:bg-black/5"
@@ -303,7 +320,7 @@ export default function ProductClient({ product, faqs = [] }: ProductProps) {
 
           {/* Quantity */}
           <div className="mb-4">
-            <div className="flex h-[39px] w-[160px] items-center border border-black">
+            <div className="flex h-[39px] w-full items-center border border-black">
               <button
                 type="button"
                 onClick={() => setQty((q) => Math.max(1, q - 1))}
@@ -484,19 +501,6 @@ export default function ProductClient({ product, faqs = [] }: ProductProps) {
               ))}
             </>
           )}
-
-          {/* Breadcrumb */}
-          <nav className="mt-8 flex items-center gap-1 text-[11px] text-[#888]">
-            <Link href="/" className="hover:text-black">
-              HOME
-            </Link>
-            <span>&gt;</span>
-            <Link href="/products" className="hover:text-black">
-              ALL ITEMS
-            </Link>
-            <span>&gt;</span>
-            <span className="text-black line-clamp-1">{product.name}</span>
-          </nav>
         </div>
       </div>
     </div>

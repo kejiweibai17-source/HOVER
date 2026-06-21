@@ -21,7 +21,10 @@ const NAV_LINKS = [
 
 const SCROLL_TOP_THRESHOLD = 20;
 
-export default function HoverHeader({ bgColor = "#DFE0E5" }) {
+export default function HoverHeader({
+  bgColor = "#FFFFFF",
+  hideAnnouncement = false,
+}) {
   const router = useRouter();
   const cartItems = useCartStore((state) => state.items) || [];
   const cartCount = cartItems.reduce((t, i) => t + (i.qty || 0), 0);
@@ -78,83 +81,85 @@ export default function HoverHeader({ bgColor = "#DFE0E5" }) {
           />
         </Link>
 
-        <nav
-          className={`hidden items-center gap-8 md:flex transition-all duration-500 ease-out ${
-            atTop ? "mt-2" : "mt-3"
-          }`}
-        >
-          {NAV_LINKS.map((l) => (
-            <Link
-              key={l.href}
-              href={l.href}
-              className="text-[13px] tracking-wide text-black transition-opacity hover:opacity-50"
-            >
-              {l.label}
-            </Link>
-          ))}
-        </nav>
-
-        {/* Icon group */}
+        {/* Nav centered, icons right */}
         <div
-          className={`absolute right-6 flex items-center gap-4 transition-all duration-500 ease-out ${
-            atTop ? "top-4" : "top-5"
+          className={`grid w-full grid-cols-[1fr_auto_1fr] items-center px-0 ${
+            atTop ? "mt-2 pb-2" : "mt-3 pb-3"
           }`}
         >
-          <button
-            type="button"
-            aria-label="搜尋"
-            className="text-black hover:opacity-50"
-          >
-            <Search size={20} strokeWidth={1.5} />
-          </button>
-          <button
-            type="button"
-            aria-label="收藏"
-            className="relative text-black hover:opacity-50"
-            onClick={async () => {
-              const isLoggedIn = await checkAuth();
-              if (isLoggedIn) {
-                router.push("/account?tab=favorites");
-              } else {
-                router.push(`/login?next=${encodeURIComponent("/account?tab=favorites")}`);
-              }
-            }}
-          >
-            <Heart size={20} strokeWidth={1.5} />
-            {wishlistCount > 0 && (
-              <span className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#2a514d] px-1 text-[9px] font-bold text-white">
-                {wishlistCount > 99 ? "99+" : wishlistCount}
-              </span>
-            )}
-          </button>
-          <Link
-            href="/cart"
-            aria-label="購物車"
-            className="relative text-black hover:opacity-50"
-          >
-            <ShoppingBag size={20} strokeWidth={1.5} />
-            {cartCount > 0 && (
-              <span className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#2a514d] px-1 text-[9px] font-bold text-white">
-                {cartCount > 99 ? "99+" : cartCount}
-              </span>
-            )}
-          </Link>
-          <Link
-            href="/account"
-            aria-label="會員"
-            className="text-black hover:opacity-50"
-          >
-            <User size={20} strokeWidth={1.5} />
-          </Link>
+          <div aria-hidden className="hidden md:block" />
+
+          <nav className="hidden items-center gap-8 md:flex">
+            {NAV_LINKS.map((l) => (
+              <Link
+                key={l.href}
+                href={l.href}
+                className="text-[13px] tracking-wide text-black transition-opacity hover:opacity-50"
+              >
+                {l.label}
+              </Link>
+            ))}
+          </nav>
+
+          <div className="col-start-3 flex items-center justify-end gap-4">
+            <button
+              type="button"
+              aria-label="搜尋"
+              className="text-black hover:opacity-50"
+            >
+              <Search size={20} strokeWidth={1.5} />
+            </button>
+            <button
+              type="button"
+              aria-label="收藏"
+              className="relative text-black hover:opacity-50"
+              onClick={async () => {
+                const isLoggedIn = await checkAuth();
+                if (isLoggedIn) {
+                  router.push("/account?tab=favorites");
+                } else {
+                  router.push(`/login?next=${encodeURIComponent("/account?tab=favorites")}`);
+                }
+              }}
+            >
+              <Heart size={20} strokeWidth={1.5} />
+              {wishlistCount > 0 && (
+                <span className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#2a514d] px-1 text-[9px] font-bold text-white">
+                  {wishlistCount > 99 ? "99+" : wishlistCount}
+                </span>
+              )}
+            </button>
+            <Link
+              href="/cart"
+              aria-label="購物車"
+              className="relative text-black hover:opacity-50"
+            >
+              <ShoppingBag size={20} strokeWidth={1.5} />
+              {cartCount > 0 && (
+                <span className="absolute -right-2 -top-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#2a514d] px-1 text-[9px] font-bold text-white">
+                  {cartCount > 99 ? "99+" : cartCount}
+                </span>
+              )}
+            </Link>
+            <Link
+              href="/account"
+              aria-label="會員"
+              className="text-black hover:opacity-50"
+            >
+              <User size={20} strokeWidth={1.5} />
+            </Link>
+          </div>
         </div>
       </div>
 
       {/* Announcement bar */}
-      <div className="flex h-11 w-full items-center justify-center bg-[#2a514d]">
-        <p className="text-[13px] tracking-widest text-[#f0f0f0]">
-          全館滿NT$2,000享免運!
-        </p>
-      </div>
+      {!hideAnnouncement && (
+        <div className="flex h-11 w-full items-center justify-center bg-[#2a514d]">
+          <p className="text-[13px] tracking-widest text-[#f0f0f0]">
+            全館滿NT$2,000享免運!
+          </p>
+        </div>
+      )}
     </header>
   );
 }

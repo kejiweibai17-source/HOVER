@@ -282,10 +282,8 @@ function WishlistHeart({ product }: { product: Product }) {
       aria-label={isSaved ? "取消收藏" : "加入收藏"}
       onClick={handleClick}
       disabled={pending}
-      className={`absolute right-2 top-2 rounded-full p-1.5 backdrop-blur-sm transition-all ${
-        isSaved
-          ? "text-rose-500 bg-white/80"
-          : "text-[#555] bg-white/60 hover:text-rose-400 hover:bg-white/80"
+      className={`shrink-0 transition-colors hover:opacity-60 ${
+        isSaved ? "text-rose-500" : "text-[#555] hover:text-rose-400"
       }`}
     >
       <Heart
@@ -303,7 +301,7 @@ function ProductCard({ product }: { product: Product }) {
     <Link href={`/products/${product.slug}`} className="group block">
       {/* Image container */}
       <div
-        className="relative mb-2 w-full overflow-hidden bg-[#eeecea]"
+        className="relative mb-2 w-full overflow-hidden bg-white"
         style={{ aspectRatio: "3/4" }}
       >
         <Image
@@ -320,9 +318,6 @@ function ProductCard({ product }: { product: Product }) {
             {product.isNew ? "NEW" : product.tag}
           </span>
         )}
-
-        {/* Heart wishlist toggle */}
-        <WishlistHeart product={product} />
       </div>
 
       {/* Info */}
@@ -330,9 +325,12 @@ function ProductCard({ product }: { product: Product }) {
         <p className="mb-0.5 text-[10px] text-[#888]">
           {product.category || "Products"}
         </p>
-        <p className="mb-1 text-[12px] font-semibold uppercase leading-snug text-black line-clamp-2">
-          {product.name}
-        </p>
+        <div className="mb-1 flex items-start justify-between gap-2">
+          <p className="text-[12px] font-semibold uppercase leading-snug text-black line-clamp-2">
+            {product.name}
+          </p>
+          <WishlistHeart product={product} />
+        </div>
 
         {/* Color swatches */}
         {product.colors && product.colors.length > 0 && (
@@ -412,8 +410,7 @@ function Pagination({
 /* ─── Main Client Component ─────────────────────────────────────────────── */
 
 export default function Client({ items }: { items: Product[] }) {
-  const products: Product[] =
-    items?.length > 0 ? items : MOCK_PRODUCTS;
+  const products: Product[] = items?.length > 0 ? items : MOCK_PRODUCTS;
 
   const [filterOpen, setFilterOpen] = useState(false);
   const [sortBy, setSortBy] = useState("最新上架");
@@ -480,7 +477,7 @@ export default function Client({ items }: { items: Product[] }) {
           </nav>
 
           {/* Filter & Sort bar */}
-          <div className="mb-8 flex items-center justify-between border-b border-[#e8e8e8] pb-4">
+          <div className="mb-8 flex items-center justify-between border-t pt-3 border-b border-[#e8e8e8] pb-4">
             <button
               type="button"
               onClick={() => setFilterOpen((o) => !o)}

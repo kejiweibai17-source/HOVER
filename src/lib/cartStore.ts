@@ -8,6 +8,7 @@ export type CartItem = {
   price: number;     // 單價（數字）
   qty: number;       // 數量
   image?: string;
+  slug?: string;
   wcProductId?: number; // 確保前端結帳時能抓到這個 WooCommerce ID
   options?: Record<string, string>; // 例如 { 口味: '奶茶', 規格: '8 份' }
 };

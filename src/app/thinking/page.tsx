@@ -70,7 +70,7 @@ function ThankYouContent() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-16">
+    <div className="min-h-screen bg-white pb-16">
       <header className="border-b bg-white">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center">
           <img src="/images/logo/logo-y.png" alt="HOVER" className="h-7" />

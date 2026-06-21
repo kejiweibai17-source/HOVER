@@ -4,11 +4,10 @@ import { useState } from "react";
 import Image from "next/image";
 import { Link } from "next-view-transitions";
 import { useRouter } from "next/navigation";
-import { ChevronLeft, ChevronRight, Heart } from "lucide-react";
-import { useCartStore } from "@/lib/cartStore";
+import { Heart } from "lucide-react";
 import { useWishlistStore } from "@/lib/wishlistStore";
 import { useAuthStore } from "@/lib/authStore";
-import QuickViewModal from "@/components/hover/QuickViewModal";
+import InfiniteCarousel from "@/components/hover/InfiniteCarousel";
 
 /* ─── Data ──────────────────────────────────────────────────────────── */
 
@@ -102,6 +101,29 @@ const PRODUCTS = [
   },
 ];
 
+const PEOPLE = [
+  "/images/hover/people-1.jpg",
+  "/images/hover/people-2.jpg",
+  "/images/hover/people-3.jpg",
+  "/images/hover/people-4.jpg",
+  "/images/hover/people-1.jpg",
+  "/images/hover/people-2.jpg",
+];
+
+// 輪播用假資料（重複一組，之後可換 API）
+const CAROUSEL_PRODUCTS = [
+  ...PRODUCTS,
+  ...PRODUCTS.map((p, i) => ({
+    ...p,
+    id: `${p.id}-dup-${i}`,
+  })),
+];
+
+const PEOPLE_ITEMS = PEOPLE.map((src, i) => ({
+  id: `people-${i}`,
+  src,
+}));
+
 const CATEGORIES = [
   {
     label: "TOPS",
@@ -124,13 +146,6 @@ const CATEGORIES = [
     href: "/products?category=bags",
     image: "/images/hover/category-2.jpg",
   },
-];
-
-const PEOPLE = [
-  "/images/hover/people-1.jpg",
-  "/images/hover/people-2.jpg",
-  "/images/hover/people-3.jpg",
-  "/images/hover/people-4.jpg",
 ];
 
 /* ─── Section 2 · Hero ───────────────────────────────────────────────── */
@@ -165,9 +180,8 @@ function HeroSection() {
 
 /* ─── Section 3 & 6 · Product Grid (NEW ARRIVALS / BEST SELLER) ─────── */
 
-function ProductCard({ product, onQuickView }) {
+function ProductCard({ product }) {
   const router = useRouter();
-  const addItem = useCartStore((s) => s.addItem);
   const toggleItem = useWishlistStore((s) => s.toggleItem);
   const hasItem = useWishlistStore((s) => s.hasItem);
   const checkAuth = useAuthStore((s) => s.checkAuth);
@@ -196,33 +210,13 @@ function ProductCard({ product, onQuickView }) {
     });
   };
 
-  const handleAddToCart = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (product.soldOut) return;
-    addItem({
-      id: product.id,
-      name: product.name,
-      price: product.salePrice ?? product.originalPrice,
-      qty: 1,
-      image: product.image,
-      options: { 顏色: product.colorLabel, 尺寸: "M" },
-    });
-  };
-
-  const handleQuickView = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    onQuickView(product);
-  };
-
   const hoverImage = product.gallery?.[1] ?? product.image;
   const hasHoverImage = hoverImage !== product.image;
 
   return (
     <article className="group relative flex flex-col">
       {/* Image + badges + hover actions */}
-      <div className="relative aspect-[404/479] overflow-hidden bg-[#e8e8e8]">
+      <div className="relative aspect-[404/479] overflow-hidden bg-white">
         <Link href={product.href} className="absolute inset-0 block">
           <Image
             src={product.image}
@@ -269,29 +263,6 @@ function ProductCard({ product, onQuickView }) {
             fill={isSaved ? "currentColor" : "none"}
           />
         </button>
-
-        {/* Hover actions — bottom-right */}
-        <div className="absolute bottom-3 right-3 z-10 flex flex-col items-end gap-2 opacity-100 transition-opacity duration-300 md:opacity-0 md:group-hover:opacity-100">
-          <button
-            type="button"
-            onClick={handleQuickView}
-            className="min-w-[120px] bg-white px-4 py-2.5 text-[11px] font-semibold tracking-[0.14em] text-black shadow-sm transition-colors hover:bg-[#f5f5f5]"
-          >
-            快速查看
-          </button>
-          <button
-            type="button"
-            onClick={handleAddToCart}
-            disabled={product.soldOut}
-            className={`min-w-[120px] px-4 py-2.5 text-[11px] font-semibold tracking-[0.14em] shadow-sm transition-colors ${
-              product.soldOut
-                ? "cursor-not-allowed bg-[#ccc] text-white"
-                : "bg-[#2a514d] text-white hover:bg-[#1e3d3a]"
-            }`}
-          >
-            {product.soldOut ? "已售完" : "加入購物車"}
-          </button>
-        </div>
       </div>
 
       {/* Info */}
@@ -342,32 +313,17 @@ function ProductCard({ product, onQuickView }) {
   );
 }
 
-function ProductSection({ title, products, onQuickView }) {
+function ProductSection({ title, products }) {
   return (
-    <section className="relative bg-hover-bg px-10 py-12 md:px-16">
-      <h2 className="mb-6 text-[15px] font-semibold tracking-[0.12em] text-black">
-        {title}
-      </h2>
-
-      {/* Prev arrow */}
-      <button
-        type="button"
-        aria-label="上一組"
-        className="absolute left-2 top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center bg-hover-bg/80 text-[#555] hover:bg-white md:left-4"
-      >
-        <ChevronLeft size={20} strokeWidth={1.5} />
-      </button>
-
-      <div className="grid grid-cols-2 gap-4 md:grid-cols-4 md:gap-6">
-        {products.map((p) => (
-          <ProductCard
-            key={`${title}-${p.id}`}
-            product={p}
-            onQuickView={onQuickView}
-          />
-        ))}
-      </div>
-    </section>
+    <InfiniteCarousel
+      title={title}
+      items={products}
+      visibleMd={4}
+      visibleSm={2}
+      className="py-0"
+      headerClassName=""
+      renderItem={(product) => <ProductCard product={product} />}
+    />
   );
 }
 
@@ -447,7 +403,7 @@ function CategoryGrid() {
           )}
 
           {/* Category label + underline */}
-          <div className="absolute bottom-6 left-5 flex flex-col gap-2">
+          <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 flex-col items-center gap-2">
             <span className="text-[14px] font-bold tracking-[0.18em] text-white md:text-[16px]">
               {cat.label}
             </span>
@@ -463,28 +419,27 @@ function CategoryGrid() {
 
 function HoverPeopleSection() {
   return (
-    <section className="bg-hover-bg">
-      <div className="px-10 pb-6 pt-12 md:px-16">
-        <h2 className="text-[22px] font-black tracking-[0.28em] text-black md:text-[28px]">
-          HOVER PEOPLE
-        </h2>
-      </div>
-
-      {/* Edge-to-edge 4-col photo strip */}
-      <div className="grid grid-cols-2 md:grid-cols-4">
-        {PEOPLE.map((src, i) => (
-          <div key={src} className="relative aspect-[481/550] overflow-hidden">
-            <Image
-              src={src}
-              alt={`HOVER PEOPLE ${i + 1}`}
-              fill
-              className="object-cover"
-              sizes="(max-width: 768px) 50vw, 25vw"
-            />
-          </div>
-        ))}
-      </div>
-    </section>
+    <InfiniteCarousel
+      title="HOVER PEOPLE"
+      titleClassName="text-[22px] font-black tracking-[0.28em] text-black md:text-[28px]"
+      headerClassName="px-10 pb-2 pt-12 md:px-16"
+      items={PEOPLE_ITEMS}
+      visibleMd={4}
+      visibleSm={2}
+      className="pb-0"
+      slideClassName="px-0"
+      renderItem={(person, i) => (
+        <div className="relative aspect-[481/550] overflow-hidden">
+          <Image
+            src={person.src}
+            alt={`HOVER PEOPLE ${(i % PEOPLE.length) + 1}`}
+            fill
+            className="object-cover"
+            sizes="(max-width: 768px) 50vw, 25vw"
+          />
+        </div>
+      )}
+    />
   );
 }
 
@@ -492,29 +447,14 @@ function HoverPeopleSection() {
 /* HoverHeader & HoverFooter are rendered globally by ClientLayout */
 
 export default function Home() {
-  const [quickViewProduct, setQuickViewProduct] = useState(null);
-
   return (
-    <div className="bg-hover-bg">
+    <div className="bg-white">
       <HeroSection />
-      <ProductSection
-        title="NEW ARRIVALS"
-        products={PRODUCTS}
-        onQuickView={setQuickViewProduct}
-      />
+      <ProductSection title="NEW ARRIVALS" products={CAROUSEL_PRODUCTS} />
       <BrandStorySection />
       <CategoryGrid />
-      <ProductSection
-        title="BEST SELLER"
-        products={PRODUCTS}
-        onQuickView={setQuickViewProduct}
-      />
+      <ProductSection title="BEST SELLER" products={CAROUSEL_PRODUCTS} />
       <HoverPeopleSection />
-
-      <QuickViewModal
-        product={quickViewProduct}
-        onClose={() => setQuickViewProduct(null)}
-      />
     </div>
   );
 }

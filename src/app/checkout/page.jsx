@@ -435,7 +435,7 @@ export default function CheckoutPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20 pt-[80px] sm:pt-[150px]">
+    <div className="min-h-screen bg-white pb-20 pt-[80px] sm:pt-[150px]">
       {/* 頂部品牌列 */}
       <header className="border-b bg-white">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center">

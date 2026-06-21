@@ -13,7 +13,7 @@ export default function ProductCard({
 }) {
   return (
     <div className="group flex min-w-0 flex-col">
-      <Link href={href} className="relative block aspect-[404/479] overflow-hidden bg-neutral-200">
+      <Link href={href} className="relative block aspect-[404/479] overflow-hidden bg-white">
         <Image
           src={image}
           alt={name}

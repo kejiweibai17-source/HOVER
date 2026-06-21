@@ -127,6 +127,7 @@ export default function QuickViewModal({ product, onClose }) {
       price: displayPrice,
       qty,
       image: gallery[0] || product.image,
+      slug,
       options: { 顏色: selectedColor, 尺寸: selectedSize },
     });
     setTimeout(() => {

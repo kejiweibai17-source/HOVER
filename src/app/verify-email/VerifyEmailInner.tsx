@@ -51,7 +51,7 @@ export default function VerifyEmailInner() {
   }, [token]);
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-white px-4">
       <div className="bg-white p-8 rounded-xl shadow-md w-full max-w-md space-y-4 text-center">
         <h2 className="text-2xl font-semibold">信箱驗證</h2>
 

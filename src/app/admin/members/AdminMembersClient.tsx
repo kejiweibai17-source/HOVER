@@ -308,7 +308,7 @@ export default function AdminMembersClient() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-50 py-20 mt-20 px-4">
+    <main className="min-h-screen bg-white py-20 mt-20 px-4">
       <div className="mx-auto max-w-6xl">
         {/* 頂部標題 + 統計 */}
         <header className="mb-6 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">

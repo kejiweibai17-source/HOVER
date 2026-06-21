@@ -1,8 +1,9 @@
 // app/cart/client.jsx
 "use client";
 
-import React, { useState, useEffect, Suspense } from "react";
+import React, { useState, useEffect, useMemo, Suspense } from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import { Link } from "next-view-transitions";
 import { useSearchParams, useRouter } from "next/navigation";
 import {
   ChevronRight,
@@ -18,6 +19,7 @@ import {
   Crown,
   AlertCircle,
   Heart,
+  X,
 } from "lucide-react";
 import { useCartStore } from "@/lib/cartStore";
 
@@ -464,6 +466,46 @@ function calcPricing(
   };
 }
 
+// 結帳折扣碼（前端套用，尚未串接後端 API）
+const CHECKOUT_COUPONS = {
+  hover200: {
+    label: "滿 NT$2,000 折 NT$200",
+    minSubtotal: 2000,
+    getDiscount: (subtotalAfterMember) =>
+      subtotalAfterMember >= 2000 ? 200 : null,
+  },
+  hover10: {
+    label: "全單 10% 折扣",
+    minSubtotal: 0,
+    getDiscount: (subtotalAfterMember) =>
+      Math.round(subtotalAfterMember * 0.1),
+  },
+};
+
+function buildCheckoutPricing(pricing, shipMethod, couponDiscount = 0) {
+  const shippingBase = shipMethod === "000" ? 105 : 0;
+  const subtotal = pricing.subtotal;
+  const memberDiscount = pricing.memberDiscountAmount || 0;
+  const subtotalAfterMember = Math.max(0, subtotal - memberDiscount);
+  const safeCoupon = Math.min(
+    Math.max(Number(couponDiscount) || 0, 0),
+    subtotalAfterMember,
+  );
+  const finalSubtotal = Math.max(0, subtotalAfterMember - safeCoupon);
+  const freeShipThreshold = pricing.freeShipThreshold || 1500;
+  const shipping =
+    finalSubtotal >= freeShipThreshold || finalSubtotal === 0 ? 0 : shippingBase;
+
+  return {
+    subtotal,
+    memberDiscountAmount: memberDiscount,
+    couponDiscount: safeCoupon,
+    activityDiscount: memberDiscount + safeCoupon,
+    shipping,
+    total: finalSubtotal + shipping,
+  };
+}
+
 // UI Components
 function Input({ label, error, ...props }) {
   return (
@@ -509,132 +551,6 @@ function Select({ label, error, options = [], value, onChange, placeholder }) {
         ))}
       </select>
       {error && <p className="text-xs text-red-500 mt-1 ml-1">{error}</p>}
-    </div>
-  );
-}
-
-/* 購物車折扣券展示（設計稿，尚未串接邏輯） */
-const MOCK_CART_COUPONS = [
-  {
-    id: "hover-coupon-1",
-    tag: "全館",
-    label: "滿額折抵",
-    value: "200",
-    unit: "NT$",
-    condition: "滿 NT$2,000 可使用",
-    expires: "2026.12.31 前有效",
-  },
-  {
-    id: "hover-coupon-2",
-    tag: "會員",
-    label: "會員專屬",
-    value: "10",
-    unit: "%",
-    condition: "指定商品適用",
-    expires: "2026.12.31 前有效",
-  },
-  {
-    id: "hover-coupon-3",
-    tag: "運費",
-    label: "免運券",
-    value: "免運",
-    unit: "",
-    condition: "滿 NT$1,500 享免運",
-    expires: "長期有效",
-  },
-];
-
-function HoverCouponCard({ coupon, selected, onSelect }) {
-  return (
-    <button
-      type="button"
-      onClick={() => onSelect?.(coupon.id)}
-      className={`group relative flex w-full items-stretch overflow-hidden rounded-sm border bg-white text-left transition-all ${
-        selected
-          ? "border-[#ee4d2d] shadow-[0_2px_8px_rgba(238,77,45,0.12)]"
-          : "border-[#e8e8e8] hover:border-[#ee4d2d]/40"
-      }`}
-    >
-      {/* 左側票券缺口 */}
-      <span className="pointer-events-none absolute -left-[5px] top-1/2 z-10 h-[10px] w-[10px] -translate-y-1/2 rounded-full border border-[#e8e8e8] bg-hover-bg" />
-      <span className="pointer-events-none absolute -right-[5px] top-1/2 z-10 h-[10px] w-[10px] -translate-y-1/2 rounded-full border border-[#e8e8e8] bg-hover-bg" />
-
-      {/* 折扣面額 */}
-      <div className="flex w-[92px] shrink-0 flex-col items-center justify-center border-r border-dashed border-[#e8e8e8] bg-[#fff8f6] px-2 py-4">
-        {coupon.unit === "NT$" ? (
-          <div className="flex flex-col items-center leading-none text-[#ee4d2d]">
-            <span className="text-[10px] font-semibold">NT$</span>
-            <span className="text-[26px] font-bold tracking-tight">
-              {coupon.value}
-            </span>
-          </div>
-        ) : coupon.unit === "%" ? (
-          <div className="flex items-end leading-none text-[#ee4d2d]">
-            <span className="text-[28px] font-bold tracking-tight">
-              {coupon.value}
-            </span>
-            <span className="mb-1 text-[12px] font-semibold">折</span>
-          </div>
-        ) : (
-          <span className="text-[18px] font-bold text-[#ee4d2d]">
-            {coupon.value}
-          </span>
-        )}
-        <span className="mt-1 text-[10px] text-[#888]">{coupon.label}</span>
-      </div>
-
-      {/* 券面資訊 */}
-      <div className="min-w-0 flex-1 px-3 py-3">
-        <div className="mb-1 flex items-center gap-2">
-          <span className="rounded-sm bg-[#ee4d2d]/10 px-1.5 py-0.5 text-[10px] font-medium text-[#ee4d2d]">
-            {coupon.tag}
-          </span>
-          {selected && (
-            <span className="text-[10px] font-medium text-[#2a514d]">已選取</span>
-          )}
-        </div>
-        <p className="text-[12px] font-medium text-black">{coupon.condition}</p>
-        <p className="mt-1 text-[10px] text-[#999]">{coupon.expires}</p>
-      </div>
-
-      {/* 右側動作 */}
-      <div className="flex w-[56px] shrink-0 items-center justify-center border-l border-dashed border-[#e8e8e8] px-1">
-        <span
-          className={`text-[11px] font-semibold leading-tight ${
-            selected ? "text-[#ee4d2d]" : "text-[#888] group-hover:text-[#ee4d2d]"
-          }`}
-        >
-          {selected ? "已選" : "使用"}
-        </span>
-      </div>
-    </button>
-  );
-}
-
-function HoverCouponSection() {
-  const [selectedId, setSelectedId] = useState(null);
-
-  return (
-    <div className="mb-6 border-b border-[#e8e8e8] pb-6">
-      <div className="mb-3">
-        <p className="text-[13px] font-semibold text-black">折扣券</p>
-        <p className="mt-0.5 text-[11px] text-[#888]">選擇優惠券套用至訂單</p>
-      </div>
-
-      <div className="flex flex-col gap-2.5">
-        {MOCK_CART_COUPONS.map((coupon) => (
-          <HoverCouponCard
-            key={coupon.id}
-            coupon={coupon}
-            selected={selectedId === coupon.id}
-            onSelect={setSelectedId}
-          />
-        ))}
-      </div>
-
-      <p className="mt-3 text-[10px] leading-relaxed text-[#aaa]">
-        * 折扣券功能即將上線，目前僅供預覽設計
-      </p>
     </div>
   );
 }
@@ -879,7 +795,50 @@ function getItemMeta(it) {
   const opts = it.options ? Object.values(it.options).filter(Boolean) : [];
   if (opts.length >= 2) return { color: opts[0], size: opts[1] };
   if (opts.length === 1) return { color: opts[0], size: "" };
-  return { color: "", size: it.variant || "" };
+
+  if (it.variant) {
+    const parts = String(it.variant)
+      .split(" / ")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (parts.length >= 2) return { color: parts[0], size: parts[1] };
+    if (parts.length === 1) return { color: parts[0], size: "" };
+  }
+
+  const idParts = String(it.id || "").split("-");
+  if (idParts.length >= 2) {
+    return {
+      color: idParts[idParts.length - 2],
+      size: idParts[idParts.length - 1],
+    };
+  }
+
+  return { color: it.color || "", size: it.size || "" };
+}
+
+function getProductHref(it) {
+  if (it.slug) return `/products/${it.slug}`;
+  return null;
+}
+
+function CheckoutProductThumb({ item }) {
+  const href = getProductHref(item);
+  const imgSrc = item.image || item.img || "/images/hover/product-1.jpg";
+  const alt = item.name || item.title || "商品";
+
+  const thumb = (
+    <div className="relative h-[68px] w-[52px] shrink-0 overflow-hidden bg-[#e8e6e2]">
+      <img src={imgSrc} alt={alt} className="h-full w-full object-cover" />
+    </div>
+  );
+
+  if (!href) return thumb;
+
+  return (
+    <Link href={href} className="block transition-opacity hover:opacity-80">
+      {thumb}
+    </Link>
+  );
 }
 
 // ✅ Cart Step 1 — HOVER redesign
@@ -908,10 +867,17 @@ function CartStep({
 
   return (
     <div className="mx-auto max-w-[1100px] px-4 pb-16 md:px-8">
+      <h1 className="mb-10 text-center text-[16px] font-semibold tracking-[0.3em] text-black">
+        SHOPPING BAG
+      </h1>
+
       <div className="grid grid-cols-1 gap-12 lg:grid-cols-[1fr_340px]">
         {/* ── Product list ────────────────────────────────── */}
         <div>
-          {items.map((it, idx) => (
+          {items.map((it, idx) => {
+            const { color, size } = getItemMeta(it);
+
+            return (
             <div
               key={it.id}
               className={`flex gap-5 py-6 ${idx === 0 ? "border-t" : ""} border-b border-[#d4d4d4]`}
@@ -933,25 +899,11 @@ function CartStep({
                     <p className="text-[13px] font-semibold uppercase leading-snug text-black">
                       {it.name || it.title}
                     </p>
-                    {it.options
-                      ? Object.entries(it.options).map(([, v]) =>
-                          v ? (
-                            <p key={v} className="mt-1 text-[12px] text-[#555]">
-                              {v}
-                            </p>
-                          ) : null,
-                        )
-                      : null}
-                    {/* Fallback color/size from id string */}
-                    {!it.options && (
-                      <>
-                        {it.color && (
-                          <p className="mt-1 text-[12px] text-[#555]">{it.color}</p>
-                        )}
-                        {it.size && (
-                          <p className="text-[12px] text-[#555]">{it.size}</p>
-                        )}
-                      </>
+                    {color && (
+                      <p className="mt-1 text-[12px] text-black">{color}</p>
+                    )}
+                    {size && (
+                      <p className="text-[12px] text-black">{size}</p>
                     )}
                     <p className="mt-2 text-[14px] font-bold text-black">
                       NT$ {Number(it.price).toLocaleString()}
@@ -959,27 +911,31 @@ function CartStep({
                   </div>
 
                   {/* Wishlist + remove */}
-                  <div className="flex items-center gap-3 shrink-0">
-                    <button type="button" aria-label="收藏" className="text-[#aaa] hover:text-black transition-colors">
+                  <div className="flex shrink-0 items-center gap-3">
+                    <button
+                      type="button"
+                      aria-label="收藏"
+                      className="text-[#aaa] transition-colors hover:text-black"
+                    >
                       <Heart className="h-[15px] w-[15px]" strokeWidth={1.5} />
                     </button>
                     <button
                       type="button"
                       aria-label="移除"
                       onClick={() => onRemove(it.id || it.wcProductId)}
-                      className="text-[#aaa] hover:text-black transition-colors"
+                      className="text-[#aaa] transition-colors hover:text-black"
                     >
-                      <ChevronRight className="h-[15px] w-[15px] rotate-[-135deg]" strokeWidth={1.5} />
+                      <X className="h-[15px] w-[15px]" strokeWidth={1.5} />
                     </button>
                   </div>
                 </div>
 
                 {/* Qty + subtotal */}
                 <div className="flex items-center justify-between">
-                  <div className="flex h-8 items-center border border-[#ccc] bg-white">
+                  <div className="flex h-8 items-center border border-black bg-white">
                     <button
                       type="button"
-                      className="flex h-full w-8 items-center justify-center text-black hover:bg-[#f0f0f0] transition-colors"
+                      className="flex h-full w-8 items-center justify-center text-black transition-colors hover:bg-[#f0f0f0]"
                       onClick={() => onUpdateQty(it.id || it.wcProductId, it.qty - 1)}
                     >
                       <Minus className="h-3 w-3" />
@@ -989,7 +945,7 @@ function CartStep({
                     </span>
                     <button
                       type="button"
-                      className="flex h-full w-8 items-center justify-center text-black hover:bg-[#f0f0f0] transition-colors"
+                      className="flex h-full w-8 items-center justify-center text-black transition-colors hover:bg-[#f0f0f0]"
                       onClick={() => onUpdateQty(it.id || it.wcProductId, it.qty + 1)}
                     >
                       <Plus className="h-3 w-3" />
@@ -1001,14 +957,13 @@ function CartStep({
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
 
         {/* ── Order summary ────────────────────────────────── */}
-        <aside className="lg:sticky lg:top-8 self-start">
+        <aside className="self-start lg:sticky lg:top-8">
           <div className="bg-white px-6 py-7">
-            <HoverCouponSection />
-
             {/* Pricing rows */}
             <div className="space-y-3 text-[13px]">
               <div className="flex items-center justify-between">
@@ -1051,7 +1006,7 @@ function CartStep({
               onClick={onNext}
               className="flex h-[42px] w-full items-center justify-center bg-[#2a514d] text-[14px] tracking-widest text-white transition-colors hover:bg-[#1e3d3a] active:scale-[0.98]"
             >
-              立即購買
+              前往結帳
             </button>
 
             {/* Free shipping hint */}
@@ -1092,11 +1047,59 @@ function CheckoutStep({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
   const [invoiceType, setInvoiceType] = useState("cloud");
+  const [discountCode, setDiscountCode] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [couponError, setCouponError] = useState("");
 
   const displayName = [addr.lastName, addr.firstName].filter(Boolean).join("").trim();
   const setDisplayName = (v) => setAddr({ ...addr, lastName: v, firstName: "" });
 
-  const activityDiscount = pricing.memberDiscountAmount || 0;
+  const checkoutPricing = useMemo(
+    () =>
+      buildCheckoutPricing(
+        pricing,
+        shipMethod,
+        appliedCoupon?.discount || 0,
+      ),
+    [pricing, shipMethod, appliedCoupon],
+  );
+
+  const handleApplyCoupon = () => {
+    const code = discountCode.trim().toLowerCase();
+    if (!code) {
+      setCouponError("請輸入折扣碼");
+      setAppliedCoupon(null);
+      return;
+    }
+
+    const coupon = CHECKOUT_COUPONS[code];
+    if (!coupon) {
+      setCouponError("折扣碼無效或已過期");
+      setAppliedCoupon(null);
+      return;
+    }
+
+    const subtotalAfterMember = Math.max(
+      0,
+      pricing.subtotal - (pricing.memberDiscountAmount || 0),
+    );
+
+    if (coupon.minSubtotal && subtotalAfterMember < coupon.minSubtotal) {
+      setCouponError(`此折扣碼需滿 NT$${coupon.minSubtotal.toLocaleString()} 才可使用`);
+      setAppliedCoupon(null);
+      return;
+    }
+
+    const discount = coupon.getDiscount(subtotalAfterMember);
+    if (discount == null || discount <= 0) {
+      setCouponError("目前訂單不符合此折扣碼使用條件");
+      setAppliedCoupon(null);
+      return;
+    }
+
+    setAppliedCoupon({ code, label: coupon.label, discount });
+    setCouponError("");
+  };
 
   // 🚨 【護城河 1】：前往地圖前，強制手動儲存至 sessionStorage
   const saveStateBeforeMap = () => {
@@ -1233,9 +1236,10 @@ function CheckoutStep({
       },
       shipMethod,
       payMethod,
-      coupon: null,
-      total: pricing.total,
-      memberDiscount: pricing.memberDiscountAmount,
+      coupon: appliedCoupon?.code || null,
+      total: checkoutPricing.total,
+      memberDiscount: checkoutPricing.memberDiscountAmount,
+      couponDiscount: checkoutPricing.couponDiscount,
     };
 
     try {
@@ -1491,79 +1495,111 @@ function CheckoutStep({
           {/* 商品資訊 */}
           <section>
             <CheckoutSectionTitle>商品資訊</CheckoutSectionTitle>
-            <div className="space-y-4">
+            <div className="space-y-5">
               {items.map((it) => {
                 const { color, size } = getItemMeta(it);
+                const href = getProductHref(it);
+                const name = it.name || it.title;
+
                 return (
                   <div
                     key={it.id}
-                    className="flex items-baseline justify-between gap-4 border-b border-[#ddd] pb-3 text-[13px]"
+                    className="grid grid-cols-[52px_minmax(0,1fr)_auto_auto_auto] items-center gap-x-4 text-[13px] md:gap-x-6"
                   >
-                    <div className="min-w-0 flex-1">
-                      <span className="font-medium text-black">
-                        {it.name || it.title}
-                      </span>
-                      {color && (
-                        <span className="ml-3 text-[#555]">{color}</span>
-                      )}
-                      {size && (
-                        <span className="ml-3 text-[#555]">{size}</span>
-                      )}
-                      {it.qty > 1 && (
-                        <span className="ml-2 text-[#888]">×{it.qty}</span>
-                      )}
-                    </div>
-                    <span className="shrink-0 font-medium text-black">
-                      {currency(it.price * it.qty)}
+                    <CheckoutProductThumb item={it} />
+                    {href ? (
+                      <Link
+                        href={href}
+                        className="min-w-0 text-black transition-opacity hover:opacity-70"
+                      >
+                        {name}
+                      </Link>
+                    ) : (
+                      <span className="min-w-0 text-black">{name}</span>
+                    )}
+                    <span className="text-black">{color || "—"}</span>
+                    <span className="text-black">{size || "—"}</span>
+                    <span className="whitespace-nowrap font-medium text-black">
+                      NT${(Number(it.price) * it.qty).toLocaleString()}
                     </span>
                   </div>
                 );
               })}
             </div>
 
-            <HoverCouponSection />
+            <div className="mt-10 flex items-end justify-between gap-6">
+              <div className="min-w-0 flex-1">
+                <input
+                  type="text"
+                  value={discountCode}
+                  onChange={(e) => {
+                    setDiscountCode(e.target.value);
+                    if (couponError) setCouponError("");
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleApplyCoupon();
+                    }
+                  }}
+                  placeholder="輸入折扣碼"
+                  className="w-full border-0 border-b border-black bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none transition-colors focus:border-black"
+                />
+                {couponError && (
+                  <p className="mt-1 text-[11px] text-red-600">{couponError}</p>
+                )}
+                {appliedCoupon && !couponError && (
+                  <p className="mt-1 text-[11px] text-[#2a514d]">
+                    已套用：{appliedCoupon.label}
+                  </p>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={handleApplyCoupon}
+                className="shrink-0 bg-[#2a514d] px-8 py-2.5 text-[14px] font-medium text-white transition-colors hover:bg-[#1e3d3a]"
+              >
+                完成
+              </button>
+            </div>
+
+            {/* 金額明細 */}
+            <div className="mt-8 space-y-2 text-[14px]">
+              <div className="flex justify-between text-black">
+                <span>商品總金額</span>
+                <span>NT$ {checkoutPricing.subtotal.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between text-black">
+                <span>活動折扣</span>
+                <span>
+                  {checkoutPricing.activityDiscount > 0
+                    ? `- NT$ ${checkoutPricing.activityDiscount.toLocaleString()}`
+                    : "NT$ 0"}
+                </span>
+              </div>
+              <div className="flex justify-between text-black">
+                <span>運費</span>
+                <span>NT$ {checkoutPricing.shipping.toLocaleString()}</span>
+              </div>
+              <div className="flex justify-between pt-2 text-[15px] font-bold text-black">
+                <span>總金額</span>
+                <span>NT$ {checkoutPricing.total.toLocaleString()}</span>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={submit}
+              disabled={isSubmitting}
+              className="mt-6 w-full bg-[#2a514d] py-4 text-[14px] font-semibold tracking-[0.08em] text-white transition-colors hover:bg-[#1e3d3a] disabled:opacity-50"
+            >
+              {isSubmitting
+                ? payMethod === "linepay"
+                  ? "連線至 LINE Pay..."
+                  : "處理中..."
+                : "完成訂購"}
+            </button>
           </section>
-
-          {/* 金額明細 */}
-          <div className="space-y-2 border-t border-black pt-6 text-[14px]">
-            <div className="flex justify-between text-[#555]">
-              <span>商品總金額</span>
-              <span>{currency(pricing.subtotal)}</span>
-            </div>
-            <div className="flex justify-between text-[#555]">
-              <span>活動折扣</span>
-              <span>
-                {activityDiscount > 0
-                  ? `- ${currency(activityDiscount)}`
-                  : currency(0)}
-              </span>
-            </div>
-            <div className="flex justify-between text-[#555]">
-              <span>運費</span>
-              <span>
-                {pricing.shipping === 0
-                  ? currency(0)
-                  : currency(pricing.shipping)}
-              </span>
-            </div>
-            <div className="flex justify-between border-t border-[#ddd] pt-3 text-[15px] font-bold text-black">
-              <span>總金額</span>
-              <span>{currency(pricing.total)}</span>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={submit}
-            disabled={isSubmitting}
-            className="w-full bg-[#2a514d] py-4 text-[14px] font-semibold tracking-[0.08em] text-white transition-colors hover:bg-[#1e3d3a] disabled:opacity-50"
-          >
-            {isSubmitting
-              ? payMethod === "linepay"
-                ? "連線至 LINE Pay..."
-                : "處理中..."
-              : "完成訂購"}
-          </button>
         </div>
       </div>
     </div>
