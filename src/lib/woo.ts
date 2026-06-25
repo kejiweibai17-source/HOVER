@@ -126,11 +126,14 @@ export async function fetchProductCategories() {
   }
   const data = (await res.json()) as any[];
   return (data || []).map((c) => ({
-    id: c.id,
+    id: Number(c.id),
     name: c.name,
     slug: c.slug,
-    parent: c.parent ?? 0,
-    menu_order: c.menu_order,
+    parent: Number(c.parent ?? 0),
+    menu_order:
+      c.menu_order === undefined || c.menu_order === null
+        ? undefined
+        : Number(c.menu_order),
     hover_show_frontend: c.hover_show_frontend,
   }));
 }

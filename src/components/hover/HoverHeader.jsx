@@ -12,6 +12,7 @@ import { useAuthStore } from "@/lib/authStore";
 import { useSearchStore, selectSearchOpen } from "@/lib/searchStore";
 import HoverLogo from "@/components/hover/HoverLogo";
 import MobileNavMenu from "@/components/hover/MobileNavMenu";
+import { FALLBACK_NAV_CATEGORIES } from "@/lib/categoryNav";
 
 const SCROLL_TOP_THRESHOLD = 20;
 
@@ -141,8 +142,12 @@ export default function HoverHeader({
     fetch("/api/categories")
       .then((res) => res.json())
       .then((data) => {
-        if (cancelled || !data?.ok || !Array.isArray(data.categories)) return;
-        setCategories(data.categories);
+        if (cancelled || !Array.isArray(data?.categories)) return;
+        setCategories(
+          data.categories.length > 0
+            ? data.categories
+            : FALLBACK_NAV_CATEGORIES,
+        );
       })
       .catch(() => {});
 
