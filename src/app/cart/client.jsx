@@ -5,20 +5,20 @@ import React, { useState, useEffect, useMemo, Suspense } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Link } from "next-view-transitions";
 import { useSearchParams, useRouter } from "next/navigation";
+import WishlistIcon from "@/components/hover/WishlistIcon";
+import HoverIcon from "@/components/hover/HoverIcon";
 import {
   ChevronRight,
   ChevronLeft,
   MapPin,
   Truck,
   CreditCard,
-  ShoppingBag,
   Trash2,
   Plus,
   Minus,
   CheckCircle2,
   Crown,
   AlertCircle,
-  Heart,
   X,
 } from "lucide-react";
 import { useCartStore } from "@/lib/cartStore";
@@ -416,13 +416,16 @@ const TW_CITIES = {
 const currency = (n) =>
   `NT$${(Math.round((Number(n) || 0) * 100) / 100).toLocaleString("zh-TW")}`;
 
-// 會員折扣表（後端 tier 名稱對應，邏輯保留）
+// HOVER 會員折扣（FRIENDS 無折扣 / EXCLUSIVE 正價 95 折）
 const TIER_DISCOUNTS = {
+  HOVER_FRIENDS: 1,
+  HOVER_EXCLUSIVE: 0.95,
+  // 舊 uflow 等級向下相容（視同 FRIENDS）
   U銅貴賓: 1,
-  U銀貴賓: 0.98,
-  U金貴賓: 0.95,
-  UVIP貴賓: 0.9,
-  UVVIP貴賓: 0.88,
+  U銀貴賓: 1,
+  U金貴賓: 1,
+  UVIP貴賓: 1,
+  UVVIP貴賓: 1,
 };
 
 // 核心計算邏輯
@@ -466,21 +469,7 @@ function calcPricing(
   };
 }
 
-// 結帳折扣碼（前端套用，尚未串接後端 API）
-const CHECKOUT_COUPONS = {
-  hover200: {
-    label: "滿 NT$2,000 折 NT$200",
-    minSubtotal: 2000,
-    getDiscount: (subtotalAfterMember) =>
-      subtotalAfterMember >= 2000 ? 200 : null,
-  },
-  hover10: {
-    label: "全單 10% 折扣",
-    minSubtotal: 0,
-    getDiscount: (subtotalAfterMember) =>
-      Math.round(subtotalAfterMember * 0.1),
-  },
-};
+// 結帳折扣碼改由 /api/checkout/validate-coupon 驗證 WooCommerce 優惠券
 
 function buildCheckoutPricing(pricing, shipMethod, couponDiscount = 0) {
   const shippingBase = shipMethod === "000" ? 105 : 0;
@@ -503,8 +492,15 @@ function buildCheckoutPricing(pricing, shipMethod, couponDiscount = 0) {
     activityDiscount: memberDiscount + safeCoupon,
     shipping,
     total: finalSubtotal + shipping,
+    freeShipThreshold,
+    isFreeShipping: shipping === 0 && finalSubtotal > 0,
   };
 }
+
+const INVOICE_DONATE_OPTIONS = [
+  { name: "台灣之心愛護動物協會", code: "978" },
+  { name: "家扶基金會", code: "8585" },
+];
 
 // UI Components
 function Input({ label, error, ...props }) {
@@ -853,7 +849,7 @@ function CartStep({
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center pb-32 pt-8 text-center">
-        <ShoppingBag className="mb-6 h-14 w-14 text-[#bbb]" />
+        <HoverIcon name="cart" size={112} className="mb-6 opacity-40" alt="" />
         <p className="mb-2 text-[16px] font-medium text-black">購物袋是空的</p>
         <a
           href="/products"
@@ -917,7 +913,7 @@ function CartStep({
                       aria-label="收藏"
                       className="text-[#aaa] transition-colors hover:text-black"
                     >
-                      <Heart className="h-[15px] w-[15px]" strokeWidth={1.5} />
+                      <WishlistIcon size={40} />
                     </button>
                     <button
                       type="button"
@@ -1047,9 +1043,15 @@ function CheckoutStep({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
   const [invoiceType, setInvoiceType] = useState("cloud");
-  const [discountCode, setDiscountCode] = useState("");
+  const [carrierCode, setCarrierCode] = useState("");
+  const [invoiceTitle, setInvoiceTitle] = useState("");
+  const [invoiceTaxId, setInvoiceTaxId] = useState("");
+  const [donateCode, setDonateCode] = useState("");
+  const [donateListOpen, setDonateListOpen] = useState(false);
   const [appliedCoupon, setAppliedCoupon] = useState(null);
+  const [discountCode, setDiscountCode] = useState("");
   const [couponError, setCouponError] = useState("");
+  const [couponApplying, setCouponApplying] = useState(false);
 
   const displayName = [addr.lastName, addr.firstName].filter(Boolean).join("").trim();
   const setDisplayName = (v) => setAddr({ ...addr, lastName: v, firstName: "" });
@@ -1064,17 +1066,10 @@ function CheckoutStep({
     [pricing, shipMethod, appliedCoupon],
   );
 
-  const handleApplyCoupon = () => {
-    const code = discountCode.trim().toLowerCase();
+  const handleApplyCoupon = async () => {
+    const code = discountCode.trim();
     if (!code) {
       setCouponError("請輸入折扣碼");
-      setAppliedCoupon(null);
-      return;
-    }
-
-    const coupon = CHECKOUT_COUPONS[code];
-    if (!coupon) {
-      setCouponError("折扣碼無效或已過期");
       setAppliedCoupon(null);
       return;
     }
@@ -1084,21 +1079,33 @@ function CheckoutStep({
       pricing.subtotal - (pricing.memberDiscountAmount || 0),
     );
 
-    if (coupon.minSubtotal && subtotalAfterMember < coupon.minSubtotal) {
-      setCouponError(`此折扣碼需滿 NT$${coupon.minSubtotal.toLocaleString()} 才可使用`);
-      setAppliedCoupon(null);
-      return;
-    }
-
-    const discount = coupon.getDiscount(subtotalAfterMember);
-    if (discount == null || discount <= 0) {
-      setCouponError("目前訂單不符合此折扣碼使用條件");
-      setAppliedCoupon(null);
-      return;
-    }
-
-    setAppliedCoupon({ code, label: coupon.label, discount });
+    setCouponApplying(true);
     setCouponError("");
+    try {
+      const res = await fetch("/api/checkout/validate-coupon", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ code, subtotalAfterMember }),
+      });
+      const data = await res.json();
+      if (!data.valid) {
+        setCouponError(data.message || "折扣碼無效或已過期");
+        setAppliedCoupon(null);
+        return;
+      }
+      setAppliedCoupon({
+        code: data.code,
+        label: data.label || `折 NT$${data.amount}`,
+        discount: data.amount,
+      });
+      setCouponError("");
+    } catch {
+      setCouponError("驗證失敗，請稍後再試");
+      setAppliedCoupon(null);
+    } finally {
+      setCouponApplying(false);
+    }
   };
 
   // 🚨 【護城河 1】：前往地圖前，強制手動儲存至 sessionStorage
@@ -1204,10 +1211,6 @@ function CheckoutStep({
       alert("尚未串接綠界金流");
       return;
     }
-    if (payMethod === "linepay") {
-      alert("尚未串接 LINE Pay");
-      return;
-    }
 
     setIsSubmitting(true);
 
@@ -1281,10 +1284,13 @@ function CheckoutStep({
 
   return (
     <div className="mx-auto max-w-[1200px] px-4 pb-20 md:px-8">
-      <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:gap-16">
-        {/* ── Left: shipping & customer ── */}
+      <h1 className="mb-12 text-center text-[18px] font-bold tracking-[0.12em] text-black md:text-[20px]">
+        填寫配送資料
+      </h1>
+
+      <div className="grid grid-cols-1 gap-12 lg:grid-cols-2 lg:gap-20">
+        {/* 左欄 */}
         <div className="space-y-10">
-          {/* 配送地區 */}
           <section>
             <CheckoutSectionTitle>配送地區</CheckoutSectionTitle>
             <HoverRadio
@@ -1295,11 +1301,10 @@ function CheckoutStep({
             />
             <p className="mt-3 text-[11px] leading-[1.7] text-[#888]">
               目前僅提供台灣本島配送。離島（澎湖、金門、馬祖、綠島）請選擇超商取貨。
-              全館消費滿 NT$1,500 享免運費。
+              全館消費滿 NT$2,000 享免運費。
             </p>
           </section>
 
-          {/* 運送方式 */}
           <section>
             <CheckoutSectionTitle>運送方式</CheckoutSectionTitle>
             <div className="space-y-3">
@@ -1310,7 +1315,7 @@ function CheckoutStep({
                   setShipMethod("711");
                   setAddr({ ...addr, storeId: "", storeName: "", storeAddr: "" });
                 }}
-                label="7-11 超商取貨"
+                label="7-11超商取貨"
               />
               <HoverRadio
                 name="ship"
@@ -1319,25 +1324,11 @@ function CheckoutStep({
                   setShipMethod("CVS");
                   setAddr({ ...addr, storeId: "", storeName: "", storeAddr: "" });
                 }}
-                label="全家 / 萊爾富 / OK 超商取貨"
-              />
-              <HoverRadio
-                name="ship"
-                checked={shipMethod === "000"}
-                onChange={() => {
-                  setShipMethod("000");
-                  setAddr({ ...addr, storeId: "", storeName: "", storeAddr: "" });
-                }}
-                label={`宅配速送（新竹物流）${
-                  pricing.discountedSubtotal >= pricing.freeShipThreshold
-                    ? "— 免運"
-                    : "— NT$105"
-                }`}
+                label="全家超商取貨"
               />
             </div>
           </section>
 
-          {/* 訂購人資料 */}
           <section>
             <CheckoutSectionTitle>訂購人資料</CheckoutSectionTitle>
             <div className="space-y-5">
@@ -1373,69 +1364,40 @@ function CheckoutStep({
                 readOnly={isLoggedIn}
                 autoComplete="email"
               />
-
-              {shipMethod === "000" ? (
-                <>
-                  <div className="grid grid-cols-2 gap-4">
-                    <HoverSelect
-                      placeholder="縣市"
-                      value={addr.city}
-                      options={Object.keys(TW_CITIES)}
-                      onChange={(e) => {
-                        setAddr({
-                          ...addr,
-                          city: e.target.value,
-                          district: "",
-                        });
-                      }}
-                      error={errors.city}
-                    />
-                    <HoverSelect
-                      placeholder="區域"
-                      value={addr.district}
-                      options={addr.city ? TW_CITIES[addr.city] : []}
-                      onChange={(e) =>
-                        setAddr({ ...addr, district: e.target.value })
-                      }
-                      error={errors.district}
-                    />
-                  </div>
-                  <HoverUnderlineInput
-                    placeholder="詳細地址（路名、門牌、樓層）"
-                    value={addr.street}
-                    onChange={(e) =>
-                      setAddr({ ...addr, street: e.target.value })
-                    }
-                    error={errors.street}
-                    autoComplete="street-address"
-                  />
-                </>
-              ) : (
-                <>
-                  <div className="flex items-end justify-between gap-4 border-b border-[#bbb] pb-2">
-                    <div className="min-w-0 flex-1">
-                      <p className="text-[12px] text-[#888]">收件地址</p>
-                      <p className="mt-1 truncate text-[14px] text-black">
-                        {addr.storeName
-                          ? `${addr.storeName} — ${addr.storeAddr}`
-                          : "請選擇取貨門市"}
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={openStoreMap}
-                      className="shrink-0 bg-[#2a514d] px-4 py-1.5 text-[12px] font-semibold text-white transition-colors hover:bg-[#1e3d3a]"
-                    >
-                      選擇門市
-                    </button>
-                  </div>
-                  {errors.store && (
-                    <p className="text-[11px] text-red-600">{errors.store}</p>
-                  )}
-                </>
-              )}
+              <HoverUnderlineInput
+                placeholder="地址"
+                value={addr.street}
+                onChange={(e) => setAddr({ ...addr, street: e.target.value })}
+                autoComplete="street-address"
+              />
             </div>
           </section>
+
+          {shipMethod !== "000" && (
+            <section>
+              <CheckoutSectionTitle>收件地址</CheckoutSectionTitle>
+              <div className="flex items-center justify-between gap-4 border-b border-[#bbb] pb-3">
+                <p className="text-[14px] text-black">
+                  {addr.storeName || "請選擇取貨門市"}
+                </p>
+                <button
+                  type="button"
+                  onClick={openStoreMap}
+                  className="shrink-0 bg-[#2a514d] px-5 py-2 text-[12px] font-semibold text-white transition-colors hover:bg-[#1e3d3a]"
+                >
+                  選擇門市
+                </button>
+              </div>
+              {addr.storeAddr && (
+                <p className="mt-3 text-[13px] leading-relaxed text-[#555]">
+                  {addr.storeAddr}
+                </p>
+              )}
+              {errors.store && (
+                <p className="mt-2 text-[11px] text-red-600">{errors.store}</p>
+              )}
+            </section>
+          )}
 
           <button
             type="button"
@@ -1447,9 +1409,8 @@ function CheckoutStep({
           </button>
         </div>
 
-        {/* ── Right: payment, invoice, summary ── */}
-        <div className="space-y-10 lg:border-l lg:border-[#ccc] lg:pl-16">
-          {/* 付款方式 */}
+        {/* 右欄 */}
+        <div className="space-y-10">
           <section>
             <CheckoutSectionTitle>付款方式</CheckoutSectionTitle>
             <div className="space-y-3">
@@ -1457,21 +1418,31 @@ function CheckoutStep({
                 name="pay"
                 checked={payMethod === "card"}
                 onChange={() => setPayMethod("card")}
-                label="信用卡一次付清 (Credit Card)"
+                label="信用卡一次付清(CreditCard)"
               />
               <HoverRadio
                 name="pay"
-                checked={payMethod === "linepay"}
-                onChange={() => setPayMethod("linepay")}
-                label="LINE Pay"
+                checked={payMethod === "atm"}
+                onChange={() => setPayMethod("atm")}
+                label="ATM 虛擬轉帳"
               />
             </div>
-            <p className="mt-3 text-[11px] text-[#888]">
-              選擇信用卡後，將跳轉至綠界安全金流頁面，亦可使用 ATM 虛擬轉帳或超商代碼。
-            </p>
+            {payMethod === "atm" && (
+              <ul className="mt-4 space-y-2 text-[11px] leading-[1.75] text-[#888]">
+                <li>
+                  * 訂單成立後系統將自動產生一組專屬付款資訊，包含銀行代碼、虛擬帳號、付款金額與繳費期限。
+                </li>
+                <li>
+                  * 請於繳費期限內完成支付，若逾期未付款，訂單將自動取消，請重新下單。
+                </li>
+                <li>* 可透過網路銀行、手機銀行或 ATM 機台完成轉帳。</li>
+                <li>
+                  * 付款完成後，系統將自動更新訂單狀態，無需另外回報匯款後五碼。
+                </li>
+              </ul>
+            )}
           </section>
 
-          {/* 發票方式（UI 顯示，後端自動開立電子發票） */}
           <section>
             <CheckoutSectionTitle>發票方式</CheckoutSectionTitle>
             <div className="flex flex-wrap gap-x-5 gap-y-3">
@@ -1485,41 +1456,119 @@ function CheckoutStep({
                   key={opt.id}
                   name="invoice"
                   checked={invoiceType === opt.id}
-                  onChange={() => setInvoiceType(opt.id)}
+                  onChange={() => {
+                    setInvoiceType(opt.id);
+                    setDonateListOpen(false);
+                  }}
                   label={opt.label}
                 />
               ))}
             </div>
+
+            {invoiceType === "cloud" && (
+              <p className="mt-4 text-[12px] text-[#888]">
+                發票將會寄送到您的信箱
+              </p>
+            )}
+
+            {invoiceType === "carrier" && (
+              <div className="mt-4">
+                <HoverUnderlineInput
+                  placeholder="請輸入手機條碼"
+                  value={carrierCode}
+                  onChange={(e) => setCarrierCode(e.target.value)}
+                />
+              </div>
+            )}
+
+            {invoiceType === "triple" && (
+              <div className="mt-4 space-y-4">
+                <HoverUnderlineInput
+                  placeholder="發票抬頭"
+                  value={invoiceTitle}
+                  onChange={(e) => setInvoiceTitle(e.target.value)}
+                />
+                <HoverUnderlineInput
+                  placeholder="統一編號"
+                  value={invoiceTaxId}
+                  onChange={(e) => setInvoiceTaxId(e.target.value)}
+                />
+              </div>
+            )}
+
+            {invoiceType === "donate" && (
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={() => setDonateListOpen((open) => !open)}
+                  className="flex w-full items-center justify-between border-b border-[#bbb] pb-2 text-left text-[13px] text-[#888]"
+                >
+                  <span>
+                    {donateCode
+                      ? INVOICE_DONATE_OPTIONS.find((o) => o.code === donateCode)
+                          ?.name || `愛心碼 ${donateCode}`
+                      : "推薦愛心碼參考"}
+                  </span>
+                  <ChevronRight
+                    className={`h-4 w-4 text-[#bbb] transition-transform ${
+                      donateListOpen ? "rotate-90" : ""
+                    }`}
+                  />
+                </button>
+
+                {donateListOpen && (
+                  <div className="mt-3 border border-[#ddd] bg-white">
+                    {INVOICE_DONATE_OPTIONS.map((opt) => (
+                      <button
+                        key={opt.code}
+                        type="button"
+                        onClick={() => {
+                          setDonateCode(opt.code);
+                          setDonateListOpen(false);
+                        }}
+                        className={`block w-full border-b border-[#eee] px-4 py-3 text-left text-[13px] transition-colors last:border-b-0 hover:bg-[#f8f8f8] ${
+                          donateCode === opt.code
+                            ? "bg-[#f5f5f5] font-medium"
+                            : ""
+                        }`}
+                      >
+                        {opt.name} | {opt.code}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                <div className="mt-4">
+                  <HoverUnderlineInput
+                    placeholder="請輸入愛心碼"
+                    value={donateCode}
+                    onChange={(e) => setDonateCode(e.target.value)}
+                  />
+                </div>
+
+                <p className="mt-3 text-[11px] leading-[1.7] text-[#888]">
+                  * 發票一經捐贈後，將無法改為個人發票或公司戶發票，請於送出訂單前再次確認。
+                </p>
+              </div>
+            )}
           </section>
 
-          {/* 商品資訊 */}
           <section>
             <CheckoutSectionTitle>商品資訊</CheckoutSectionTitle>
-            <div className="space-y-5">
+            <div className="space-y-4">
               {items.map((it) => {
                 const { color, size } = getItemMeta(it);
-                const href = getProductHref(it);
                 const name = it.name || it.title;
-
                 return (
                   <div
                     key={it.id}
-                    className="grid grid-cols-[52px_minmax(0,1fr)_auto_auto_auto] items-center gap-x-4 text-[13px] md:gap-x-6"
+                    className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] items-center gap-x-3 text-[13px] text-black md:gap-x-4"
                   >
-                    <CheckoutProductThumb item={it} />
-                    {href ? (
-                      <Link
-                        href={href}
-                        className="min-w-0 text-black transition-opacity hover:opacity-70"
-                      >
-                        {name}
-                      </Link>
-                    ) : (
-                      <span className="min-w-0 text-black">{name}</span>
-                    )}
-                    <span className="text-black">{color || "—"}</span>
-                    <span className="text-black">{size || "—"}</span>
-                    <span className="whitespace-nowrap font-medium text-black">
+                    <span className="min-w-0">{name}</span>
+                    <span>{color || "—"}</span>
+                    <span>{size || "—"}</span>
+                    <span>{it.qty}</span>
+                    <span className="whitespace-nowrap">
                       NT${(Number(it.price) * it.qty).toLocaleString()}
                     </span>
                   </div>
@@ -1527,7 +1576,7 @@ function CheckoutStep({
               })}
             </div>
 
-            <div className="mt-10 flex items-end justify-between gap-6">
+            <div className="mt-8 flex items-end justify-between gap-4 border-t border-[#e8e8e8] pt-6">
               <div className="min-w-0 flex-1">
                 <input
                   type="text"
@@ -1543,7 +1592,7 @@ function CheckoutStep({
                     }
                   }}
                   placeholder="輸入折扣碼"
-                  className="w-full border-0 border-b border-black bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none transition-colors focus:border-black"
+                  className="w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none transition-colors focus:border-black"
                 />
                 {couponError && (
                   <p className="mt-1 text-[11px] text-red-600">{couponError}</p>
@@ -1557,19 +1606,19 @@ function CheckoutStep({
               <button
                 type="button"
                 onClick={handleApplyCoupon}
-                className="shrink-0 bg-[#2a514d] px-8 py-2.5 text-[14px] font-medium text-white transition-colors hover:bg-[#1e3d3a]"
+                disabled={couponApplying}
+                className="shrink-0 bg-[#2a514d] px-6 py-2.5 text-[13px] font-medium text-white transition-colors hover:bg-[#1e3d3a] disabled:opacity-60 md:px-8"
               >
-                完成
+                {couponApplying ? "驗證中..." : "套用"}
               </button>
             </div>
 
-            {/* 金額明細 */}
-            <div className="mt-8 space-y-2 text-[14px]">
-              <div className="flex justify-between text-black">
+            <div className="mt-8 space-y-2.5 text-[14px] text-black">
+              <div className="flex justify-between">
                 <span>商品總金額</span>
                 <span>NT$ {checkoutPricing.subtotal.toLocaleString()}</span>
               </div>
-              <div className="flex justify-between text-black">
+              <div className="flex justify-between">
                 <span>活動折扣</span>
                 <span>
                   {checkoutPricing.activityDiscount > 0
@@ -1577,30 +1626,40 @@ function CheckoutStep({
                     : "NT$ 0"}
                 </span>
               </div>
-              <div className="flex justify-between text-black">
+              <div className="flex justify-between">
                 <span>運費</span>
-                <span>NT$ {checkoutPricing.shipping.toLocaleString()}</span>
+                <span>
+                  {checkoutPricing.isFreeShipping ? (
+                    <>
+                      <span className="text-[12px] text-[#888]">
+                        已達免運門檻{" "}
+                      </span>
+                      NT$ 0
+                    </>
+                  ) : (
+                    `NT$ ${checkoutPricing.shipping.toLocaleString()}`
+                  )}
+                </span>
               </div>
-              <div className="flex justify-between pt-2 text-[15px] font-bold text-black">
+              <div className="flex justify-between pt-2 text-[15px] font-bold">
                 <span>總金額</span>
                 <span>NT$ {checkoutPricing.total.toLocaleString()}</span>
               </div>
             </div>
-
-            <button
-              type="button"
-              onClick={submit}
-              disabled={isSubmitting}
-              className="mt-6 w-full bg-[#2a514d] py-4 text-[14px] font-semibold tracking-[0.08em] text-white transition-colors hover:bg-[#1e3d3a] disabled:opacity-50"
-            >
-              {isSubmitting
-                ? payMethod === "linepay"
-                  ? "連線至 LINE Pay..."
-                  : "處理中..."
-                : "完成訂購"}
-            </button>
           </section>
         </div>
+      </div>
+
+      <div className="mt-12 grid grid-cols-1 lg:mt-14 lg:grid-cols-2 lg:gap-20">
+        <div aria-hidden className="hidden lg:block" />
+        <button
+          type="button"
+          onClick={submit}
+          disabled={isSubmitting}
+          className="w-full bg-[#2a514d] py-4 text-[14px] font-semibold tracking-[0.08em] text-white transition-colors hover:bg-[#1e3d3a] disabled:opacity-50"
+        >
+          {isSubmitting ? "處理中..." : "完成訂購"}
+        </button>
       </div>
     </div>
   );
@@ -1644,8 +1703,8 @@ function CartContent() {
     storeAddr: "",
   });
 
-  const [shipMethod, setShipMethod] = useState("000");
-  const [payMethod, setPayMethod] = useState("card");
+  const [shipMethod, setShipMethod] = useState("711");
+  const [payMethod, setPayMethod] = useState("atm");
   const [membership, setMembership] = useState(null);
   const [discountRate, setDiscountRate] = useState(1);
 
@@ -1735,7 +1794,11 @@ function CartContent() {
 
           if (data.membership) {
             setMembership(data.membership);
-            setDiscountRate(TIER_DISCOUNTS[data.membership.tierName] || 1);
+            const rate =
+              data.membership.discountRate ??
+              TIER_DISCOUNTS[data.membership.tierName] ??
+              1;
+            setDiscountRate(data.membership.exclusiveActive ? rate : 1);
           }
         }
       } catch (e) {}

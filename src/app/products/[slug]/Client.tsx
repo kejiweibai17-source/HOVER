@@ -5,12 +5,12 @@ import React, { useState } from "react";
 import Image from "next/image";
 import { Link } from "next-view-transitions";
 import { useRouter, useParams } from "next/navigation";
-import { Heart, Minus, Plus } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { ChevronLeft, ChevronRight, Minus, Plus } from "lucide-react";
+import WishlistIcon from "@/components/hover/WishlistIcon";
 import { useCartStore } from "@/lib/cartStore";
 import { useWishlistStore } from "@/lib/wishlistStore";
 import { useAuthStore } from "@/lib/authStore";
-
-/* ─── Types ──────────────────────────────────────────────────────────────── */
 
 interface FAQ {
   question: string;
@@ -34,15 +34,14 @@ interface ProductProps {
   faqs?: FAQ[];
 }
 
-/* ─── Mock / fallback data ───────────────────────────────────────────────── */
-
 const MOCK_GALLERY = [
   "/images/hover/pdp-main-1.jpg",
   "/images/hover/product-2.jpg",
   "/images/hover/people-3.jpg",
   "/images/hover/product-4.jpg",
-  "/images/hover/people-1.jpg",
+  "/images/hover/product-1.jpg",
   "/images/hover/product-3.jpg",
+  "/images/hover/people-4.jpg",
 ];
 
 const COLORS = [
@@ -53,6 +52,7 @@ const COLORS = [
 ];
 
 const SIZES = ["S", "M", "L", "XL"];
+const MOBILE_SIZES = ["S", "M", "L", "XL", "2XL"];
 
 const SIZE_GUIDE = {
   headers: ["尺寸(公分)", "S", "M", "L", "XL"],
@@ -63,8 +63,6 @@ const SIZE_GUIDE = {
     ["袖長", "18.5", "20", "21.5", "24"],
   ],
 };
-
-/* ─── Accordion ──────────────────────────────────────────────────────────── */
 
 function Accordion({
   title,
@@ -77,7 +75,7 @@ function Accordion({
 }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
-    <div className="border-t border-[#e0e0e0]">
+    <div className="border-t border-[#d8d8d8]">
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
@@ -99,7 +97,361 @@ function Accordion({
   );
 }
 
-/* ─── Main Component ──────────────────────────────────────────────────────── */
+function ProductGallery({
+  images,
+  name,
+  part = "all",
+}: {
+  images: string[];
+  name: string;
+  part?: "all" | "hero" | "rest";
+}) {
+  const [index, setIndex] = useState(0);
+  const heroTail = images.slice(1, 3);
+  const gridImages = images.slice(3);
+  const total = images.length;
+  const showHero = part === "all" || part === "hero";
+  const showRest = part === "all" || part === "rest";
+
+  const go = (delta: number) => {
+    if (total <= 1) return;
+    setIndex((prev) => (prev + delta + total) % total);
+  };
+
+  return (
+    <div className="flex flex-col gap-2">
+      {showHero && (
+        <div
+          className="relative w-full overflow-hidden bg-[#e8e6e2]"
+          style={{ aspectRatio: "3/4" }}
+        >
+          <AnimatePresence mode="wait" initial={false}>
+            <motion.div
+              key={images[index]}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.22 }}
+              className="absolute inset-0"
+            >
+              <Image
+                src={images[index]}
+                alt={`${name} ${index + 1}`}
+                fill
+                sizes="(max-width: 768px) 100vw, 50vw"
+                className="object-cover"
+                priority={index === 0}
+              />
+            </motion.div>
+          </AnimatePresence>
+
+          {total > 1 && (
+            <>
+              <button
+                type="button"
+                aria-label="上一張"
+                onClick={() => go(-1)}
+                className="absolute left-4 top-1/2 z-10 -translate-y-1/2 text-white drop-shadow-[0_1px_4px_rgba(0,0,0,0.45)] transition-opacity hover:opacity-70 md:left-6"
+              >
+                <ChevronLeft size={30} strokeWidth={1.25} />
+              </button>
+              <button
+                type="button"
+                aria-label="下一張"
+                onClick={() => go(1)}
+                className="absolute right-4 top-1/2 z-10 -translate-y-1/2 text-white drop-shadow-[0_1px_4px_rgba(0,0,0,0.45)] transition-opacity hover:opacity-70 md:right-6"
+              >
+                <ChevronRight size={30} strokeWidth={1.25} />
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {showRest &&
+        heroTail.map((src, i) => (
+          <div
+            key={`hero-${src}-${i}`}
+            className="relative w-full overflow-hidden bg-[#e8e6e2]"
+            style={{ aspectRatio: "3/4" }}
+          >
+            <Image
+              src={src}
+              alt={`${name} ${i + 2}`}
+              fill
+              sizes="(max-width: 768px) 100vw, 50vw"
+              className="object-cover"
+            />
+          </div>
+        ))}
+
+      {showRest && gridImages.length > 0 && (
+        <div className="grid grid-cols-2 gap-2">
+          {gridImages.map((src, i) => (
+            <div
+              key={`grid-${src}-${i}`}
+              className="relative overflow-hidden bg-[#e8e6e2]"
+              style={{ aspectRatio: "3/4" }}
+            >
+              <Image
+                src={src}
+                alt={`${name} ${i + 4}`}
+                fill
+                sizes="(max-width: 768px) 50vw, 25vw"
+                className="object-cover"
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ProductPurchasePanel({
+  product,
+  isSaved,
+  wishlistPending,
+  onToggleWishlist,
+  selectedColor,
+  setSelectedColor,
+  selectedSize,
+  setSelectedSize,
+  qty,
+  setQty,
+  displayPrice,
+  hasDiscount,
+  adding,
+  onAddToCart,
+  isMobile = false,
+}: {
+  product: ProductProps["product"];
+  isSaved: boolean;
+  wishlistPending: boolean;
+  onToggleWishlist: () => void;
+  selectedColor: string;
+  setSelectedColor: (v: string) => void;
+  selectedSize: string | null;
+  setSelectedSize: (v: string) => void;
+  qty: number;
+  setQty: React.Dispatch<React.SetStateAction<number>>;
+  displayPrice: number;
+  hasDiscount: boolean;
+  adding: boolean;
+  onAddToCart: () => void;
+  isMobile?: boolean;
+}) {
+  const sizeOptions = isMobile ? MOBILE_SIZES : SIZES;
+
+  return (
+    <>
+      <div className={`flex items-start justify-between gap-3 ${isMobile ? "mb-4" : "mb-5 gap-4"}`}>
+        <h1
+          className={`font-bold uppercase leading-snug tracking-[0.02em] text-black ${
+            isMobile ? "text-[14px] leading-[1.45]" : "text-[17px] md:text-[20px]"
+          }`}
+        >
+          {product.name}
+        </h1>
+        <button
+          type="button"
+          aria-label={isSaved ? "取消收藏" : "加入收藏"}
+          onClick={onToggleWishlist}
+          disabled={wishlistPending}
+          className={`shrink-0 transition-opacity hover:opacity-70 ${
+            isSaved ? "opacity-100" : "opacity-80"
+          }`}
+        >
+          <WishlistIcon active={isSaved} size={isMobile ? 40 : 44} />
+        </button>
+      </div>
+
+      <div className={`flex flex-wrap items-baseline gap-2 ${isMobile ? "mb-6" : "mb-8 gap-3"}`}>
+        {hasDiscount && (
+          <span
+            className={`text-black line-through opacity-45 ${
+              isMobile ? "text-[14px]" : "text-[16px] md:text-[18px]"
+            }`}
+          >
+            NT$ {product.regularPrice.toLocaleString()}
+          </span>
+        )}
+        <span
+          className={`font-bold ${
+            isMobile ? "text-[16px]" : "text-[18px] md:text-[20px]"
+          } ${hasDiscount ? "text-[#c90000]" : "text-black"}`}
+        >
+          NT$ {displayPrice.toLocaleString()}
+        </span>
+      </div>
+
+      <div className={isMobile ? "mb-6" : "mb-8"}>
+        <p className="mb-3 text-[13px] tracking-[0.06em] text-black">
+          COLOR{isMobile ? "：" : " : "}
+          {selectedColor}
+        </p>
+        <div className="flex flex-wrap gap-3">
+          {COLORS.map((c) => {
+            const active = selectedColor === c.label;
+            return (
+              <button
+                key={c.label}
+                type="button"
+                aria-label={c.label}
+                onClick={() => setSelectedColor(c.label)}
+                className={`h-9 w-9 border transition-all md:h-[35px] md:w-[35px] ${
+                  active
+                    ? "border-black ring-1 ring-black ring-offset-2"
+                    : "border-[#ccc] hover:border-[#888]"
+                }`}
+                style={{ backgroundColor: c.hex }}
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      <div className={isMobile ? "mb-4" : "mb-3"}>
+        <div className="flex flex-wrap gap-3">
+          {sizeOptions.map((s) => {
+            const active = selectedSize === s;
+            return (
+              <button
+                key={s}
+                type="button"
+                onClick={() => setSelectedSize(s)}
+                className={`flex h-9 w-9 items-center justify-center border text-[13px] font-bold transition-all md:h-[35px] md:w-[35px] ${
+                  active
+                    ? "border-[#8b8b8b] bg-[#8b8b8b] text-white"
+                    : "border-[#ccc] bg-white text-black hover:border-[#888]"
+                }`}
+              >
+                {s}
+              </button>
+            );
+          })}
+        </div>
+        {!selectedSize && (
+          <p className="mt-2.5 text-[12px] text-[#c90000]">請選擇尺寸</p>
+        )}
+      </div>
+
+      <p className={`text-[#2a514d] ${isMobile ? "mb-5 text-[13px]" : "mb-6 text-[14px]"}`}>
+        {isMobile ? "Unisex 版型偏寬鬆" : "UNISEX(男女皆適穿)"}
+      </p>
+
+      <div className={isMobile ? "mb-4" : "mb-4"}>
+        <div className="flex h-10 w-full max-w-full items-center border border-black">
+          <button
+            type="button"
+            onClick={() => setQty((q) => Math.max(1, q - 1))}
+            className="flex h-full w-10 items-center justify-center text-black transition-colors hover:bg-black/5"
+          >
+            <Minus size={14} />
+          </button>
+          <span className="flex-1 text-center text-[15px] font-medium text-black">
+            {qty}
+          </span>
+          <button
+            type="button"
+            onClick={() => setQty((q) => q + 1)}
+            className="flex h-full w-10 items-center justify-center text-black transition-colors hover:bg-black/5"
+          >
+            <Plus size={14} />
+          </button>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={onAddToCart}
+        disabled={!selectedSize}
+        className={`flex h-10 w-full items-center justify-center text-[15px] text-white transition-all ${
+          isMobile ? "mb-0" : "mb-10"
+        } ${
+          selectedSize
+            ? "cursor-pointer bg-[#2a514d] hover:bg-[#1e3d3a]"
+            : "cursor-not-allowed bg-[#9a9a9a]"
+        } ${adding ? "scale-[0.98]" : ""}`}
+      >
+        {adding ? "已加入購物車 ✓" : "加入購物車"}
+      </button>
+    </>
+  );
+}
+
+function ProductDetailAccordions({
+  cleanDescription,
+  faqs,
+  isMobile = false,
+}: {
+  cleanDescription: string;
+  faqs: FAQ[];
+  isMobile?: boolean;
+}) {
+  return (
+    <div className={isMobile ? "border-b border-[#d8d8d8]" : undefined}>
+      <Accordion title="商品詳情" defaultOpen>
+        <div className="space-y-3 text-[14px] leading-[1.7] tracking-[0.06em] text-black">
+          {cleanDescription.split("\n").map((line, i) => (
+            <p key={i}>{line}</p>
+          ))}
+        </div>
+      </Accordion>
+
+      <Accordion title="洗滌方式">
+        <div className="space-y-2 text-[14px] leading-[1.7] tracking-[0.06em] text-black">
+          <p>・建議手洗或機洗冷水輕柔模式</p>
+          <p>・請勿使用漂白劑</p>
+          <p>・請勿烘乾</p>
+          <p>・可低溫熨燙（最高 110°C）</p>
+          <p>・洗滌前請將衣物翻面</p>
+        </div>
+      </Accordion>
+
+      <Accordion title="尺寸指南">
+        <div className="text-[13px]">
+          <table className="w-full border-collapse">
+            <thead>
+              <tr className="border-b border-[#ddd]">
+                {SIZE_GUIDE.headers.map((h) => (
+                  <th
+                    key={h}
+                    className="py-2 pr-4 text-left font-medium text-[#555] first:text-[#333]"
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {SIZE_GUIDE.rows.map(([label, ...vals]) => (
+                <tr key={label} className="border-b border-[#eee]">
+                  <td className="py-2 pr-4 font-medium text-[#333]">{label}</td>
+                  {vals.map((v, i) => (
+                    <td key={i} className="py-2 pr-4 text-[#555]">
+                      {v}
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="mt-3 text-[11px] text-[#888]">
+            ※為平放測量，±2cm誤差範圍屬於製作標準範圍內。
+          </p>
+        </div>
+      </Accordion>
+
+      {faqs.length > 0 &&
+        faqs.map((faq) => (
+          <Accordion key={faq.question} title={faq.question}>
+            <p className="text-[14px] leading-relaxed text-[#555]">{faq.answer}</p>
+          </Accordion>
+        ))}
+    </div>
+  );
+}
 
 export default function ProductClient({ product, faqs = [] }: ProductProps) {
   const router = useRouter();
@@ -110,16 +462,12 @@ export default function ProductClient({ product, faqs = [] }: ProductProps) {
   const hasItem = useWishlistStore((s) => s.hasItem);
   const checkAuth = useAuthStore((s) => s.checkAuth);
 
-  const productId = Number(product.id);
+  const productId = Number(product.id) || product.id;
   const isSaved = hasItem(productId);
 
-  // Gallery state
   const gallery =
     product.images && product.images.length > 0 ? product.images : MOCK_GALLERY;
-  const heroImages = gallery.slice(0, 3);
-  const gridImages = gallery.slice(3);
 
-  // Product options
   const [selectedColor, setSelectedColor] = useState(COLORS[0].label);
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [qty, setQty] = useState(1);
@@ -139,7 +487,7 @@ export default function ProductClient({ product, faqs = [] }: ProductProps) {
     }
     toggleItem({
       id: productId,
-      slug: product.id,
+      slug: productSlug,
       name: product.name,
       price: String(product.salePrice ?? product.price),
       image: gallery[0],
@@ -167,12 +515,11 @@ export default function ProductClient({ product, faqs = [] }: ProductProps) {
 
   const cleanDescription = product.description
     ? product.description.replace(/<[^>]+>/g, "").trim()
-    : "短袖T恤帶有單色鱷魚刺繡的微妙口音。SHIRT 它使用的球衣材料與皮克不同，皮克具有細膩的質地，增強了物品的吸引力，儘管它具有休閒性質，但給人一種優雅的印象。\n當與乾淨的SLACKS搭配時，它創造了一種智慧和精緻的風格。\n它也與牛仔布和短褲等休閒單品完美搭配，使其成為一件自然適合輕鬆的週末風格的單品。";
+    : "短袖T恤帶有單色鱷魚刺繡的微妙口音。使用的球衣材料與皮克不同，具有細膩的質地，增強了物品的吸引力，儘管它具有休閒性質，但給人一種優雅的印象。\n當與乾淨的褲款搭配時，它創造了一種智慧和精緻的風格。\n它也與牛仔布和短褲等休閒單品完美搭配，使其成為一件自然適合輕鬆週末風格的單品。";
 
   return (
     <div className="bg-hover-bg">
-      {/* Breadcrumb — top left */}
-      <nav className="mx-auto flex max-w-[1650px] items-center gap-1 px-4 pt-6 text-[11px] text-[#888] md:px-8">
+      <nav className="mx-auto hidden max-w-[1400px] flex-wrap items-center gap-1 px-6 pb-4 pt-5 text-[11px] tracking-[0.04em] text-[#888] md:flex md:px-10 md:pt-6">
         <Link href="/" className="hover:text-black">
           HOME
         </Link>
@@ -184,323 +531,74 @@ export default function ProductClient({ product, faqs = [] }: ProductProps) {
         <span className="text-black">{product.name}</span>
       </nav>
 
-      {/* ── 2-col layout ─────────────────────────────────────────────── */}
-      <div className="mx-auto flex max-w-[1650px] flex-col gap-8 px-4 py-6 md:flex-row md:items-start md:gap-12 md:px-8 md:py-8">
-        {/* ── Left: scrollable image gallery ─────────────────────────── */}
-        <div className="w-full md:w-[50%]">
-          {/* 前三張大圖 */}
-          <div className="flex flex-col gap-2">
-            {heroImages.map((src, i) => (
-              <div
-                key={`hero-${i}`}
-                className="relative w-full overflow-hidden bg-[#e8e6e2]"
-                style={{ aspectRatio: "3/4" }}
-              >
-                <Image
-                  src={src}
-                  alt={`${product.name} ${i + 1}`}
-                  fill
-                  sizes="(max-width: 768px) 100vw, 50vw"
-                  className="object-cover"
-                  priority={i === 0}
-                />
-              </div>
-            ))}
-          </div>
-
-          {/* 其餘圖片：兩個一排 */}
-          {gridImages.length > 0 && (
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              {gridImages.map((src, i) => (
-                <div
-                  key={`grid-${i}`}
-                  className="relative overflow-hidden bg-[#e8e6e2]"
-                  style={{ aspectRatio: "3/4" }}
-                >
-                  <Image
-                    src={src}
-                    alt={`${product.name} ${i + 4}`}
-                    fill
-                    sizes="(max-width: 768px) 50vw, 25vw"
-                    className="object-cover"
-                  />
-                </div>
-              ))}
-            </div>
-          )}
+      {/* 桌機 — 雙欄 */}
+      <div className="mx-auto hidden max-w-[1400px] grid-cols-2 items-start gap-10 px-10 pb-16 md:grid lg:gap-14">
+        <div className="w-full">
+          <ProductGallery images={gallery} name={product.name} />
         </div>
 
-        {/* ── Right: sticky product info ─────────────────────────────── */}
-        <div className="w-full md:sticky md:top-[var(--hover-header-height,116px)] md:w-[50%] md:self-start">
-          {/* Name + wishlist */}
-          <div className="mb-4 flex items-start justify-between gap-4">
-            <h1 className="text-[20px] font-bold uppercase leading-snug text-black">
-              {product.name ||
-                "LACOSTE FOR BEAUTY&YOUTH ONE-TONE SHORT SLEEVE T SHIRT"}
-            </h1>
-            <button
-              type="button"
-              aria-label={isSaved ? "取消收藏" : "加入收藏"}
-              onClick={handleToggleWishlist}
-              disabled={wishlistPending}
-              className={`mt-1 shrink-0 transition-colors ${
-                isSaved ? "text-rose-500" : "text-black hover:text-rose-400"
-              }`}
-            >
-              <Heart
-                size={22}
-                strokeWidth={1.5}
-                fill={isSaved ? "currentColor" : "none"}
-              />
-            </button>
-          </div>
+        <div className="w-full md:sticky md:top-[calc(var(--hover-header-height,116px)+16px)] md:self-start">
+          <ProductPurchasePanel
+            product={product}
+            isSaved={isSaved}
+            wishlistPending={wishlistPending}
+            onToggleWishlist={handleToggleWishlist}
+            selectedColor={selectedColor}
+            setSelectedColor={setSelectedColor}
+            selectedSize={selectedSize}
+            setSelectedSize={setSelectedSize}
+            qty={qty}
+            setQty={setQty}
+            displayPrice={displayPrice}
+            hasDiscount={hasDiscount}
+            adding={adding}
+            onAddToCart={handleAddToCart}
+          />
+          <ProductDetailAccordions
+            cleanDescription={cleanDescription}
+            faqs={faqs}
+          />
+        </div>
+      </div>
 
-          {/* Price */}
-          <div className="mb-6 flex items-center gap-3">
-            {hasDiscount && (
-              <span className="text-[18px] font-bold text-black line-through opacity-50">
-                NT$ {product.regularPrice.toLocaleString()}
-              </span>
-            )}
-            <span
-              className={`text-[20px] font-bold ${
-                hasDiscount ? "text-[#c90000]" : "text-black"
-              }`}
-            >
-              NT$ {displayPrice.toLocaleString()}
-            </span>
-          </div>
+      {/* 手機 — 主圖 → 購買資訊 → 手風琴 → 下方圖片區 */}
+      <div className="bg-white pb-16 md:hidden">
+        <ProductGallery images={gallery} name={product.name} part="hero" />
 
-          {/* Color selector */}
-          <div className="mb-10">
-            <p className="mb-2 text-[14px] text-black">{selectedColor}</p>
-            <div className="flex gap-3">
-              {COLORS.map((c) => (
-                <button
-                  key={c.label}
-                  type="button"
-                  aria-label={c.label}
-                  onClick={() => setSelectedColor(c.label)}
-                  className={`relative h-[35px] w-[35px] border-2 transition-all ${
-                    selectedColor === c.label
-                      ? "border-black scale-110"
-                      : "border-transparent hover:border-[#999]"
-                  } ${c.label === "白" ? "border border-[#ccc]" : ""}`}
-                  style={{ backgroundColor: c.hex }}
-                />
-              ))}
-            </div>
-          </div>
+        <div className="px-5 pt-5">
+          <ProductPurchasePanel
+            product={product}
+            isSaved={isSaved}
+            wishlistPending={wishlistPending}
+            onToggleWishlist={handleToggleWishlist}
+            selectedColor={selectedColor}
+            setSelectedColor={setSelectedColor}
+            selectedSize={selectedSize}
+            setSelectedSize={setSelectedSize}
+            qty={qty}
+            setQty={setQty}
+            displayPrice={displayPrice}
+            hasDiscount={hasDiscount}
+            adding={adding}
+            onAddToCart={handleAddToCart}
+            isMobile
+          />
+        </div>
 
-          {/* Size selector */}
-          <div className="mb-4">
-            <div className="flex flex-wrap gap-3">
-              {SIZES.map((s) => (
-                <button
-                  key={s}
-                  type="button"
-                  onClick={() => setSelectedSize(s)}
-                  className={`flex h-[35px] w-[35px] items-center justify-center border-2 text-[13px] font-bold transition-all ${
-                    selectedSize === s
-                      ? "border-black bg-black text-white"
-                      : "border-black bg-transparent text-black hover:bg-black/5"
-                  }`}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-            {!selectedSize && (
-              <p className="mt-2 text-[12px] text-[#c90000]">請選擇尺寸</p>
-            )}
-          </div>
+        <div className="mt-6 px-5">
+          <ProductDetailAccordions
+            cleanDescription={cleanDescription}
+            faqs={faqs}
+            isMobile
+          />
+        </div>
 
-          {/* UNISEX tag */}
-          <p className="mb-5 text-[15px] text-[#2a514d]">UNISEX(男女皆適穿)</p>
-
-          {/* Quantity */}
-          <div className="mb-4">
-            <div className="flex h-[39px] w-full items-center border border-black">
-              <button
-                type="button"
-                onClick={() => setQty((q) => Math.max(1, q - 1))}
-                className="flex h-full w-[39px] items-center justify-center text-black hover:bg-black/5 transition-colors"
-              >
-                <Minus size={14} />
-              </button>
-              <span className="flex-1 text-center text-[15px] font-medium text-black">
-                {qty}
-              </span>
-              <button
-                type="button"
-                onClick={() => setQty((q) => q + 1)}
-                className="flex h-full w-[39px] items-center justify-center text-black hover:bg-black/5 transition-colors"
-              >
-                <Plus size={14} />
-              </button>
-            </div>
-          </div>
-
-          {/* Add to cart */}
-          <button
-            type="button"
-            onClick={handleAddToCart}
-            disabled={!selectedSize}
-            className={`mb-8 flex h-[39px] w-full  items-center justify-center text-[15px] text-white transition-all ${
-              selectedSize
-                ? "bg-[#2a514d] hover:bg-[#1e3d3a] cursor-pointer"
-                : "cursor-not-allowed bg-[#2a514d]/50"
-            } ${adding ? "scale-95" : ""}`}
-          >
-            {adding ? "已加入購物車 ✓" : "加入購物車"}
-          </button>
-
-          {/* ── Accordions ─────────────────────────────────────── */}
-
-          {/* 商品詳情 */}
-          <Accordion title="商品詳情" defaultOpen>
-            <div className="space-y-3 text-[14px] leading-[20px] tracking-[2.1px] text-black">
-              {cleanDescription.split("\n").map((line, i) => (
-                <p key={i}>{line}</p>
-              ))}
-            </div>
-          </Accordion>
-
-          {/* 洗滌方式 */}
-          <Accordion title="洗滌方式">
-            <div className="space-y-2 text-[14px] leading-[20px] tracking-[2.1px] text-black">
-              <p>・建議手洗或機洗冷水輕柔模式</p>
-              <p>・請勿使用漂白劑</p>
-              <p>・請勿烘乾</p>
-              <p>・可低溫熨燙（最高 110°C）</p>
-              <p>・洗滌前請將衣物翻面</p>
-            </div>
-          </Accordion>
-
-          {/* 尺寸指南 */}
-          <Accordion title="尺寸指南">
-            <div className="text-[13px]">
-              <table className="w-full border-collapse">
-                <thead>
-                  <tr className="border-b border-[#ddd]">
-                    {SIZE_GUIDE.headers.map((h) => (
-                      <th
-                        key={h}
-                        className="py-2 pr-4 text-left font-medium text-[#555] first:text-[#333]"
-                      >
-                        {h}
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {SIZE_GUIDE.rows.map(([label, ...vals]) => (
-                    <tr key={label} className="border-b border-[#eee]">
-                      <td className="py-2 pr-4 font-medium text-[#333]">
-                        {label}
-                      </td>
-                      {vals.map((v, i) => (
-                        <td key={i} className="py-2 pr-4 text-[#555]">
-                          {v}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-
-              <p className="mt-3 text-[11px] text-[#888]">
-                ※為平放測量，±2cm誤差範圍屬於製作標準範圍內。
-                <br />
-                標件基準: xxx公分/尺寸 M
-              </p>
-
-              {/* T-shirt diagram SVG */}
-              <div className="mt-4 flex justify-center">
-                <svg
-                  viewBox="0 0 200 220"
-                  className="h-[180px] w-auto"
-                  fill="none"
-                  stroke="#333"
-                  strokeWidth="1.5"
-                >
-                  {/* Body */}
-                  <path d="M60 40 L20 80 L40 90 L40 190 L160 190 L160 90 L180 80 L140 40" />
-                  {/* Left sleeve */}
-                  <path d="M60 40 L20 80 L40 90 L60 60 Z" />
-                  {/* Right sleeve */}
-                  <path d="M140 40 L180 80 L160 90 L140 60 Z" />
-                  {/* Neck */}
-                  <path d="M60 40 Q100 20 140 40" />
-                  {/* Shoulder labels */}
-                  <line
-                    x1="60"
-                    y1="35"
-                    x2="140"
-                    y2="35"
-                    strokeDasharray="3,2"
-                  />
-                  <text
-                    x="100"
-                    y="30"
-                    textAnchor="middle"
-                    fontSize="9"
-                    fill="#555"
-                    stroke="none"
-                  >
-                    肩寬
-                  </text>
-                  {/* Chest labels */}
-                  <line
-                    x1="40"
-                    y1="100"
-                    x2="160"
-                    y2="100"
-                    strokeDasharray="3,2"
-                  />
-                  <text x="170" y="104" fontSize="9" fill="#555" stroke="none">
-                    胸寬
-                  </text>
-                  {/* Length labels */}
-                  <line
-                    x1="170"
-                    y1="40"
-                    x2="170"
-                    y2="190"
-                    strokeDasharray="3,2"
-                  />
-                  <text
-                    x="178"
-                    y="120"
-                    fontSize="9"
-                    fill="#555"
-                    stroke="none"
-                    style={{ writingMode: "vertical-rl" }}
-                  >
-                    衣長
-                  </text>
-                  {/* Sleeve length */}
-                  <line x1="60" y1="38" x2="20" y2="78" strokeDasharray="3,2" />
-                  <text x="25" y="55" fontSize="9" fill="#555" stroke="none">
-                    袖長
-                  </text>
-                </svg>
-              </div>
-            </div>
-          </Accordion>
-
-          {/* FAQs */}
-          {faqs.length > 0 && (
-            <>
-              {faqs.map((faq) => (
-                <Accordion key={faq.question} title={faq.question}>
-                  <p className="text-[14px] leading-relaxed text-[#555]">
-                    {faq.answer}
-                  </p>
-                </Accordion>
-              ))}
-            </>
-          )}
+        <div className="mt-6 px-5">
+          <ProductGallery
+            images={gallery}
+            name={product.name}
+            part="rest"
+          />
         </div>
       </div>
     </div>

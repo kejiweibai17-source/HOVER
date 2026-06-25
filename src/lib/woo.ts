@@ -110,3 +110,27 @@ export async function fetchAllProductSlugs({
   const data = (await res.json()) as any[];
   return (data || []).map((p: any) => p.slug as string).filter(Boolean);
 }
+
+export type { WooCategoryRaw } from "./categoryNav";
+export { buildCategoryNav, isCategoryVisible } from "./categoryNav";
+
+/** 抓取 WooCommerce 商品分類（含 hover_show_frontend） */
+export async function fetchProductCategories() {
+  const { base } = getEnv();
+  const url = withAuth(
+    `${base}/wp-json/wc/v3/products/categories?per_page=100&hide_empty=false`,
+  );
+  const res = await fetch(url, { next: { revalidate: 60 } });
+  if (!res.ok) {
+    throw new Error(`取得商品分類失敗 (${res.status})`);
+  }
+  const data = (await res.json()) as any[];
+  return (data || []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    slug: c.slug,
+    parent: c.parent ?? 0,
+    menu_order: c.menu_order,
+    hover_show_frontend: c.hover_show_frontend,
+  }));
+}

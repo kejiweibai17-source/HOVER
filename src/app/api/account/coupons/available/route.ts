@@ -39,14 +39,7 @@ function isDepleted(coupon: any) {
   return false;
 }
 
-function pickKind(codeRaw: string) {
-  const code = String(codeRaw || "").toUpperCase();
-  if (code.startsWith("UFUP-")) return "upgrade";
-  if (code.startsWith("UFBD-")) return "birthday";
-  if (code.startsWith("UFFRD-")) return "ref_friend_50";
-  if (code.startsWith("UFAMB-")) return "ref_ambassador_200";
-  return "other";
-}
+import { couponKindFromCode } from "@/lib/membership";
 
 export async function GET() {
   try {
@@ -88,7 +81,7 @@ export async function GET() {
     const available = mine.map((coupon: any) => {
       const code = String(coupon.code || "");
       return {
-        kind: pickKind(code),
+        kind: couponKindFromCode(code),
         code,
         amount: Number(coupon.amount) || 0,
         description: coupon.description || "",

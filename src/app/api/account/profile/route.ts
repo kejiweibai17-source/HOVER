@@ -4,6 +4,11 @@ import { getServerSession } from "next-auth";
 import { cookies } from "next/headers";
 import jwt from "jsonwebtoken";
 import { authOptions } from "@/lib/auth-options";
+import {
+  buildExclusiveMetaUpdates,
+  computeMembership,
+  type WcOrderLite,
+} from "@/lib/membership";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -27,70 +32,40 @@ function parseAdminEmails() {
     .filter(Boolean);
 }
 
-/* ========= 🚨 完美貼齊企劃書的會員分級邏輯 ========= */
-function calcTier(totalSpent: number) {
-  if (totalSpent >= 35000) return "UVVIP貴賓";
-  if (totalSpent >= 10000) return "UVIP貴賓";
-  if (totalSpent >= 6000) return "U金貴賓";
-  if (totalSpent >= 2000) return "U銀貴賓";
-  return "U銅貴賓"; // 註冊即為銅貴賓
+function resolveAvatarUrl(customer: any, sessionImage?: string | null) {
+  const meta: any[] = Array.isArray(customer?.meta_data) ? customer.meta_data : [];
+  const fromMeta = meta.find((m) => m.key === "avatar_url")?.value;
+  if (fromMeta) return String(fromMeta);
+
+  if (sessionImage) return sessionImage;
+
+  const wcAvatar = customer?.avatar_url ? String(customer.avatar_url) : "";
+  if (wcAvatar && !isPlaceholderGravatar(wcAvatar)) return wcAvatar;
+
+  return null;
 }
 
-function buildMembershipPayload(totalSpent12m: number) {
-  const tierName = calcTier(totalSpent12m);
-  let discountLabel = "無專屬折扣";
-  let upgradeGift = 0;
-  let birthdayCredit = 0;
-  let nextTierName: string | null = null;
-  let nextNeedAmount: number | null = null;
-
-  // 💡 直接使用 switch 清晰定義每一階的福利，不留任何舊代碼殘骸
-  switch (tierName) {
-    case "U銅貴賓":
-      discountLabel = "無專屬折扣";
-      upgradeGift = 50;
-      birthdayCredit = 100;
-      nextTierName = "U銀貴賓";
-      nextNeedAmount = Math.max(0, 2000 - totalSpent12m);
-      break;
-    case "U銀貴賓":
-      discountLabel = "消費享 98 折";
-      upgradeGift = 100;
-      birthdayCredit = 200;
-      nextTierName = "U金貴賓";
-      nextNeedAmount = Math.max(0, 6000 - totalSpent12m);
-      break;
-    case "U金貴賓":
-      discountLabel = "消費享 95 折";
-      upgradeGift = 300;
-      birthdayCredit = 300;
-      nextTierName = "UVIP貴賓";
-      nextNeedAmount = Math.max(0, 10000 - totalSpent12m);
-      break;
-    case "UVIP貴賓":
-      discountLabel = "消費享 9 折";
-      upgradeGift = 500;
-      birthdayCredit = 500;
-      nextTierName = "UVVIP貴賓";
-      nextNeedAmount = Math.max(0, 35000 - totalSpent12m);
-      break;
-    case "UVVIP貴賓":
-      discountLabel = "消費享 88 折";
-      upgradeGift = 1000;
-      birthdayCredit = 1000;
-      break;
-  }
-
-  return { 
-    tierName, 
-    totalSpent12m, 
-    discountLabel, 
-    upgradeGift, 
-    birthdayCredit, 
-    nextTierName, 
-    nextNeedAmount 
-  };
+function isPlaceholderGravatar(url: string) {
+  return (
+    /gravatar\.com/i.test(url) &&
+    /[?&]d=(mm|mp|identicon|monsterid|wavatar|retro|robohash)/i.test(url)
+  );
 }
+
+function resolveDisplayName(customer: any, sessionName?: string | null) {
+  const fromSession = String(sessionName || "").trim();
+  if (fromSession) return fromSession;
+
+  const meta: any[] = Array.isArray(customer?.meta_data) ? customer.meta_data : [];
+  const fromOAuthMeta = meta.find((m) => m.key === "oauth_display_name")?.value;
+  if (fromOAuthMeta) return String(fromOAuthMeta).trim();
+
+  const full = `${customer?.first_name || ""}${customer?.last_name ? ` ${customer.last_name}` : ""}`.trim();
+  if (full) return full;
+  return customer?.email?.split("@")[0] || "會員";
+}
+
+/* ========= HOVER 會員制度（FRIENDS / EXCLUSIVE） ========= */
 // 提取並驗證用戶 Email 的輔助函式
 async function getAuthenticatedEmail() {
   const auth = basicAuth();
@@ -163,6 +138,7 @@ export async function GET() {
     const normalizedEmail = email.trim().toLowerCase();
     const adminEmails = parseAdminEmails();
     const isAdmin = adminEmails.includes(normalizedEmail);
+    const session = await getServerSession(authOptions);
 
     // ===== Fetch WC customer by email =====
     // ✅ 修正：加入 role=all，避免管理員帳號被過濾掉
@@ -267,7 +243,50 @@ export async function GET() {
       0
     );
 
-    const membership = buildMembershipPayload(totalSpent12m);
+    const ordersLite: WcOrderLite[] = ordersForCalc.map((o: any) => ({
+      total: parseFloat(o.total) || 0,
+      date_created: o.date_created,
+    }));
+
+    // 同步臻享會員效期 meta（升級 / 續會）
+    if (customer?.id) {
+      const metaUpdates = buildExclusiveMetaUpdates(
+        ordersLite,
+        customer.meta_data || [],
+      );
+      if (metaUpdates.length > 0) {
+        try {
+          await fetch(`${BASE}/wp-json/wc/v3/customers/${customer.id}`, {
+            method: "PUT",
+            headers: {
+              Authorization: auth,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ meta_data: metaUpdates }),
+          });
+          for (const u of metaUpdates) {
+            const existing = (customer.meta_data || []).find(
+              (m: any) => m.key === u.key,
+            );
+            if (existing) existing.value = u.value;
+            else (customer.meta_data ||= []).push(u);
+          }
+        } catch (e) {
+          console.error("sync exclusive meta failed:", e);
+        }
+      }
+    }
+
+    const membership = computeMembership(
+      ordersLite,
+      customer?.meta_data || [],
+    );
+
+    // 向下相容舊欄位名稱
+    const membershipPayload = {
+      ...membership,
+      upgradeGift: membership.welcomeGift,
+    };
 
     // 解析生日
     let birthday = null;
@@ -288,13 +307,18 @@ export async function GET() {
         first_name: customer.first_name,
         last_name: customer.last_name,
         username: customer.username,
-        avatar_url: customer.avatar_url,
+        display_name: resolveDisplayName(customer, session?.user?.name),
+        avatar_url: resolveAvatarUrl(customer, session?.user?.image),
         birthday: birthday,
       }
-      : { email: normalizedEmail };
+      : {
+        email: normalizedEmail,
+        display_name: resolveDisplayName(null, session?.user?.name) || normalizedEmail.split("@")[0],
+        avatar_url: session?.user?.image || null,
+      };
 
     return NextResponse.json(
-      { loggedIn: true, customer: customerPayload, membership, isAdmin },
+      { loggedIn: true, customer: customerPayload, membership: membershipPayload, isAdmin },
       { headers: noCache }
     );
   } catch (e) {

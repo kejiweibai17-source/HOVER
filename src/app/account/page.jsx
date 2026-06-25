@@ -15,6 +15,8 @@ import { useWishlistStore } from "@/lib/wishlistStore";
 import { LineChart, BarChart } from "@mui/x-charts";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePathname } from "next/navigation";
+import HoverIcon from "@/components/hover/HoverIcon";
+import WishlistIcon from "@/components/hover/WishlistIcon";
 import {
   Home,
   Package,
@@ -22,11 +24,9 @@ import {
   Tag,
   BarChart2,
   Settings,
-  Search,
   Bell,
   ChevronLeft,
   ChevronDown,
-  ChevronUp,
   Copy,
   ExternalLink,
   Circle,
@@ -40,8 +40,6 @@ import {
   Info,
   Landmark,
   ChevronRight,
-  Heart,
-  ShoppingBag,
 } from "lucide-react";
 
 // ============================================================================
@@ -288,14 +286,13 @@ function MetricBlock({ title, value, subtext }) {
   );
 }
 
-function getTierDisplay(tierName) {
+function getTierDisplay(tierName, membership) {
+  if (membership?.tierLabel) return membership.tierLabel;
   const map = {
-    U銅貴賓: "HOVER好友",
-    U銀貴賓: "HOVER白銀",
-    U金貴賓: "HOVER黃金",
-    UVIP貴賓: "HOVER VIP",
+    HOVER_FRIENDS: "品牌好友",
+    HOVER_EXCLUSIVE: "臻享會員",
   };
-  return map[tierName] || tierName || "HOVER好友";
+  return map[tierName] || tierName || "品牌好友";
 }
 
 function HoverUnderlineField({ label, value, type = "text" }) {
@@ -491,10 +488,10 @@ export default function AccountPage() {
   const [availableCoupons, setAvailableCoupons] = useState([]);
   const [availableLoading, setAvailableLoading] = useState(false);
   const [claimLoading, setClaimLoading] = useState({
-    upgrade: false,
+    welcome: false,
     birthday: false,
   });
-  const [claimed, setClaimed] = useState({ upgrade: false, birthday: false });
+  const [claimed, setClaimed] = useState({ welcome: false, birthday: false });
   const [claimMessage, setClaimMessage] = useState(null);
   const [claimStatus, setClaimStatus] = useState(null);
   const [claimedCode, setClaimedCode] = useState(null);
@@ -629,6 +626,16 @@ export default function AccountPage() {
       loadAvailableCoupons();
     }
   }, [loggedIn, loadOrders, loadReferral, loadAvailableCoupons]);
+
+  useEffect(() => {
+    if (!availableCoupons.length) return;
+    setClaimed((prev) => ({
+      welcome:
+        prev.welcome ||
+        availableCoupons.some((c) => c.kind === "welcome" || c.kind === "legacy"),
+      birthday: prev.birthday || availableCoupons.some((c) => c.kind === "birthday"),
+    }));
+  }, [availableCoupons]);
 
   useEffect(() => {
     if (!loading && loggedIn && customer && !customer.birthday) {
@@ -822,6 +829,7 @@ export default function AccountPage() {
   const referralTotal = ambassadorTotal + friendTotal;
 
   const displayName =
+    customer?.display_name?.trim() ||
     (
       (customer?.first_name || "") +
       (customer?.last_name ? ` ${customer?.last_name}` : "")
@@ -1147,6 +1155,8 @@ export default function AccountPage() {
             type="button"
             onClick={async () => {
               await fetch("/api/auth/logout", { method: "POST" });
+              const { useAuthStore } = await import("@/lib/authStore");
+              useAuthStore.getState().resetAuth();
               router.replace("/login?next=/account");
             }}
             className="mb-3 flex shrink-0 items-center gap-1.5 text-[13px] text-[#c0392b] transition-opacity hover:opacity-70"
@@ -1159,7 +1169,7 @@ export default function AccountPage() {
         {/* Mobile search */}
         {(activeTab === "orders" || activeTab === "profile" || activeTab === "admin") && (
           <div className="relative mb-6 md:hidden">
-            <Search className="absolute left-0 top-1/2 h-4 w-4 -translate-y-1/2 text-[#aaa]" />
+            <HoverIcon name="search" size={40} className="absolute left-0 top-1/2 -translate-y-1/2 opacity-50" alt="" />
             <input
               type="text"
               value={searchQuery}
@@ -1178,15 +1188,24 @@ export default function AccountPage() {
                 <div className="mb-10 flex flex-col gap-6 border-b border-[#ddd] pb-8 sm:flex-row sm:items-center sm:justify-between">
                   <div className="sm:max-w-[280px]">
                     <div className="mb-3 inline-block border border-[#ccc] bg-white px-4 py-2 text-[13px] font-medium">
-                      {getTierDisplay(membership?.tierName)}
+                      {getTierDisplay(membership?.tierName, membership)}
+                      {membership?.tierLabelEn && (
+                        <span className="ml-2 text-[11px] font-normal text-[#888]">
+                          {membership.tierLabelEn}
+                        </span>
+                      )}
                     </div>
                     <p className="text-[13px] leading-relaxed text-[#555]">
-                      {membership?.nextNeedAmount != null && membership?.nextTierName
-                        ? `再消費滿 ${formatMoneyNT(membership.nextNeedAmount).replace("NT$ ", "NT$")} 即可升級成${getTierDisplay(membership.nextTierName)}`
-                        : "您已達最高會員等級"}
+                      {membership?.renewNeedAmount != null && membership?.exclusiveActive
+                        ? `臻享效期內再消費 NT$${membership.renewNeedAmount.toLocaleString()} 即可續會`
+                        : membership?.nextNeedAmount != null && membership?.nextTierName
+                          ? `近 12 個月再消費 NT$${membership.nextNeedAmount.toLocaleString()} 即可升級 ${getTierDisplay(membership.nextTierName)}`
+                          : membership?.exclusiveActive
+                            ? "您已是臻享會員，享正價商品 95 折"
+                            : "註冊即為品牌好友，永久有效"}
                     </p>
                     <Link
-                      href="/brand"
+                      href="/membership"
                       className="mt-2 inline-flex items-center gap-1 text-[12px] text-[#555] underline-offset-2 hover:underline"
                     >
                       了解品牌與會員制度 ▶
@@ -1388,26 +1407,27 @@ export default function AccountPage() {
                         <div className="flex items-center justify-between border-b border-[#ebebeb] pb-3">
                           <div>
                             <p className="text-sm font-medium text-[#202223]">
-                              {membership?.tierName === "U銅貴賓"
-                                ? "註冊禮 / 會員禮"
-                                : "專屬會員禮"}
+                              入會禮（購物金）
                             </p>
                             <p className="text-xs font-bold text-amber-600 mt-0.5">
-                              {membership?.upgradeGift ?? 0} 元
+                              NT$ {membership?.welcomeGift ?? membership?.upgradeGift ?? 0}
+                            </p>
+                            <p className="text-[10px] text-[#6d7175] mt-0.5">
+                              單筆滿 NT$1,000 可使用
                             </p>
                           </div>
-                          {membership?.upgradeGift ? (
+                          {(membership?.welcomeGift ?? membership?.upgradeGift) ? (
                             <button
-                              onClick={() => handleClaim("upgrade")}
-                              disabled={claimLoading.upgrade || claimed.upgrade}
+                              onClick={() => handleClaim("welcome")}
+                              disabled={claimLoading.welcome || claimed.welcome}
                               className={cn(
                                 "px-3 py-1.5 rounded-md text-xs font-bold transition-all border shadow-sm",
-                                claimed.upgrade
+                                claimed.welcome
                                   ? "bg-gray-100 text-gray-400 border-gray-200"
                                   : "bg-white text-[#202223] border-[#c9cccf] hover:bg-[#f6f6f7]",
                               )}
                             >
-                              {claimed.upgrade ? "已領取" : "領取禮物"}
+                              {claimed.welcome ? "已領取" : "領取入會禮"}
                             </button>
                           ) : (
                             <span className="text-xs text-[#6d7175]">—</span>
@@ -1499,11 +1519,15 @@ export default function AccountPage() {
                                       {formatMoneyNT(c.amount)}
                                     </span>
                                     <p className="text-[11px] text-[#6d7175] mt-1 font-medium truncate w-full">
-                                      {c.kind === "upgrade"
-                                        ? "會員禮金"
+                                      {c.kind === "welcome" || c.kind === "legacy"
+                                        ? "入會禮金"
                                         : c.kind === "birthday"
                                           ? "生日禮金"
-                                          : "折扣券"}
+                                          : c.kind === "promo"
+                                            ? "活動優惠"
+                                            : c.kind === "ref_friend"
+                                              ? "推薦禮金"
+                                              : "折扣券"}
                                     </p>
                                   </div>
                                   <button
@@ -2167,13 +2191,13 @@ export default function AccountPage() {
               <div className="w-full">
                 {wishlistItems.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
-                    <Heart size={48} strokeWidth={1} className="text-[#ccc]" />
+                    <WishlistIcon size={96} className="opacity-40" />
                     <p className="text-sm text-[#888]">尚無收藏商品</p>
                     <Link
                       href="/products"
                       className="mt-2 inline-flex items-center gap-2 bg-[#2a514d] px-6 py-2.5 text-sm text-white transition-colors hover:bg-[#1e3d3a]"
                     >
-                      <ShoppingBag size={16} />
+                      <HoverIcon name="cart" size={32} alt="" />
                       探索商品
                     </Link>
                   </div>
@@ -2194,8 +2218,8 @@ export default function AccountPage() {
                               sizes="(max-width:640px) 50vw, (max-width:1024px) 33vw, 25vw"
                             />
                           ) : (
-                            <div className="flex h-full items-center justify-center text-[#ccc]">
-                              <ShoppingBag size={40} strokeWidth={1} />
+                            <div className="flex h-full items-center justify-center opacity-30">
+                              <HoverIcon name="cart" size={80} alt="" />
                             </div>
                           )}
                           <button
@@ -2207,7 +2231,7 @@ export default function AccountPage() {
                             className="absolute right-2 top-2 rounded-full bg-white/80 p-1.5 text-rose-500 backdrop-blur-sm transition-colors hover:bg-white"
                             aria-label="移除收藏"
                           >
-                            <Heart size={14} fill="currentColor" />
+                            <WishlistIcon active size={40} />
                           </button>
                         </Link>
                         <Link

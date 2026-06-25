@@ -1,6 +1,7 @@
 // app/products/[slug]/page.jsx
 import { fetchAllProductSlugs, fetchProductBySlug } from "@/lib/woo";
-import ProductClient from "./Client"; // 確保檔名大小寫與你的 Client 檔案一致
+import { MOCK_PRODUCTS } from "@/lib/mockProducts";
+import ProductClient from "./Client";
 
 export const revalidate = 60;
 
@@ -166,7 +167,7 @@ export default async function ProductPage({ params }) {
     woo = null;
   }
 
-  const fallback = {
+  const defaultFallback = {
     id: "hover-product",
     name: "LACOSTE FOR BEAUTY&YOUTH ONE-TONE SHORT SLEEVE T SHIRT",
     subname: "",
@@ -175,10 +176,37 @@ export default async function ProductPage({ params }) {
     salePrice: 1344,
     shortDescription: "",
     description: "",
-    images: ["/images/hover/pdp-main-1.jpg", "/images/hover/product-2.jpg", "/images/hover/people-3.jpg", "/images/hover/product-4.jpg"],
+    images: [
+      "/images/hover/pdp-main-1.jpg",
+      "/images/hover/product-2.jpg",
+      "/images/hover/people-3.jpg",
+      "/images/hover/product-4.jpg",
+    ],
     attributes: [],
     acf: null,
   };
+
+  const mock = MOCK_PRODUCTS.find((p) => p.slug === params.slug);
+  const fallback = mock
+    ? {
+        id: String(mock.id),
+        name: mock.name,
+        subname: "",
+        price: Number(mock.price),
+        regularPrice: Number(mock.price),
+        salePrice: null,
+        shortDescription: "",
+        description: "",
+        images: [
+          mock.images[0]?.src,
+          "/images/hover/product-2.jpg",
+          "/images/hover/people-3.jpg",
+          "/images/hover/product-4.jpg",
+        ].filter(Boolean),
+        attributes: [],
+        acf: null,
+      }
+    : defaultFallback;
 
   const productFAQs = woo ? getProductFAQs(woo.name) : [];
   const schemaImages =

@@ -8,7 +8,6 @@ import {
   Mail,
   Send,
   CheckCircle,
-  ChevronUp,
   MessageSquare,
 } from "lucide-react";
 
@@ -34,10 +33,6 @@ export default function ContactPage() {
     // 模擬 API 請求
     await new Promise((resolve) => setTimeout(resolve, 1500));
     setFormState("success");
-  };
-
-  const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   return (
@@ -239,20 +234,6 @@ export default function ContactPage() {
 
       {/* === 3. 頁尾深色聯絡區 (The Big Dark Footer) === */}
       <section className="bg-[#F5A49F] text-white pt-24 pb-20 relative mt-10">
-        {/* 浮動的 PAGE TOP 按鈕 */}
-        <div
-          onClick={scrollToTop}
-          className="absolute -top-7 left-1/2 -translate-x-1/2 w-14 h-14 bg-white text-[#2e2e2e] flex flex-col items-center justify-center rounded-full shadow-lg cursor-pointer hover:-translate-y-2 transition-transform duration-300 z-10 group"
-        >
-          <ChevronUp
-            size={20}
-            className="group-hover:text-blue-600 transition-colors"
-          />
-        </div>
-        <div className="absolute -top-12 left-1/2 -translate-x-1/2 text-xs font-bold tracking-widest text-gray-400">
-          PAGE TOP
-        </div>
-
         {/* 巨大標題 */}
         <div className="text-center mb-20 px-4">
           <h2 className="text-5xl md:text-[5rem] lg:text-[7rem] font-black tracking-widest opacity-90 mb-4 font-sans">

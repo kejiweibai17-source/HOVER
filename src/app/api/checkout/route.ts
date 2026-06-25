@@ -3,6 +3,11 @@ import { NextResponse } from "next/server";
 import crypto from "crypto";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
+import {
+  calcMemberDiscountAmount,
+  computeMembership,
+  type WcOrderLite,
+} from "@/lib/membership";
 
 export const runtime = "nodejs";
 
@@ -89,7 +94,54 @@ export async function POST(req: Request) {
 
     const claimedMemberDiscount = Number(memberDiscount) || 0;
     const claimedCouponDiscount = coupon ? Number(coupon.amount) || 0 : 0;
-    const totalDiscount = claimedMemberDiscount + claimedCouponDiscount;
+
+    // 伺服器端會員折扣驗算
+    let serverMemberDiscount = 0;
+    if (loggedInCustomerId && auth && BASE) {
+      try {
+        const cRes = await fetch(
+          `${BASE.replace(/\/$/, "")}/wp-json/wc/v3/customers/${loggedInCustomerId}`,
+          { headers: { Authorization: auth }, cache: "no-store" },
+        );
+        if (cRes.ok) {
+          const customer = await cRes.json();
+          const twelveMonthsAgo = new Date();
+          twelveMonthsAgo.setFullYear(twelveMonthsAgo.getFullYear() - 1);
+          const oRes = await fetch(
+            `${BASE.replace(/\/$/, "")}/wp-json/wc/v3/orders?customer=${loggedInCustomerId}&status=processing,completed&per_page=100&after=${encodeURIComponent(twelveMonthsAgo.toISOString())}`,
+            { headers: { Authorization: auth }, cache: "no-store" },
+          );
+          const ordersForCalc = oRes.ok ? await oRes.json() : [];
+          const ordersLite: WcOrderLite[] = (ordersForCalc || []).map((o: any) => ({
+            total: parseFloat(o.total) || 0,
+            date_created: o.date_created,
+          }));
+          const membership = computeMembership(
+            ordersLite,
+            customer.meta_data || [],
+          );
+          serverMemberDiscount = calcMemberDiscountAmount(
+            calculatedSubtotal,
+            membership.tierId,
+            membership.exclusiveActive,
+          );
+        }
+      } catch (e) {
+        console.error("member discount verify error:", e);
+      }
+    }
+
+    if (Math.abs(claimedMemberDiscount - serverMemberDiscount) > 1) {
+      console.error(
+        `[資安攔截] 會員折扣不符！前端:${claimedMemberDiscount} / 後端:${serverMemberDiscount}`,
+      );
+      return NextResponse.json(
+        { ok: false, message: "會員折扣驗證失敗，請重新整理頁面。" },
+        { status: 403 },
+      );
+    }
+
+    const totalDiscount = serverMemberDiscount + claimedCouponDiscount;
     const discountedSubtotal = Math.max(0, calculatedSubtotal - totalDiscount);
 
     // 🌟 後端真實運費邏輯

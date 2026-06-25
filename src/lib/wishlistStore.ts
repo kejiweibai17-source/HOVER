@@ -1,6 +1,7 @@
 // lib/wishlistStore.ts
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { useToastStore } from "@/lib/toastStore";
 
 export type WishlistItem = {
   id: string | number;
@@ -27,6 +28,7 @@ export const useWishlistStore = create<WishlistState>()(
       addItem: (item) => {
         if (get().items.find((x) => x.id === item.id)) return;
         set((s) => ({ items: [...s.items, item] }));
+        useToastStore.getState().show(`已將 ${item.name} 加入收藏`);
       },
 
       removeItem: (id) =>
@@ -37,6 +39,7 @@ export const useWishlistStore = create<WishlistState>()(
           set((s) => ({ items: s.items.filter((x) => x.id !== item.id) }));
         } else {
           set((s) => ({ items: [...s.items, item] }));
+          useToastStore.getState().show(`已將 ${item.name} 加入收藏`);
         }
       },
 

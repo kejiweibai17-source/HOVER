@@ -4,7 +4,7 @@ import { useState } from "react";
 import Image from "next/image";
 import { Link } from "next-view-transitions";
 import { useRouter } from "next/navigation";
-import { Heart } from "lucide-react";
+import WishlistIcon from "@/components/hover/WishlistIcon";
 import { useWishlistStore } from "@/lib/wishlistStore";
 import { useAuthStore } from "@/lib/authStore";
 import InfiniteCarousel from "@/components/hover/InfiniteCarousel";
@@ -92,10 +92,7 @@ const PRODUCTS = [
     colorLabel: "藍",
     colorHex: "#9ab3d4",
     colors: [{ label: "藍", hex: "#9ab3d4" }],
-    gallery: [
-      "/images/hover/product-4.jpg",
-      "/images/hover/people-4.jpg",
-    ],
+    gallery: ["/images/hover/product-4.jpg", "/images/hover/people-4.jpg"],
     description:
       "深藍丹寧襯衫，簡約線條與織帶細節相互平衡，是衣櫃中不可或缺的百搭單品。",
   },
@@ -198,7 +195,9 @@ function ProductCard({ product }) {
     const loggedIn = await checkAuth();
     setWishlistPending(false);
     if (!loggedIn) {
-      router.push(`/login?next=${encodeURIComponent("/account?tab=favorites")}`);
+      router.push(
+        `/login?next=${encodeURIComponent("/account?tab=favorites")}`,
+      );
       return;
     }
     toggleItem({
@@ -244,38 +243,32 @@ function ProductCard({ product }) {
             NEW
           </span>
         )}
-
-        {/* Wishlist heart */}
-        <button
-          type="button"
-          aria-label={isSaved ? "取消收藏" : "加入收藏"}
-          onClick={handleWishlist}
-          disabled={wishlistPending}
-          className={`absolute right-3 top-3 z-20 transition-opacity ${
-            isSaved
-              ? "text-rose-500 opacity-100"
-              : "text-[#aaa] opacity-0 group-hover:opacity-100"
-          }`}
-        >
-          <Heart
-            size={16}
-            strokeWidth={1.5}
-            fill={isSaved ? "currentColor" : "none"}
-          />
-        </button>
       </div>
 
       {/* Info */}
-      <div className="mt-3 space-y-1">
+      <div className="mt-3 space-y-1 text-left">
         <p className="text-[11px] tracking-widest text-[#888]">
           {product.category}
         </p>
-        <Link
-          href={product.href}
-          className="block text-[13px] font-semibold text-black hover:opacity-60"
-        >
-          {product.name}
-        </Link>
+        <div className="flex items-start justify-between gap-2">
+          <Link
+            href={product.href}
+            className="flex-1 text-[13px] font-semibold text-black hover:opacity-60"
+          >
+            {product.name}
+          </Link>
+          <button
+            type="button"
+            aria-label={isSaved ? "取消收藏" : "加入收藏"}
+            onClick={handleWishlist}
+            disabled={wishlistPending}
+            className={`shrink-0 transition-opacity hover:opacity-60 ${
+              isSaved ? "opacity-100" : "opacity-80"
+            }`}
+          >
+            <WishlistIcon active={isSaved} size={40} />
+          </button>
+        </div>
 
         {/* Color swatch */}
         <div className="flex items-center gap-2 pt-0.5">
@@ -321,7 +314,7 @@ function ProductSection({ title, products }) {
       visibleMd={4}
       visibleSm={2}
       className="py-0"
-      headerClassName=""
+      imageAspectRatio="404/479"
       renderItem={(product) => <ProductCard product={product} />}
     />
   );
@@ -331,7 +324,7 @@ function ProductSection({ title, products }) {
 
 function BrandStorySection() {
   return (
-    <section className="grid h-[85vh] bg-hover-bg md:grid-cols-[58%_42%]">
+    <section className="bg-hover-bg md:grid md:h-[85vh] md:grid-cols-[58%_42%]">
       {/* Left — photo */}
       <div className="relative min-h-[380px] overflow-hidden md:min-h-[600px]">
         <Image
@@ -341,15 +334,13 @@ function BrandStorySection() {
           className="object-cover"
           sizes="(max-width: 768px) 100vw, 58vw"
         />
-        {/* "HOVER" overlay bottom-left */}
         <span className="absolute bottom-8 left-8 font-black text-[36px] leading-none tracking-tight text-black mix-blend-multiply opacity-90 md:text-[52px]">
           HOVER
         </span>
       </div>
 
-      {/* Right — brand text */}
-      <div className="my-10 flex flex-col items-center justify-between bg-hover-bg px-10 py-12 md:px-14 md:py-16">
-        {/* Vertical text columns */}
+      {/* Right — brand text（僅桌機顯示） */}
+      <div className="hidden flex-col items-center justify-between bg-hover-bg px-10 py-12 md:my-10 md:flex md:px-14 md:py-16">
         <div className="flex justify-end gap-6">
           <p className="[writing-mode:vertical-rl] text-[22px] leading-[1.6] tracking-[0.25em] text-black md:text-[26px]">
             輕盈與穩定之間的
@@ -358,8 +349,7 @@ function BrandStorySection() {
             生活態度、
           </p>
         </div>
-
-        {/* Description */}
+        http://localhost:3000/products/chambray-ribbon-shirt
         <p className="mt-8 max-w-[280px] text-right text-[12px] leading-[2] tracking-wide text-[#4d4b48] md:text-[13px]">
           HOVER 是一個為日常而設計的服飾品牌。
           <br />
@@ -421,13 +411,16 @@ function HoverPeopleSection() {
   return (
     <InfiniteCarousel
       title="HOVER PEOPLE"
-      titleClassName="text-[22px] font-black tracking-[0.28em] text-black md:text-[28px]"
-      headerClassName="px-10 pb-2 pt-12 md:px-16"
+      headerClassName="pb-2"
       items={PEOPLE_ITEMS}
       visibleMd={4}
-      visibleSm={2}
+      visibleSm={3}
       className="pb-0"
-      slideClassName="px-0"
+      trackContentClassName="px-0 md:px-16"
+      slideClassName="md:pr-3"
+      mobileAutoplayInterval={4500}
+      mobileDraggable
+      imageAspectRatio="481/550"
       renderItem={(person, i) => (
         <div className="relative aspect-[481/550] overflow-hidden">
           <Image

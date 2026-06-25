@@ -16,7 +16,7 @@ export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
   title: "隱私權保護｜HOVER 威爾特",
   description:
-    "了解 HOVER 如何蒐集、使用與保護您的個人資料，包含會員資料、訂單資訊及第三方登入相關說明。",
+    "了解 HOVER 如何蒐集、使用與保護您的個人資料，包含蒐集目的、Cookie、第三方服務、當事人權利及政策修改說明。",
   alternates: { canonical: "/privacy" },
   openGraph: {
     type: "website",

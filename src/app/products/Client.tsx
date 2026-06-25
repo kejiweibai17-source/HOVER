@@ -8,9 +8,9 @@ import {
   SlidersHorizontal,
   ChevronDown,
   X,
-  Heart,
   ChevronRight,
 } from "lucide-react";
+import WishlistIcon from "@/components/hover/WishlistIcon";
 import { useWishlistStore } from "@/lib/wishlistStore";
 import { useAuthStore } from "@/lib/authStore";
 import { MOCK_PRODUCTS } from "@/lib/mockProducts";
@@ -282,15 +282,11 @@ function WishlistHeart({ product }: { product: Product }) {
       aria-label={isSaved ? "取消收藏" : "加入收藏"}
       onClick={handleClick}
       disabled={pending}
-      className={`shrink-0 transition-colors hover:opacity-60 ${
-        isSaved ? "text-rose-500" : "text-[#555] hover:text-rose-400"
+      className={`shrink-0 transition-opacity hover:opacity-60 ${
+        isSaved ? "opacity-100" : "opacity-80"
       }`}
     >
-      <Heart
-        size={15}
-        strokeWidth={1.5}
-        fill={isSaved ? "currentColor" : "none"}
-      />
+      <WishlistIcon active={isSaved} size={40} />
     </button>
   );
 }
@@ -325,14 +321,14 @@ function ProductCard({ product }: { product: Product }) {
         <p className="mb-0.5 text-[10px] text-[#888]">
           {product.category || "Products"}
         </p>
+
         <div className="mb-1 flex items-start justify-between gap-2">
-          <p className="text-[12px] font-semibold uppercase leading-snug text-black line-clamp-2">
+          <p className="flex-1 text-[12px] font-semibold uppercase leading-snug text-black line-clamp-2">
             {product.name}
           </p>
           <WishlistHeart product={product} />
         </div>
 
-        {/* Color swatches */}
         {product.colors && product.colors.length > 0 && (
           <div className="mb-1 flex gap-1">
             {product.colors.map((c, i) => (

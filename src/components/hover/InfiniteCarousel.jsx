@@ -1,11 +1,49 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
-function CarouselArrows({ onPrev, onNext }) {
+const MOBILE_MQ = "(max-width: 767px)";
+const SWIPE_THRESHOLD = 48;
+
+function CarouselArrows({ onPrev, onNext, imageAspectRatio, visible }) {
   const btnClass =
-    "absolute top-1/2 z-10 flex h-10 w-10 -translate-y-1/2 items-center justify-center border border-[#ddd] bg-white text-black shadow-sm transition-colors hover:bg-[#f5f5f5]";
+    "absolute top-1/2 z-10 flex -translate-y-1/2 items-center justify-center text-black transition-opacity hover:opacity-50";
+
+  if (imageAspectRatio && visible > 0) {
+    const slideWidth = `${100 / visible}%`;
+
+    return (
+      <>
+        <div
+          className="pointer-events-none absolute left-0 top-0 z-10"
+          style={{ width: slideWidth, aspectRatio: imageAspectRatio }}
+        >
+          <button
+            type="button"
+            aria-label="上一組"
+            onClick={onPrev}
+            className={`${btnClass} pointer-events-auto left-2 md:left-4`}
+          >
+            <ChevronLeft size={28} strokeWidth={1.25} />
+          </button>
+        </div>
+        <div
+          className="pointer-events-none absolute right-0 top-0 z-10"
+          style={{ width: slideWidth, aspectRatio: imageAspectRatio }}
+        >
+          <button
+            type="button"
+            aria-label="下一組"
+            onClick={onNext}
+            className={`${btnClass} pointer-events-auto right-2 md:right-4`}
+          >
+            <ChevronRight size={28} strokeWidth={1.25} />
+          </button>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -13,17 +51,17 @@ function CarouselArrows({ onPrev, onNext }) {
         type="button"
         aria-label="上一組"
         onClick={onPrev}
-        className={`${btnClass} left-2 md:left-4`}
+        className={`${btnClass} absolute left-2 top-1/2 z-10 -translate-y-1/2 md:left-4`}
       >
-        <ChevronLeft size={20} strokeWidth={1.5} />
+        <ChevronLeft size={28} strokeWidth={1.25} />
       </button>
       <button
         type="button"
         aria-label="下一組"
         onClick={onNext}
-        className={`${btnClass} right-2 md:right-4`}
+        className={`${btnClass} absolute right-2 top-1/2 z-10 -translate-y-1/2 md:right-4`}
       >
-        <ChevronRight size={20} strokeWidth={1.5} />
+        <ChevronRight size={28} strokeWidth={1.25} />
       </button>
     </>
   );
@@ -31,20 +69,34 @@ function CarouselArrows({ onPrev, onNext }) {
 
 export default function InfiniteCarousel({
   title,
-  titleClassName = "mb-6 text-[15px] font-semibold tracking-[0.12em] text-black",
+  titleClassName = "mb-6 text-[22px] font-black tracking-[0.28em] text-black md:text-[28px]",
   items = [],
   renderItem,
   visibleMd = 4,
   visibleSm = 2,
   className = "",
+  contentClassName = "px-4 md:px-16",
   headerClassName = "",
+  trackContentClassName = "",
   trackClassName = "",
-  slideClassName = "px-2 md:px-3",
+  slideClassName = "pr-2 md:pr-3",
+  mobileAutoplayInterval = 0,
+  mobileDraggable = false,
+  imageAspectRatio = "",
 }) {
   const baseLength = items.length;
   const [visible, setVisible] = useState(visibleMd);
   const [index, setIndex] = useState(baseLength);
   const [animate, setAnimate] = useState(true);
+  const [isMobile, setIsMobile] = useState(false);
+  const [dragPx, setDragPx] = useState(0);
+  const [dragging, setDragging] = useState(false);
+
+  const touchStartX = useRef(0);
+  const touchDelta = useRef(0);
+  const draggingRef = useRef(false);
+  const autoplayPausedRef = useRef(false);
+  const autoplayResumeTimer = useRef(null);
 
   const loopItems = useMemo(() => {
     if (!baseLength) return [];
@@ -67,6 +119,25 @@ export default function InfiniteCarousel({
     return () => mq.removeEventListener("change", update);
   }, [visibleMd, visibleSm]);
 
+  useEffect(() => {
+    const mq = window.matchMedia(MOBILE_MQ);
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  const pauseAutoplay = useCallback(() => {
+    if (!mobileAutoplayInterval) return;
+    autoplayPausedRef.current = true;
+    if (autoplayResumeTimer.current) {
+      clearTimeout(autoplayResumeTimer.current);
+    }
+    autoplayResumeTimer.current = setTimeout(() => {
+      autoplayPausedRef.current = false;
+    }, 6000);
+  }, [mobileAutoplayInterval]);
+
   const go = useCallback(
     (delta) => {
       if (!baseLength) return;
@@ -75,6 +146,54 @@ export default function InfiniteCarousel({
     },
     [baseLength],
   );
+
+  useEffect(() => {
+    if (!mobileAutoplayInterval || !isMobile || !baseLength) return;
+
+    const timer = window.setInterval(() => {
+      if (autoplayPausedRef.current || draggingRef.current) return;
+      go(1);
+    }, mobileAutoplayInterval);
+
+    return () => window.clearInterval(timer);
+  }, [mobileAutoplayInterval, isMobile, baseLength, go]);
+
+  const handleDragStart = useCallback(
+    (clientX) => {
+      if (!mobileDraggable || !isMobile) return;
+      pauseAutoplay();
+      draggingRef.current = true;
+      setDragging(true);
+      setAnimate(false);
+      touchStartX.current = clientX;
+      touchDelta.current = 0;
+      setDragPx(0);
+    },
+    [mobileDraggable, isMobile, pauseAutoplay],
+  );
+
+  const handleDragMove = useCallback((clientX) => {
+    if (!draggingRef.current) return;
+    const dx = clientX - touchStartX.current;
+    touchDelta.current = dx;
+    setDragPx(dx);
+  }, []);
+
+  const handleDragEnd = useCallback(() => {
+    if (!draggingRef.current) return;
+    draggingRef.current = false;
+    setDragging(false);
+
+    if (touchDelta.current < -SWIPE_THRESHOLD) {
+      go(1);
+    } else if (touchDelta.current > SWIPE_THRESHOLD) {
+      go(-1);
+    }
+
+    touchDelta.current = 0;
+    setDragPx(0);
+    setAnimate(true);
+  }, [go]);
 
   useEffect(() => {
     if (!baseLength) return;
@@ -101,20 +220,39 @@ export default function InfiniteCarousel({
   return (
     <section className={`relative bg-white ${className}`}>
       {title ? (
-        <div className={headerClassName || "px-10 pt-12 md:px-16"}>
+        <div className={`${contentClassName} pt-10 md:pt-12 ${headerClassName}`}>
           <h2 className={titleClassName}>{title}</h2>
         </div>
       ) : null}
 
-      <div className={`relative ${title ? "pb-12" : "py-12"} px-10 md:px-16`}>
-        <CarouselArrows onPrev={() => go(-1)} onNext={() => go(1)} />
+      <div
+        className={`relative ${title ? "pb-12" : "py-12"} ${trackContentClassName || contentClassName}`}
+      >
+        <div
+          className={`relative overflow-hidden ${trackClassName} ${
+            mobileDraggable && isMobile ? "touch-pan-y" : ""
+          }`}
+          onTouchStart={(e) => handleDragStart(e.touches[0].clientX)}
+          onTouchMove={(e) => handleDragMove(e.touches[0].clientX)}
+          onTouchEnd={handleDragEnd}
+          onTouchCancel={handleDragEnd}
+        >
+          <CarouselArrows
+            onPrev={() => go(-1)}
+            onNext={() => go(1)}
+            imageAspectRatio={imageAspectRatio}
+            visible={visible}
+          />
 
-        <div className={`overflow-hidden ${trackClassName}`}>
           <div
-            className={`flex ${animate ? "transition-transform duration-300 ease-out" : ""}`}
+            className={`flex ${
+              animate && !dragging ? "transition-transform duration-300 ease-out" : ""
+            }`}
             style={{
               width: `${innerWidthPercent}%`,
-              transform: `translateX(-${translatePercent}%)`,
+              transform: dragging
+                ? `translateX(calc(-${translatePercent}% + ${dragPx}px))`
+                : `translateX(-${translatePercent}%)`,
             }}
           >
             {loopItems.map((item, i) => (

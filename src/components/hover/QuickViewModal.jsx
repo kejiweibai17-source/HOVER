@@ -5,14 +5,9 @@ import Image from "next/image";
 import { Link } from "next-view-transitions";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import {
-  X,
-  Heart,
-  ChevronLeft,
-  ChevronRight,
-  Minus,
-  Plus,
-} from "lucide-react";
+import { ChevronLeft, ChevronRight, Minus, Plus, X } from "lucide-react";
+import WishlistIcon from "@/components/hover/WishlistIcon";
+import HoverIcon from "@/components/hover/HoverIcon";
 import { useCartStore } from "@/lib/cartStore";
 import { useWishlistStore } from "@/lib/wishlistStore";
 import { useAuthStore } from "@/lib/authStore";
@@ -283,15 +278,11 @@ export default function QuickViewModal({ product, onClose }) {
                       aria-label={isSaved ? "取消收藏" : "加入收藏"}
                       onClick={handleToggleWishlist}
                       disabled={wishlistPending}
-                      className={`mt-0.5 shrink-0 transition-colors ${
-                        isSaved ? "text-rose-500" : "text-black hover:text-rose-400"
+                      className={`mt-0.5 shrink-0 transition-opacity hover:opacity-70 ${
+                        isSaved ? "opacity-100" : "opacity-80"
                       }`}
                     >
-                      <Heart
-                        size={20}
-                        strokeWidth={1.5}
-                        fill={isSaved ? "currentColor" : "none"}
-                      />
+                      <WishlistIcon active={isSaved} size={52} />
                     </button>
                   </div>
 

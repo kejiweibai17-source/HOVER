@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -14,6 +15,20 @@ import {
 
 const currency = (n: number) =>
   `NT$ ${(Math.round(n || 0)).toLocaleString("zh-TW")}`;
+
+const FREE_SHIP_THRESHOLD = 1500;
+const SHIPPING_BASE = 80;
+
+function calcTotals(items: CartItem[]) {
+  const subtotal = items.reduce(
+    (sum, it) => sum + Number(it.price || 0) * (it.qty || 0),
+    0,
+  );
+  const shipping =
+    subtotal >= FREE_SHIP_THRESHOLD || subtotal === 0 ? 0 : SHIPPING_BASE;
+  const total = subtotal + shipping;
+  return { subtotal, shipping, total };
+}
 
 function getVariantLines(item: CartItem): string[] {
   if (item.options) {
@@ -36,6 +51,8 @@ export default function CartSheet() {
   const remove = useCartStore((s) => s.removeItem);
 
   const router = useRouter();
+
+  const { subtotal, total } = useMemo(() => calcTotals(items), [items]);
 
   const goCheckout = () => {
     if (!items.length) return;
@@ -196,6 +213,18 @@ export default function CartSheet() {
 
             {/* Footer */}
             <div className="border-t border-[#ccc] px-6 py-6">
+              {items.length > 0 && (
+                <div className="mb-5 space-y-2.5 text-[14px] text-black">
+                  <div className="flex items-center justify-between">
+                    <span>小計</span>
+                    <span>{currency(subtotal)}</span>
+                  </div>
+                  <div className="flex items-center justify-between font-bold">
+                    <span>總計</span>
+                    <span>{currency(total)}</span>
+                  </div>
+                </div>
+              )}
               <button
                 type="button"
                 disabled={items.length === 0}

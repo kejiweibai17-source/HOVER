@@ -8,8 +8,12 @@ import HoverFooter from "@/components/hover/HoverFooter";
 import LenisWrapper from "@/components/LenisWrapper";
 import { useEffect } from "react";
 import CartDrawer from "@/components/cart/CartDrawer";
+import AuthProvider from "@/components/AuthProvider";
 import AOS from "aos";
 import "aos/dist/aos.css";
+import GoTopButton from "@/components/hover/GoTopButton";
+import HoverToast from "@/components/hover/HoverToast";
+import SearchPanel from "@/components/hover/SearchPanel";
 import { usePathname } from "next/navigation";
 
 function ScrollToTopOnNav() {
@@ -30,6 +34,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
 
   return (
     <LenisWrapper>
+      <AuthProvider>
       <ViewTransitions>
         <ScrollToTopOnNav />
 
@@ -42,10 +47,14 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
         </main>
 
         <CartDrawer />
+        <SearchPanel />
+        <HoverToast />
+        <GoTopButton />
 
         {/* Global HOVER footer */}
         <HoverFooter />
       </ViewTransitions>
+      </AuthProvider>
     </LenisWrapper>
   );
 }

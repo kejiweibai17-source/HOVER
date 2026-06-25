@@ -38,14 +38,7 @@ async function assertAdmin(noCache: Record<string, string>) {
   return null;
 }
 
-function calcTier(totalSpent: number) {
-  if (totalSpent >= 35000) return "VVIP 貴賓";
-  if (totalSpent >= 10000) return "VIP 貴賓";
-  if (totalSpent >= 6000) return "金貴賓";
-  if (totalSpent >= 2000) return "銀貴賓";
-  if (totalSpent > 0) return "銅貴賓";
-  return "尚未消費";
-}
+import { computeMembership, tierLabel, type WcOrderLite } from "@/lib/membership";
 
 function getMetaValue(meta: any[], key: string): any {
   return meta?.find((m) => m.key === key)?.value;
@@ -206,6 +199,11 @@ export async function GET() {
         }
       }
 
+      const ordersLite: WcOrderLite[] = [
+        { total: totalSpent, date_created: lastOrderDate || new Date().toISOString() },
+      ];
+      const membership = computeMembership(ordersLite, c.meta_data || []);
+
       customers.push({
         id: c.id,
         name: `${c.first_name} ${c.last_name}`.trim() || c.username,
@@ -218,7 +216,13 @@ export async function GET() {
         ordersCount,
         lastOrderDate,
 
-        tier: calcTier(totalSpent),
+        tier: membership.exclusiveActive
+          ? tierLabel(membership.tierId)
+          : totalSpent > 0
+            ? tierLabel(membership.tierId)
+            : "尚未消費",
+        tierId: membership.tierId,
+        exclusiveActive: membership.exclusiveActive,
 
         referredCount: referredCountMap[c.id] || 0,
         rewardedCount: rewardedCountMap[c.id] || 0,

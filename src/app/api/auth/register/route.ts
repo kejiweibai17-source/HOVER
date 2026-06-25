@@ -2,6 +2,11 @@
 import { NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
+import {
+  buildGiftCouponPayload,
+  welcomeCouponCode,
+  HOVER_MEMBERSHIP_META,
+} from "@/lib/membership";
 
 export const runtime = "nodejs";
 
@@ -78,6 +83,41 @@ async function ensureAmbassadorExists(id: number): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+// 入會禮 NT$100（HOVER FRIENDS）
+async function grantWelcomeCoupon(newCustomerId: number, email: string) {
+  const authHeader = { Authorization: basicAuth() };
+  const code = welcomeCouponCode(newCustomerId);
+
+  const existing = await fetch(
+    `${BASE}/wp-json/wc/v3/coupons?code=${encodeURIComponent(code)}`,
+    { headers: authHeader, cache: "no-store" },
+  );
+  const arr = await existing.json();
+  if (Array.isArray(arr) && arr.length > 0) return;
+
+  await fetch(`${BASE}/wp-json/wc/v3/coupons`, {
+    method: "POST",
+    headers: { ...authHeader, "Content-Type": "application/json" },
+    body: JSON.stringify(
+      buildGiftCouponPayload({
+        code,
+        amount: 100,
+        email,
+        description: "HOVER FRIENDS 入會禮 NT$100（單筆滿 NT$1,000 可使用）",
+        expiryDays: 90,
+      }),
+    ),
+  });
+
+  await fetch(`${BASE}/wp-json/wc/v3/customers/${newCustomerId}`, {
+    method: "PUT",
+    headers: { ...authHeader, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      meta_data: [{ key: HOVER_MEMBERSHIP_META.welcomeClaimed, value: "1" }],
+    }),
+  });
 }
 
 // 給親友 50 元註冊禮（一次）
@@ -195,6 +235,13 @@ export async function POST(req: Request) {
 
     const newCustomerId: number = data.id;
     const createdEmail = String(data?.email || email).trim().toLowerCase();
+
+    // 入會禮
+    try {
+      await grantWelcomeCoupon(newCustomerId, createdEmail);
+    } catch (e) {
+      console.error("grantWelcomeCoupon error:", e);
+    }
 
     // 給推薦禮
     if (ambassadorOk && ambassadorId && ambassadorId !== newCustomerId) {
