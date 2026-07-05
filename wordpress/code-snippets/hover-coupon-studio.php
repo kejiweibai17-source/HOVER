@@ -10,13 +10,7 @@ add_action('admin_menu', function () {
         'hcs', 'hcs_page', 'dashicons-tag', 56);
 }, 99);
 
-add_action('admin_enqueue_scripts', function ($hook) {
-    if (strpos($hook, 'hcs') === false && $hook !== 'toplevel_page_hcs') return;
-    wp_enqueue_style('hcs', false, [], '3');
-    wp_add_inline_style('hcs', hcs_css());
-    wp_enqueue_script('hcs', false, ['jquery'], '3', true);
-    wp_add_inline_script('hcs', hcs_js());
-});
+add_action('admin_footer', 'hcs_admin_footer_script');
 
 /* ── 資料 ── */
 function hcs_kind_map(): array {
@@ -133,109 +127,212 @@ function hcs_post(): ?array {
     return null;
 }
 
-/* ── CSS ── */
+/* ── CSS / JS（Code Snippets 需 inline 輸出） ── */
+function hcs_print_admin_styles(): void
+{
+    ?>
+    <style><?php echo hcs_css(); ?></style>
+    <?php
+}
+
+function hcs_admin_footer_script(): void
+{
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!$screen || $screen->id !== 'toplevel_page_hcs') {
+        return;
+    }
+    ?>
+    <script><?php echo hcs_js(); ?></script>
+    <?php
+}
+
 function hcs_css(): string { return <<<'CSS'
-#wpcontent,#wpbody-content{background:#f1f2f4!important}
-.hcs{max-width:1200px;margin:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#202223}
-.hcs *{box-sizing:border-box}
+.hover-coupon-admin { max-width: 1180px; }
+.hover-coupon-admin .hcs { margin-top: 8px; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #202223; }
+.hover-coupon-admin .hcs * { box-sizing: border-box; }
 
-.hcs-topbar{display:flex;align-items:center;justify-content:space-between;padding:16px 0 12px}
-.hcs-topbar h1{margin:0;font-size:20px;font-weight:700;color:#202223}
+.hover-coupon-admin .hcs-topbar {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    gap: 16px; padding: 0 0 16px;
+}
+.hover-coupon-admin .hcs-topbar h1 { margin: 0 0 6px; font-size: 22px; font-weight: 700; }
+.hover-coupon-admin .hcs-topbar p { margin: 0; font-size: 13px; color: #646970; }
+.hover-coupon-admin .hcs-topbar-actions { display: flex; gap: 8px; flex-shrink: 0; align-items: center; }
 
-.hcs-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
-.hcs-stat{background:#fff;border:1px solid #e1e3e5;border-radius:8px;padding:16px 18px}
-.hcs-stat-n{font-size:24px;font-weight:700;color:#202223;margin-bottom:2px}
-.hcs-stat-l{font-size:12px;color:#6d7175}
+.hover-coupon-admin .hcs-api-pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: #fff; border: 1px solid #dcdcde; border-radius: 999px;
+    padding: 8px 14px; margin-bottom: 16px; font-size: 12px; color: #646970;
+}
 
-.hcs-nav{display:flex;gap:0;border-bottom:1px solid #e1e3e5;margin-bottom:16px}
-.hcs-nav-btn{background:none;border:none;padding:10px 16px;font-size:13px;font-weight:500;color:#6d7175;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px;transition:color .1s,border-color .1s}
-.hcs-nav-btn:hover{color:#202223}
-.hcs-nav-btn.on{color:#202223;font-weight:600;border-bottom-color:#202223}
+.hover-coupon-admin .hcs-stats {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px;
+}
+.hover-coupon-admin .hcs-stat {
+    background: #fff; border: 1px solid #dcdcde; border-radius: 8px;
+    padding: 16px 18px; box-shadow: 0 1px 2px rgba(0,0,0,.04);
+}
+.hover-coupon-admin .hcs-stat-n { font-size: 26px; font-weight: 700; color: #2a514d; margin-bottom: 4px; }
+.hover-coupon-admin .hcs-stat-l { font-size: 12px; color: #646970; }
 
-.hcs-panel{display:none}
-.hcs-panel.on{display:block}
+.hover-coupon-admin .hcs-nav {
+    display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px;
+}
+.hover-coupon-admin .hcs-nav-btn {
+    border: 1px solid #dcdcde; background: #fff; border-radius: 999px;
+    padding: 8px 14px; font-size: 13px; font-weight: 600; color: #50575e;
+    cursor: pointer; transition: .15s;
+}
+.hover-coupon-admin .hcs-nav-btn:hover { border-color: #2a514d; color: #2a514d; }
+.hover-coupon-admin .hcs-nav-btn.on {
+    background: #2a514d; border-color: #2a514d; color: #fff;
+    box-shadow: 0 4px 14px rgba(42,81,77,.18);
+}
 
-.hcs-card{background:#fff;border:1px solid #e1e3e5;border-radius:8px;margin-bottom:14px}
-.hcs-card-head{padding:14px 18px;border-bottom:1px solid #e1e3e5;display:flex;align-items:center;justify-content:space-between}
-.hcs-card-head h2{margin:0;font-size:14px;font-weight:600;color:#202223}
-.hcs-card-body{padding:18px}
+.hover-coupon-admin .hcs-panel { display: none; }
+.hover-coupon-admin .hcs-panel.on { display: block; }
 
-.hcs-row{display:grid;grid-template-columns:1fr 1fr;gap:14px 20px}
-.hcs-row.c3{grid-template-columns:1fr 1fr 1fr}
-.hcs-row.c4{grid-template-columns:1fr 1fr 1fr 1fr}
-.hcs-f{display:flex;flex-direction:column;gap:4px}
-.hcs-f.full{grid-column:1/-1}
-.hcs-f.s2{grid-column:span 2}
-.hcs-f label{font-size:12px;font-weight:500;color:#202223}
-.hcs-f input,.hcs-f select,.hcs-f textarea{border:1px solid #c9cccf;border-radius:6px;padding:8px 10px;font-size:13px;color:#202223;background:#fff;width:100%}
-.hcs-f input:focus,.hcs-f select:focus{border-color:#458fff;box-shadow:0 0 0 2px rgba(69,143,255,.2);outline:none}
-.hcs-f .sub{font-size:11px;color:#6d7175}
+.hover-coupon-admin .hcs-card {
+    background: #fff; border: 1px solid #dcdcde; border-radius: 8px;
+    margin-bottom: 14px; box-shadow: 0 1px 2px rgba(0,0,0,.04); overflow: hidden;
+}
+.hover-coupon-admin .hcs-card-head {
+    padding: 14px 18px; border-bottom: 1px solid #f0f0f1;
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+}
+.hover-coupon-admin .hcs-card-head h2 { margin: 0; font-size: 14px; font-weight: 700; }
+.hover-coupon-admin .hcs-card-body { padding: 18px; }
 
-.hcs-type-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:0}
-.hcs-type{border:1px solid #c9cccf;border-radius:8px;padding:12px;cursor:pointer;background:#fff;text-align:center;transition:border-color .15s}
-.hcs-type:hover{border-color:#458fff}
-.hcs-type.on{border-color:#458fff;background:#f0f5ff;box-shadow:0 0 0 2px rgba(69,143,255,.2)}
-.hcs-type-icon{font-size:18px;margin-bottom:4px}
-.hcs-type-name{font-size:12px;font-weight:600;color:#202223}
-.hcs-type-sub{font-size:11px;color:#6d7175;margin-top:1px}
+.hover-coupon-admin .hcs-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
+.hover-coupon-admin .hcs-row.c3 { grid-template-columns: 1fr 1fr 1fr; }
+.hover-coupon-admin .hcs-row.c4 { grid-template-columns: 1fr 1fr 1fr 1fr; }
+.hover-coupon-admin .hcs-f { display: flex; flex-direction: column; gap: 6px; }
+.hover-coupon-admin .hcs-f.full { grid-column: 1 / -1; }
+.hover-coupon-admin .hcs-f.s2 { grid-column: span 2; }
+.hover-coupon-admin .hcs-f label { font-size: 13px; font-weight: 600; color: #202223; }
+.hover-coupon-admin .hcs-f input,
+.hover-coupon-admin .hcs-f select,
+.hover-coupon-admin .hcs-f textarea {
+    border: 1px solid #c3c4c7; border-radius: 6px; padding: 8px 10px;
+    font-size: 13px; color: #202223; background: #fff; width: 100%;
+}
+.hover-coupon-admin .hcs-f input:focus,
+.hover-coupon-admin .hcs-f select:focus { border-color: #2a514d; box-shadow: 0 0 0 2px rgba(42,81,77,.15); outline: none; }
+.hover-coupon-admin .hcs-f .sub { font-size: 11px; color: #646970; }
 
-.hcs-sep{border:none;border-top:1px solid #e1e3e5;margin:16px 0}
+.hover-coupon-admin .hcs-type-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+.hover-coupon-admin .hcs-type {
+    border: 1px solid #dcdcde; border-radius: 8px; padding: 14px 10px;
+    cursor: pointer; background: #fcfcfd; text-align: center; transition: .15s;
+}
+.hover-coupon-admin .hcs-type:hover { border-color: #2a514d; }
+.hover-coupon-admin .hcs-type.on {
+    border-color: #2a514d; background: #edf7f1;
+    box-shadow: 0 0 0 2px rgba(42,81,77,.12);
+}
+.hover-coupon-admin .hcs-type-icon { font-size: 18px; margin-bottom: 6px; }
+.hover-coupon-admin .hcs-type-name { font-size: 12px; font-weight: 700; color: #202223; }
+.hover-coupon-admin .hcs-type-sub { font-size: 11px; color: #646970; margin-top: 2px; }
 
-.hcs-ck{display:flex;align-items:center;gap:8px;font-size:13px;color:#202223;cursor:pointer}
-.hcs-ck input[type=checkbox]{width:16px;height:16px;accent-color:#458fff}
-.hcs-ck-row{display:flex;gap:20px;flex-wrap:wrap}
+.hover-coupon-admin .hcs-sep { border: none; border-top: 1px solid #eef2f6; margin: 16px 0; }
 
-.hcs-foot{display:flex;align-items:center;gap:10px;margin-top:16px;padding-top:16px;border-top:1px solid #e1e3e5}
+.hover-coupon-admin .hcs-ck { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #202223; cursor: pointer; }
+.hover-coupon-admin .hcs-ck input[type=checkbox] { width: 16px; height: 16px; accent-color: #2a514d; }
+.hover-coupon-admin .hcs-ck-row { display: flex; gap: 20px; flex-wrap: wrap; }
 
-.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;border:none;text-decoration:none;transition:background .1s}
-.btn-p{background:#202223;color:#fff}
-.btn-p:hover{background:#44474a;color:#fff}
-.btn-s{background:#fff;color:#202223;border:1px solid #c9cccf}
-.btn-s:hover{background:#f6f6f7}
-.btn-d{background:#fff;color:#d72c0d;border:1px solid #e5b8b4}
-.btn-d:hover{background:#fdf0ee}
-.btn-sm{padding:5px 10px;font-size:12px;border-radius:5px}
+.hover-coupon-admin .hcs-foot {
+    display: flex; align-items: center; gap: 10px; margin-top: 16px;
+    padding-top: 16px; border-top: 1px solid #eef2f6;
+}
 
-.hcs-notice{padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:13px}
-.hcs-ok{background:#f0fdf4;border:1px solid #bbf7d0;color:#166534}
-.hcs-err{background:#fff5f5;border:1px solid #fed7d7;color:#9b2c2c}
+.hover-coupon-admin .btn {
+    display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px;
+    border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer;
+    border: none; text-decoration: none; transition: .15s;
+}
+.hover-coupon-admin .btn-p { background: #2a514d; color: #fff; }
+.hover-coupon-admin .btn-p:hover { background: #234641; color: #fff; }
+.hover-coupon-admin .btn-s { background: #fff; color: #202223; border: 1px solid #c3c4c7; }
+.hover-coupon-admin .btn-s:hover { background: #f6f7f7; color: #202223; }
+.hover-coupon-admin .btn-d { background: #fff; color: #b32d2e; border: 1px solid #f0c8c8; }
+.hover-coupon-admin .btn-d:hover { background: #fcf0f0; }
+.hover-coupon-admin .btn-sm { padding: 5px 10px; font-size: 12px; border-radius: 5px; }
 
-.hcs-tbl{width:100%;border-collapse:collapse;font-size:13px}
-.hcs-tbl th{background:#f9fafb;padding:8px 12px;text-align:left;font-size:11px;font-weight:600;color:#6d7175;border-bottom:1px solid #e1e3e5;text-transform:uppercase;letter-spacing:.04em}
-.hcs-tbl td{padding:11px 12px;border-bottom:1px solid #f0f0f0;vertical-align:middle}
-.hcs-tbl tr:last-child td{border-bottom:none}
-.hcs-tbl tr:hover td{background:#fafafa}
-.hcs-code{font-family:ui-monospace,monospace;font-size:12px;font-weight:700;color:#202223;background:#f6f6f7;padding:2px 7px;border-radius:4px}
-.hcs-tag{display:inline-block;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600}
-.tg-g{background:#d3f7d3;color:#1a5c1a}
-.tg-b{background:#dce8ff;color:#1a3a7a}
-.tg-y{background:#fff0c3;color:#7a4f00}
-.tg-r{background:#fdd;color:#9b2c2c}
-.tg-n{background:#f0f0f0;color:#6d7175}
-.tg-p{background:#f0e0ff;color:#6a1a9a}
+.hover-coupon-admin .hcs-notice {
+    padding: 12px 14px; border-radius: 8px; margin-bottom: 14px; font-size: 13px;
+}
+.hover-coupon-admin .hcs-ok { background: #edf7f1; border: 1px solid #b8dfd0; color: #1a6847; }
+.hover-coupon-admin .hcs-err { background: #fcf0f0; border: 1px solid #f0c8c8; color: #8a1f1f; }
 
-.hcs-prog{height:4px;background:#e5e7eb;border-radius:4px;margin-top:4px}
-.hcs-prog b{display:block;height:100%;background:#458fff;border-radius:4px}
+.hover-coupon-admin .hcs-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.hover-coupon-admin .hcs-tbl th {
+    background: #f6f7f7; padding: 10px 12px; text-align: left; font-size: 11px;
+    font-weight: 700; color: #646970; border-bottom: 1px solid #dcdcde;
+    text-transform: uppercase; letter-spacing: .04em;
+}
+.hover-coupon-admin .hcs-tbl td { padding: 12px; border-bottom: 1px solid #f0f0f1; vertical-align: middle; }
+.hover-coupon-admin .hcs-tbl tr:last-child td { border-bottom: none; }
+.hover-coupon-admin .hcs-tbl tr:hover td { background: #fafafa; }
+.hover-coupon-admin .hcs-code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px;
+    font-weight: 700; color: #202223; background: #f6f7f7; padding: 3px 8px; border-radius: 4px;
+}
+.hover-coupon-admin .hcs-tag { display: inline-block; padding: 3px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+.hover-coupon-admin .tg-g { background: #d3f7d3; color: #1a5c1a; }
+.hover-coupon-admin .tg-b { background: #dce8ff; color: #1a3a7a; }
+.hover-coupon-admin .tg-y { background: #fff0c3; color: #7a4f00; }
+.hover-coupon-admin .tg-r { background: #fdd; color: #9b2c2c; }
+.hover-coupon-admin .tg-n { background: #f0f0f1; color: #646970; }
+.hover-coupon-admin .tg-p { background: #f0e0ff; color: #6a1a9a; }
 
-.hcs-chips{display:flex;flex-wrap:wrap;gap:6px;background:#f9fafb;border:1px solid #e1e3e5;border-radius:6px;padding:14px;max-height:280px;overflow-y:auto}
-.hcs-chip{background:#fff;border:1px solid #e1e3e5;border-radius:4px;padding:3px 9px;font-family:ui-monospace,monospace;font-size:12px;font-weight:600;color:#202223}
+.hover-coupon-admin .hcs-prog { height: 4px; background: #e5e7eb; border-radius: 4px; margin-top: 4px; }
+.hover-coupon-admin .hcs-prog b { display: block; height: 100%; background: #2a514d; border-radius: 4px; }
 
-.hcs-tpl-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-.hcs-tpl{border:1px solid #e1e3e5;border-radius:8px;padding:14px;cursor:pointer;background:#fff;transition:border-color .15s,box-shadow .15s}
-.hcs-tpl:hover{border-color:#458fff;box-shadow:0 2px 8px rgba(0,0,0,.08)}
-.hcs-tpl-badge{font-size:10px;font-weight:700;padding:2px 6px;border-radius:3px;margin-bottom:6px;display:inline-block}
-.hcs-tpl h3{margin:0 0 4px;font-size:13px;font-weight:600;color:#202223}
-.hcs-tpl p{margin:0 0 8px;font-size:12px;color:#6d7175;line-height:1.4}
-.hcs-tpl-meta{font-size:11px;font-weight:600;color:#458fff}
+.hover-coupon-admin .hcs-chips {
+    display: flex; flex-wrap: wrap; gap: 6px; background: #f6f7f7;
+    border: 1px solid #dcdcde; border-radius: 8px; padding: 14px;
+    max-height: 280px; overflow-y: auto;
+}
+.hover-coupon-admin .hcs-chip {
+    background: #fff; border: 1px solid #dcdcde; border-radius: 4px;
+    padding: 4px 10px; font-family: ui-monospace, monospace; font-size: 12px;
+    font-weight: 600; color: #202223;
+}
 
-.hcs-empty{padding:40px;text-align:center;color:#6d7175;font-size:13px}
+.hover-coupon-admin .hcs-tpl-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+.hover-coupon-admin .hcs-tpl {
+    border: 1px solid #dcdcde; border-radius: 8px; padding: 14px;
+    cursor: pointer; background: #fcfcfd; transition: .15s;
+}
+.hover-coupon-admin .hcs-tpl:hover { border-color: #2a514d; box-shadow: 0 4px 16px rgba(42,81,77,.08); }
+.hover-coupon-admin .hcs-tpl-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 999px; margin-bottom: 8px; display: inline-block; }
+.hover-coupon-admin .hcs-tpl h3 { margin: 0 0 6px; font-size: 13px; font-weight: 700; color: #202223; }
+.hover-coupon-admin .hcs-tpl p { margin: 0 0 8px; font-size: 12px; color: #646970; line-height: 1.5; }
+.hover-coupon-admin .hcs-tpl-meta { font-size: 11px; font-weight: 600; color: #2a514d; }
 
-.hcs-bar{display:flex;gap:10px;align-items:center;margin-bottom:14px}
-.hcs-bar input,.hcs-bar select{border:1px solid #c9cccf;border-radius:6px;padding:7px 10px;font-size:13px;color:#202223}
-.hcs-bar input{flex:1}
+.hover-coupon-admin .hcs-empty { padding: 48px 24px; text-align: center; color: #646970; font-size: 13px; }
 
-@media(max-width:900px){.hcs-stats,.hcs-type-row,.hcs-row.c3,.hcs-row.c4{grid-template-columns:1fr 1fr}.hcs-tpl-grid{grid-template-columns:1fr 1fr}}
-@media(max-width:600px){.hcs-stats,.hcs-row,.hcs-type-row,.hcs-tpl-grid{grid-template-columns:1fr}}
+.hover-coupon-admin .hcs-bar { display: flex; gap: 10px; align-items: center; margin-bottom: 14px; flex-wrap: wrap; }
+.hover-coupon-admin .hcs-bar input,
+.hover-coupon-admin .hcs-bar select {
+    border: 1px solid #c3c4c7; border-radius: 6px; padding: 8px 10px; font-size: 13px; color: #202223;
+}
+.hover-coupon-admin .hcs-bar input { flex: 1; min-width: 180px; }
+
+@media (max-width: 960px) {
+    .hover-coupon-admin .hcs-stats,
+    .hover-coupon-admin .hcs-type-row,
+    .hover-coupon-admin .hcs-row.c3,
+    .hover-coupon-admin .hcs-row.c4 { grid-template-columns: 1fr 1fr; }
+    .hover-coupon-admin .hcs-tpl-grid { grid-template-columns: 1fr 1fr; }
+}
+@media (max-width: 640px) {
+    .hover-coupon-admin .hcs-stats,
+    .hover-coupon-admin .hcs-row,
+    .hover-coupon-admin .hcs-type-row,
+    .hover-coupon-admin .hcs-tpl-grid { grid-template-columns: 1fr; }
+    .hover-coupon-admin .hcs-topbar { flex-direction: column; }
+}
 CSS; }
 
 /* ── JS ── */
@@ -361,6 +458,7 @@ function hcs_page(): void {
         $campaigns[$cam][]=$r;
     }
     ?>
+<div class="wrap hover-coupon-admin">
 <div class="hcs">
 
 <?php if ($res): ?>
@@ -373,8 +471,19 @@ function hcs_page(): void {
 <?php endif; ?>
 
 <div class="hcs-topbar">
-    <h1>HOVER 優惠碼</h1>
-    <a href="<?=esc_url(admin_url('edit.php?post_type=shop_coupon'))?>" class="btn btn-s btn-sm">WooCommerce 優惠券 →</a>
+    <div>
+        <h1>HOVER 優惠碼</h1>
+        <p>建立與管理 WooCommerce 原生折扣碼，前台 Next.js 結帳可直接套用。</p>
+    </div>
+    <div class="hcs-topbar-actions">
+        <a href="<?=esc_url(admin_url('edit.php?post_type=shop_coupon'))?>" class="btn btn-s btn-sm">WooCommerce 折價券 →</a>
+    </div>
+</div>
+
+<div class="hcs-api-pill">
+    <span class="dashicons dashicons-tag"></span>
+    <span>折扣碼儲存於 WooCommerce</span>
+    <code>shop_coupon</code>
 </div>
 
 <div class="hcs-stats">
@@ -659,7 +768,7 @@ function hcs_page(): void {
             <div>
                 <h2><?=esc_html($cam_name)?></h2>
                 <span style="font-size:12px;color:#6d7175"><?=count($cam_rows)?> 組 · 啟用中 <?=$active_n?> 組 · 累計使用 <?=$total_used?> 次<?=$total_lim?" / {$total_lim} 次（{$pct}%）":''?></span>
-                <?php if($total_lim>0): ?><div class="hcs-prog" style="max-width:220px;margin-top:6px"><b style="width:<?=$pct?>%;background:<?=$pct>=90?'#d72c0d':($pct>=60?'#d97706':'#458fff')?>"></b></div><?php endif; ?>
+                <?php if($total_lim>0): ?><div class="hcs-prog" style="max-width:220px;margin-top:6px"><b style="width:<?=$pct?>%;background:<?=$pct>=90?'#b32d2e':($pct>=60?'#d97706':'#2a514d')?>"></b></div><?php endif; ?>
             </div>
             <span class="hcs-tag <?=$active_n?'tg-g':'tg-n'?>"><?=$active_n?'進行中':'已結束'?></span>
         </div>
@@ -724,7 +833,7 @@ function hcs_page(): void {
                     </td>
                     <td style="min-width:90px">
                         <span style="font-size:12px"><?=$r['used']?>/<?=($r['limit']>0?$r['limit']:'∞')?></span>
-                        <?php if($r['limit']>0): ?><div class="hcs-prog"><b style="width:<?=$pct?>%;background:<?=$pct>=90?'#d72c0d':($pct>=60?'#d97706':'#458fff')?>"></b></div><?php endif; ?>
+                        <?php if($r['limit']>0): ?><div class="hcs-prog"><b style="width:<?=$pct?>%;background:<?=$pct>=90?'#b32d2e':($pct>=60?'#d97706':'#2a514d')?>"></b></div><?php endif; ?>
                     </td>
                     <td style="font-size:12px;<?=$exp_r?'color:#d72c0d;font-weight:600':''?>"><?=$r['expires']?esc_html($r['expires']):'—'?></td>
                     <td>
@@ -759,4 +868,7 @@ function hcs_page(): void {
 </div>
 
 </div><!-- .hcs -->
-<?php }
+</div><!-- .wrap -->
+<?php
+    hcs_print_admin_styles();
+}

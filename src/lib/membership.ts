@@ -51,7 +51,9 @@ export type MembershipPayload = {
 
 export type WcOrderLite = {
   total: number;
+  totalRefunded: number;
   date_created: string;
+  status?: string;
 };
 
 export type CustomerMetaMap = Record<string, string>;
@@ -91,7 +93,24 @@ function parseMeta(meta: { key: string; value: unknown }[] = []): CustomerMetaMa
 }
 
 function sumOrders(orders: WcOrderLite[]): number {
-  return orders.reduce((s, o) => s + (parseFloat(String(o.total)) || 0), 0);
+  return orders.reduce((s, o) => s + netOrderTotal(o), 0);
+}
+
+/** 已付款／已完成訂單淨額（扣除退款） */
+export function netOrderTotal(order: WcOrderLite | { total?: unknown; totalRefunded?: unknown; total_refunded?: unknown }): number {
+  const gross = parseFloat(String(order.total ?? 0)) || 0;
+  const refunded =
+    parseFloat(String(order.totalRefunded ?? (order as any).total_refunded ?? 0)) || 0;
+  return Math.max(0, gross - refunded);
+}
+
+export function mapWcOrdersToLite(orders: any[]): WcOrderLite[] {
+  return (orders || []).map((o) => ({
+    total: parseFloat(o.total) || 0,
+    totalRefunded: parseFloat(o.total_refunded) || 0,
+    date_created: o.date_created,
+    status: o.status,
+  }));
 }
 
 function addMonths(date: Date, months: number): Date {
@@ -255,9 +274,10 @@ export function buildExclusiveMetaUpdates(
 
 export function couponKindFromCode(code: string): string {
   const c = String(code || "").toUpperCase();
-  if (c.startsWith("HOVER-WELCOME-")) return "welcome";
+  if (c.startsWith("HOVER100-") || c.startsWith("HOVER-WELCOME-")) return "welcome";
   if (c.startsWith("HOVER-BDAY-")) return "birthday";
   if (c.startsWith("HOVER-PROMO-")) return "promo";
+  if (c.startsWith("HOVER-EXCL-")) return "vip";
   if (c.startsWith("UFFRD-")) return "ref_friend";
   if (c.startsWith("UFAMB-")) return "ref_ambassador";
   if (c.startsWith("UFUP-") || c.startsWith("UFBD-")) return "legacy";
@@ -265,7 +285,7 @@ export function couponKindFromCode(code: string): string {
 }
 
 export function welcomeCouponCode(customerId: number | string): string {
-  return `HOVER-WELCOME-${customerId}`;
+  return `HOVER100-${customerId}`;
 }
 
 export function birthdayCouponCode(
@@ -281,31 +301,44 @@ export function buildGiftCouponPayload(opts: {
   email: string;
   description: string;
   expiryDays: number;
+  kind?: "welcome" | "birthday" | "promo" | "vip";
 }) {
   const expires = new Date();
   expires.setDate(expires.getDate() + opts.expiryDays);
+  const kind = opts.kind || couponKindFromCode(opts.code);
   return {
     code: opts.code,
     discount_type: "fixed_cart" as const,
     amount: String(opts.amount),
+    individual_use: true,
     usage_limit: 1,
     usage_limit_per_user: 1,
     email_restrictions: [opts.email.toLowerCase()],
     minimum_amount: String(MEMBERSHIP_RULES.giftMinSpend),
     description: opts.description,
     date_expires: expires.toISOString(),
-    meta_data: [{ key: "hover_coupon_kind", value: "membership_gift" }],
+    meta_data: [{ key: "hover_coupon_kind", value: kind }],
   };
 }
 
 export function calcMemberDiscountAmount(
-  subtotal: number,
+  eligibleSubtotal: number,
   tierId: HoverTierId,
   exclusiveActive: boolean,
 ): number {
   const rate = getDiscountRate(tierId, exclusiveActive);
-  if (rate >= 1 || subtotal <= 0) return 0;
-  return Math.round(subtotal * (1 - rate));
+  if (rate >= 1 || eligibleSubtotal <= 0) return 0;
+  return Math.round(eligibleSubtotal * (1 - rate));
+}
+
+/** 正價商品小計（排除特價品） */
+export function calcRegularPriceSubtotal(
+  items: { price: number; qty: number; onSale?: boolean }[],
+): number {
+  return items.reduce((sum, item) => {
+    if (item.onSale) return sum;
+    return sum + Number(item.price) * Number(item.qty);
+  }, 0);
 }
 
 export { META as HOVER_MEMBERSHIP_META };

@@ -32,10 +32,8 @@ function isExpired(coupon: any) {
 
 function isDepleted(coupon: any) {
   const usageCount = Number(coupon?.usage_count ?? 0) || 0;
-  const usageLimit = coupon?.usage_limit;
-  if (usageLimit !== null && usageLimit !== undefined && usageLimit > 0) {
-    if (usageCount >= usageLimit) return false;
-  }
+  const usageLimit = Number(coupon?.usage_limit ?? 0) || 0;
+  if (usageLimit > 0 && usageCount >= usageLimit) return true;
   return false;
 }
 

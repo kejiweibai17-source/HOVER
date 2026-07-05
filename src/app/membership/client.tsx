@@ -21,7 +21,7 @@ const TABLE_ROWS: {
   exclusive: string;
 }[] = [
   { label: "入會資格", friends: "免費註冊", exclusive: "年度累積滿NT$10,000" },
-  { label: "會員效期", friends: "永久有效", exclusive: "升級日起12個月" },
+  { label: "有效期限", friends: "永久有效", exclusive: "升級日起12個月" },
   { label: "續會資格", friends: "—", exclusive: "效期內累積滿NT$8,000" },
   { label: "生日禮", friends: "NT$100 購物金", exclusive: "NT$300 購物金" },
   { label: "新品與活動通知", friends: "V", exclusive: "V" },
@@ -50,26 +50,27 @@ function TierCard({
   benefits: string[];
 }) {
   return (
-    <div className="flex flex-col border border-[#d8d8d8] bg-white px-6 py-10 md:px-8 md:py-12">
-      <div className="mb-6 flex justify-center">
-        <div className="flex h-[72px] w-[72px] items-center justify-center rounded-full bg-[#2a514d] text-white md:h-20 md:w-20">
-          <Icon size={28} strokeWidth={1.5} />
+    <div className="flex flex-col overflow-hidden rounded-2xl border border-[#d8d8d8] bg-white px-4 py-8 md:px-8 md:py-12">
+      <div className="mb-4 flex justify-center md:mb-6">
+        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-[#2a514d] text-white md:h-20 md:w-20">
+          <Icon size={22} strokeWidth={1.5} className="md:hidden" />
+          <Icon size={28} strokeWidth={1.5} className="hidden md:block" />
         </div>
       </div>
-      <p className="text-center font-serif text-[15px] tracking-[0.12em] text-[#2a514d] md:text-[16px]">
+      <p className="text-center font-serif text-[11px] tracking-[0.1em] text-[#2a514d] md:text-[16px] md:tracking-[0.12em]">
         {titleEn}
       </p>
-      <p className="mt-1 text-center font-serif text-[22px] font-medium text-[#2a514d] md:text-[26px]">
+      <p className="mt-1 text-center font-serif text-[16px] font-medium text-[#2a514d] md:text-[26px]">
         {titleZh}
       </p>
-      <p className="mx-auto mt-5 max-w-[280px] text-center text-[12px] leading-[1.9] tracking-[0.04em] text-[#2a514d] md:text-[13px]">
+      <p className="mx-auto mt-3 max-w-[280px] text-center text-[10px] leading-[1.8] tracking-[0.04em] text-[#2a514d] md:mt-5 md:text-[13px] md:leading-[1.9]">
         {subtitle}
       </p>
-      <div className="mt-8 space-y-0">
+      <div className="mt-5 space-y-0 md:mt-8">
         {benefits.map((item) => (
           <div
             key={item}
-            className="border-t border-[#d8d8d8] py-4 text-center text-[12px] leading-relaxed tracking-[0.04em] text-[#2a514d] md:text-[13px]"
+            className="border-t border-[#d8d8d8] py-3 text-center text-[10px] leading-relaxed tracking-[0.04em] text-[#2a514d] md:py-4 md:text-[13px]"
           >
             {item}
           </div>
@@ -98,7 +99,7 @@ export default function MembershipClient() {
 
       <div className="mx-auto max-w-[1100px] space-y-10 px-4 md:space-y-12 md:px-6">
         {/* Tier cards */}
-        <div className="grid gap-6 md:grid-cols-2 md:gap-8">
+        <div className="grid grid-cols-2 gap-3 md:gap-8">
           <TierCard
             icon={ShoppingBag}
             titleEn="HOVER FRIENDS"
@@ -109,14 +110,14 @@ export default function MembershipClient() {
           <TierCard
             icon={Crown}
             titleEn="HOVER EXCLUSIVE"
-            titleZh="臻享會員"
+            titleZh="尊享會員"
             subtitle="年度累積消費滿 NT$10,000 即可升級"
             benefits={EXCLUSIVE_BENEFITS}
           />
         </div>
 
         {/* Comparison table */}
-        <div className="overflow-x-auto border border-[#d8d8d8] bg-white">
+        <div className="overflow-hidden overflow-x-auto rounded-2xl border border-[#d8d8d8] bg-white">
           <table className="w-full min-w-[640px] border-collapse text-center text-[12px] text-[#2a514d] md:text-[13px]">
             <thead>
               <tr className="bg-[#2a514d] text-white">
@@ -131,7 +132,7 @@ export default function MembershipClient() {
                 <th className="px-4 py-4 font-medium leading-snug tracking-[0.06em] md:px-6 md:py-5">
                   HOVER EXCLUSIVE
                   <br />
-                  臻享會員
+                  尊享會員
                 </th>
               </tr>
             </thead>
@@ -154,7 +155,7 @@ export default function MembershipClient() {
         </div>
 
         {/* Usage notes */}
-        <div className="border border-[#d8d8d8] bg-white px-6 py-8 md:px-10 md:py-10">
+        <div className="rounded-2xl border border-[#d8d8d8] bg-[#f7f7f7] px-5 py-7 md:px-10 md:py-10">
           <h2 className="mb-6 text-center font-serif text-[18px] font-medium tracking-[0.12em] text-[#2a514d] md:text-[20px]">
             購物金使用說明
           </h2>

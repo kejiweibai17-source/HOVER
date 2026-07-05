@@ -1,53 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "next-view-transitions";
 import HoverLogo from "@/components/hover/HoverLogo";
 import HoverIcon from "@/components/hover/HoverIcon";
-
-const FOOTER_COLS = [
-  {
-    title: "關於我們",
-    links: [
-      { label: "品牌故事", href: "/brand" },
-      {
-        label: "最新消息",
-        href: "https://www.instagram.com/hover.tw?igsh=ODFwaXZmam5kOXJn",
-      },
-    ],
-  },
-  {
-    title: "顧客服務",
-    links: [
-      { label: "會員制度", href: "/membership" },
-      { label: "如何購買", href: "/how-to-buy" },
-      { label: "申請退貨", href: "/returns" },
-      { label: "常見問題", href: "/faq" },
-    ],
-  },
-  {
-    title: "政策條款",
-    links: [
-      { label: "服務條款", href: "/terms" },
-      { label: "隱私權保護", href: "/privacy" },
-    ],
-  },
-];
-
-const SOCIAL_LINKS = [
-  { label: "LINE", href: "https://line.me/R/ti/p/@330kefmm", icon: "line" },
-  {
-    label: "Instagram",
-    href: "https://www.instagram.com/hover.tw?igsh=ODFwaXZmam5kOXJn",
-    icon: "ig",
-  },
-  {
-    label: "Facebook",
-    href: "https://www.facebook.com/share/1EhyidjLHK/?mibextid=wwXIfr",
-    icon: "fb",
-  },
-  { label: "YouTube", href: "#", icon: "yt" },
-];
+import {
+  DEFAULT_FOOTER,
+  normalizeFooterSettings,
+} from "@/lib/footerDefaults";
+import { getSvgLogoProxyUrl, isSvgLogo } from "@/lib/svgLogo";
 
 function FooterAccordion({ title, children, defaultOpen = false }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -74,6 +35,7 @@ function FooterAccordion({ title, children, defaultOpen = false }) {
     </div>
   );
 }
+
 function FooterLink({ href, children }) {
   const external = href.startsWith("http");
   const className =
@@ -107,7 +69,7 @@ function FooterColumn({ title, links }) {
       </h3>
       <ul className="space-y-2.5 md:space-y-3">
         {links.map((l) => (
-          <li key={l.label}>
+          <li key={`${title}-${l.label}`}>
             <FooterLink href={l.href}>{l.label}</FooterLink>
           </li>
         ))}
@@ -116,95 +78,242 @@ function FooterColumn({ title, links }) {
   );
 }
 
-function ContactColumn() {
+function FooterLogo({ logo, className = "" }) {
+  const color = logo.color || "#ffffff";
+  const svg = logo.url && isSvgLogo(logo.url, logo.mimeType);
+  const [svgMarkup, setSvgMarkup] = useState("");
+  const [svgFailed, setSvgFailed] = useState(false);
+
+  useEffect(() => {
+    if (!logo.url || !svg) {
+      setSvgMarkup("");
+      setSvgFailed(false);
+      return;
+    }
+
+    let cancelled = false;
+    setSvgFailed(false);
+
+    fetch(getSvgLogoProxyUrl(logo.url, color))
+      .then((res) => {
+        if (!res.ok) throw new Error(String(res.status));
+        return res.text();
+      })
+      .then((markup) => {
+        if (!cancelled) setSvgMarkup(markup);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setSvgMarkup("");
+          setSvgFailed(true);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [logo.url, logo.mimeType, color, svg]);
+
+  let content;
+  if (logo.url) {
+    if (svg && svgMarkup) {
+      content = (
+        <span
+          className={`block w-full ${className}`}
+          role="img"
+          aria-label={logo.alt}
+          dangerouslySetInnerHTML={{ __html: svgMarkup }}
+        />
+      );
+    } else if (svg && !svgFailed) {
+      content = (
+        <span
+          className={`block ${className}`}
+          aria-hidden
+        />
+      );
+    } else {
+      content = (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={logo.url}
+          alt={logo.alt}
+          className={`block h-full w-full object-contain object-center ${className}`}
+        />
+      );
+    }
+  } else {
+    content = (
+      <HoverLogo className={className} style={{ color }} aria-hidden />
+    );
+  }
+
+  const href = logo.link || "/";
+  const external = href.startsWith("http");
+
+  if (external) {
+    return (
+      <a
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="block text-white"
+        aria-label={logo.alt}
+      >
+        {content}
+      </a>
+    );
+  }
+
+  return (
+    <Link href={href} className="block text-white" aria-label={logo.alt}>
+      {content}
+    </Link>
+  );
+}
+
+function SocialIcon({ item, size = 32 }) {
+  if (item.iconUrl) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={item.iconUrl}
+        alt={item.label}
+        width={size}
+        height={size}
+        className="inline-block object-contain"
+        style={{ width: size, height: size }}
+      />
+    );
+  }
+
+  const iconName = ["line", "ig", "fb", "yt"].includes(item.icon)
+    ? item.icon
+    : "line";
+
+  return <HoverIcon name={iconName} size={size} alt={item.label} />;
+}
+
+function SocialLinks({ items, size = 32 }) {
+  return (
+    <>
+      {items.map((s) => (
+        <a
+          key={s.label}
+          href={s.href}
+          target={s.href.startsWith("http") ? "_blank" : undefined}
+          rel={s.href.startsWith("http") ? "noopener noreferrer" : undefined}
+          aria-label={s.label}
+          className="inline-flex shrink-0 transition-opacity hover:opacity-70"
+        >
+          <SocialIcon item={s} size={size} />
+        </a>
+      ))}
+    </>
+  );
+}
+
+function ContactColumn({ contact, social }) {
   return (
     <div className="min-w-0">
       <h3 className="mb-4 text-[17px] font-normal tracking-[0.1em] md:mb-5">
-        聯絡我們
+        {contact.title}
       </h3>
       <ul className="space-y-2.5 text-[13px] tracking-[0.04em] text-white/90 md:space-y-3">
-        <li>
-          <a
-            href="mailto:service@hoverofficial.com"
-            className="block transition-opacity hover:opacity-60"
-          >
-            SERVICE@HOVEROFFICIAL.COM
-          </a>
-        </li>
-        <li>MON.-FRI. 10:00-19:00</li>
-        <li>
-          <a
-            href="https://line.me/R/ti/p/@330kefmm"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="transition-opacity hover:opacity-60"
-          >
-            LINE ID: @HOVER
-          </a>
-        </li>
+        {contact.email && (
+          <li>
+            <a
+              href={`mailto:${contact.email}`}
+              className="block transition-opacity hover:opacity-60"
+            >
+              {contact.emailLabel || contact.email}
+            </a>
+          </li>
+        )}
+        {contact.hours && <li>{contact.hours}</li>}
+        {contact.lineId && (
+          <li>
+            {contact.lineUrl ? (
+              <a
+                href={contact.lineUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="transition-opacity hover:opacity-60"
+              >
+                LINE ID: {contact.lineId}
+              </a>
+            ) : (
+              <>LINE ID: {contact.lineId}</>
+            )}
+          </li>
+        )}
+        {contact.companyInfo && <li>{contact.companyInfo}</li>}
       </ul>
 
-      <div className="mt-5 flex items-center gap-3 md:mt-6">
-        {SOCIAL_LINKS.map((s) => (
-          <a
-            key={s.label}
-            href={s.href}
-            target={s.href.startsWith("http") ? "_blank" : undefined}
-            rel={s.href.startsWith("http") ? "noopener noreferrer" : undefined}
-            aria-label={s.label}
-            className="inline-flex shrink-0 transition-opacity hover:opacity-70"
-          >
-            <HoverIcon name={s.icon} size={32} alt={s.label} />
-          </a>
-        ))}
+      <div className="mt-5 flex items-center gap-4 md:mt-6">
+        <SocialLinks items={social} size={44} />
       </div>
     </div>
   );
 }
 
 export default function HoverFooter() {
+  const [footer, setFooter] = useState(DEFAULT_FOOTER);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    fetch("/api/footer")
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        setFooter(normalizeFooterSettings(data?.footer));
+      })
+      .catch(() => {
+        if (!cancelled) setFooter(DEFAULT_FOOTER);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const { logo, backgroundColor, columns, contact, social, copyright } = footer;
+
   return (
-    <footer className="bg-[#2a514d] text-white">
+    <footer className="text-white" style={{ backgroundColor }}>
       <div className="mx-auto w-full max-w-[1680px] px-6 py-12 md:px-12 md:py-16 lg:px-16 lg:py-[72px] xl:px-12">
-        {/* 桌機 — 圖二：Logo | 分隔線 | 四欄均分 */}
         <div className="hidden lg:flex lg:items-start">
-          {/* Logo + 分隔線 */}
           <div className="flex w-[26%] max-w-[300px] shrink-0 items-stretch gap-8 xl:gap-10">
-            <Link
-              href="/"
-              className="block min-w-0 flex-1 text-white"
-              aria-label="HOVER"
-            >
-              <HoverLogo
-                className="h-auto w-full max-h-[100px] xl:max-h-[120px]"
-                aria-hidden
+            <div className="block min-w-0 flex-1 text-white">
+              <FooterLogo
+                logo={logo}
+                className="h-[100px] w-full xl:h-[120px]"
               />
-            </Link>
+            </div>
             <div className="w-px shrink-0 bg-white/40" aria-hidden />
           </div>
 
-          {/* 四欄 */}
           <div className="min-w-0 flex-1 pl-8 xl:pl-10">
             <div className="grid grid-cols-4 gap-x-6 xl:gap-x-10 2xl:gap-x-14">
-              {FOOTER_COLS.map((col) => (
+              {columns.map((col) => (
                 <FooterColumn
                   key={col.title}
                   title={col.title}
                   links={col.links}
                 />
               ))}
-              <ContactColumn />
+              <ContactColumn contact={contact} social={social} />
             </div>
           </div>
         </div>
 
-        {/* 手機 — 手風琴選單 */}
         <div className="lg:hidden">
-          {FOOTER_COLS.map((col) => (
+          {columns.map((col) => (
             <FooterAccordion key={col.title} title={col.title}>
               <ul className="space-y-2.5">
                 {col.links.map((l) => (
-                  <li key={l.label}>
+                  <li key={`${col.title}-${l.label}`}>
                     <FooterLink href={l.href}>{l.label}</FooterLink>
                   </li>
                 ))}
@@ -212,60 +321,54 @@ export default function HoverFooter() {
             </FooterAccordion>
           ))}
 
-          <FooterAccordion title="追蹤我們">
-            <div className="flex items-center gap-3 pt-1">
-              {SOCIAL_LINKS.map((s) => (
-                <a
-                  key={s.label}
-                  href={s.href}
-                  target={s.href.startsWith("http") ? "_blank" : undefined}
-                  rel={s.href.startsWith("http") ? "noopener noreferrer" : undefined}
-                  aria-label={s.label}
-                  className="inline-flex shrink-0 transition-opacity hover:opacity-70"
-                >
-                  <HoverIcon name={s.icon} size={36} alt={s.label} />
-                </a>
-              ))}
-            </div>
-          </FooterAccordion>
-
-          <FooterAccordion title="聯絡我們">
+          <FooterAccordion title={contact.title}>
             <ul className="space-y-2.5 text-[13px] tracking-[0.04em] text-white/90">
-              <li>
-                <a
-                  href="mailto:service@hoverofficial.com"
-                  className="block transition-opacity hover:opacity-60"
-                >
-                  SERVICE@HOVEROFFICIAL.COM
-                </a>
-              </li>
-              <li>MON.-FRI. 10:00-19:00</li>
-              <li>
-                <a
-                  href="https://line.me/R/ti/p/@330kefmm"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="transition-opacity hover:opacity-60"
-                >
-                  LINE ID: @HOVER
-                </a>
-              </li>
+              {contact.email && (
+                <li>
+                  <a
+                    href={`mailto:${contact.email}`}
+                    className="block transition-opacity hover:opacity-60"
+                  >
+                    {contact.emailLabel || contact.email}
+                  </a>
+                </li>
+              )}
+              {contact.hours && <li>{contact.hours}</li>}
+              {contact.lineId && (
+                <li>
+                  {contact.lineUrl ? (
+                    <a
+                      href={contact.lineUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="transition-opacity hover:opacity-60"
+                    >
+                      LINE ID: {contact.lineId}
+                    </a>
+                  ) : (
+                    <>LINE ID: {contact.lineId}</>
+                  )}
+                </li>
+              )}
+              {contact.companyInfo && <li>{contact.companyInfo}</li>}
             </ul>
           </FooterAccordion>
 
-          <div className="mt-10 flex justify-center">
-            <Link href="/" className="text-white" aria-label="HOVER">
-              <HoverLogo className="h-14 w-auto max-w-[200px] md:h-16" aria-hidden />
-            </Link>
+          <div className="flex items-center justify-center gap-5 py-8">
+            <SocialLinks items={social} size={44} />
           </div>
+
+          <div className="flex justify-center px-6 pb-6">
+            <FooterLogo logo={logo} className="h-16 w-full max-w-[240px]" />
+          </div>
+
+          <p className="pb-2 text-center text-[12px] leading-relaxed tracking-[0.04em] text-white/70">
+            {copyright}
+          </p>
         </div>
 
-        {/* 底部版權 — 全置中 */}
-        <div className="mt-12 border-t border-white/20 pt-8 text-center text-[12px] leading-relaxed tracking-[0.04em] text-white/70 md:mt-14 md:text-[13px]">
-          <p>
-            © 2026 HOVER. All Rights Reserved.{" "}
-            停機坪國際文創股份有限公司 | 90230279
-          </p>
+        <div className="hidden border-t border-white/20 pt-8 text-center text-[12px] leading-relaxed tracking-[0.04em] text-white/70 lg:mt-12 lg:block md:text-[13px]">
+          <p>{copyright}</p>
         </div>
       </div>
     </footer>

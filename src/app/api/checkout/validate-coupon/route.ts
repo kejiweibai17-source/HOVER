@@ -50,6 +50,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const code = String(body.code || "").trim();
     const subtotalAfterMember = Math.max(0, Number(body.subtotalAfterMember) || 0);
+    const hasMemberDiscount = Boolean(body.hasMemberDiscount);
 
     if (!code) {
       return NextResponse.json(
@@ -79,6 +80,16 @@ export async function POST(req: Request) {
     }
 
     const coupon = arr[0];
+
+    if (coupon.individual_use && hasMemberDiscount) {
+      return NextResponse.json(
+        {
+          valid: false,
+          message: "此折扣碼不可與會員折扣或其他優惠併用",
+        },
+        { status: 200, headers: noCache },
+      );
+    }
 
     if (coupon.date_expires) {
       const exp = new Date(coupon.date_expires);

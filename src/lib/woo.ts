@@ -1,6 +1,25 @@
 import "server-only";
 
+import type { SizeGuide } from "./sizeGuide";
+import { extractSizeGuideFromWooProduct } from "./sizeGuide";
+import type { WashingInstructions } from "./washingInstructions";
+import { extractWashingInstructionsFromWooProduct } from "./washingInstructions";
+import type { ProductColor } from "./productColors";
+import {
+  extractColorSwatchesFromWooProduct,
+  extractProductColors,
+  extractProductSizes,
+} from "./productColors";
+import type { ColorGalleries } from "./variationGallery";
+import {
+  buildColorGalleriesFromVariations,
+  extractColorGalleriesFromWooProduct,
+  mergeColorGalleries,
+} from "./variationGallery";
+import type { WooCategoryRaw } from "./categoryNav";
+
 export type WooImage = { id: number; src: string; alt?: string };
+export type WooCategoryRef = { id: number; name: string; slug: string };
 export type WooProduct = {
   id: number;
   name: string;
@@ -10,9 +29,29 @@ export type WooProduct = {
   regular_price?: string;
   sale_price?: string;
   images: WooImage[];
+  categories: WooCategoryRef[];
   short_description?: string;
   description?: string;
   attributes?: Array<{ name: string; options: string[] }>;
+  sizeGuide: SizeGuide;
+  washingInstructions: WashingInstructions;
+  colorSwatches: Record<string, string>;
+  colors: ProductColor[];
+  sizes: string[];
+  colorGalleries: ColorGalleries;
+};
+
+/** 商品列表頁使用的精簡型別（與 products/Client 相容） */
+export type ListProduct = {
+  id: number;
+  slug: string;
+  name: string;
+  price: string;
+  images: { src: string; alt?: string }[];
+  category?: string;
+  isNew?: boolean;
+  tag?: string;
+  colors?: string[];
 };
 
 const getEnv = () => {
@@ -43,6 +82,17 @@ const mapWoo = (p: any): WooProduct => {
         alt: im.alt || p?.name || "",
       }))
     : [];
+  const attributes = p.attributes || [];
+  const colorSwatches = extractColorSwatchesFromWooProduct(p);
+  const colors = extractProductColors({ attributes, hover_color_swatches: colorSwatches });
+  const sizes = extractProductSizes(attributes);
+  const categories: WooCategoryRef[] = Array.isArray(p?.categories)
+    ? p.categories.map((c: any) => ({
+        id: Number(c.id),
+        name: String(c.name || ""),
+        slug: String(c.slug || ""),
+      }))
+    : [];
   return {
     id: p.id,
     name: p.name,
@@ -52,9 +102,16 @@ const mapWoo = (p: any): WooProduct => {
     regular_price: p.regular_price,
     sale_price: p.sale_price,
     images,
+    categories,
     short_description: p.short_description,
     description: p.description,
-    attributes: p.attributes || [],
+    attributes,
+    sizeGuide: extractSizeGuideFromWooProduct(p),
+    washingInstructions: extractWashingInstructionsFromWooProduct(p),
+    colorSwatches,
+    colors,
+    sizes,
+    colorGalleries: extractColorGalleriesFromWooProduct(p),
   } as WooProduct;
 };
 
@@ -82,6 +139,114 @@ export async function fetchAllProducts() {
   return fetchProducts({ page: 1, perPage: 100 });
 }
 
+export function mapWooToListProduct(product: WooProduct): ListProduct {
+  const primary =
+    product.categories[product.categories.length - 1] || product.categories[0];
+  return {
+    id: product.id,
+    slug: product.slug,
+    name: product.name,
+    price: product.price,
+    images: product.images.map((image) => ({
+      src: image.src,
+      alt: image.alt,
+    })),
+    category: primary?.name || undefined,
+    colors: product.colors.map((color) => color.hex).filter(Boolean),
+  };
+}
+
+function normalizeCategorySlug(slug: string): string {
+  try {
+    return decodeURIComponent(slug).toLowerCase();
+  } catch {
+    return slug.toLowerCase();
+  }
+}
+
+const HIDDEN_PRODUCT_CATEGORY_SLUGS = new Set([
+  "uncategorized",
+  "未分類",
+]);
+
+export function isUncategorizedProduct(product: WooProduct): boolean {
+  const categories = product.categories || [];
+  if (!categories.length) return true;
+
+  return categories.every((category) => {
+    const slug = normalizeCategorySlug(category.slug);
+    return (
+      HIDDEN_PRODUCT_CATEGORY_SLUGS.has(slug) || category.name === "未分類"
+    );
+  });
+}
+
+/** 排除僅屬於「未分類」的商品，避免出現在列表與分類頁 */
+export function filterListableProducts(products: WooProduct[]): WooProduct[] {
+  return products.filter((product) => !isUncategorizedProduct(product));
+}
+
+/** 依 URL ?category=slug 篩選商品（含子分類） */
+export function filterProductsByCategorySlug(
+  products: WooProduct[],
+  categories: WooCategoryRaw[],
+  slug: string,
+): WooProduct[] {
+  const target = normalizeCategorySlug(slug);
+  const matched = categories.find(
+    (category) => normalizeCategorySlug(category.slug) === target,
+  );
+
+  if (!matched) {
+    return products.filter((product) =>
+      product.categories.some(
+        (category) => normalizeCategorySlug(category.slug) === target,
+      ),
+    );
+  }
+
+  const ids = new Set<number>([matched.id]);
+  categories
+    .filter((category) => category.parent === matched.id)
+    .forEach((category) => ids.add(category.id));
+
+  return products.filter((product) =>
+    product.categories.some(
+      (category) =>
+        ids.has(category.id) ||
+        normalizeCategorySlug(category.slug) === target,
+    ),
+  );
+}
+
+async function fetchProductVariations(productId: number) {
+  const { base } = getEnv();
+  const url = withAuth(
+    `${base}/wp-json/wc/v3/products/${productId}/variations?per_page=100&status=publish`,
+  );
+  const res = await fetch(url, { next: { revalidate: 60 } });
+  if (!res.ok) return [];
+  const data = (await res.json()) as any[];
+  return Array.isArray(data) ? data : [];
+}
+
+async function attachColorGalleries(product: WooProduct, raw: any): Promise<WooProduct> {
+  const fromProduct = extractColorGalleriesFromWooProduct(raw);
+  const hasProductGalleries = Object.keys(fromProduct).length > 0;
+
+  if (raw?.type !== "variable") {
+    return { ...product, colorGalleries: fromProduct };
+  }
+
+  const variations = await fetchProductVariations(product.id);
+  const fromVariations = buildColorGalleriesFromVariations(variations);
+  const colorGalleries = hasProductGalleries
+    ? mergeColorGalleries(fromProduct, fromVariations)
+    : fromVariations;
+
+  return { ...product, colorGalleries };
+}
+
 // 3. 單一產品抓取 (透過 Slug)
 export async function fetchProductBySlug(slug: string) {
   const { base } = getEnv();
@@ -94,7 +259,8 @@ export async function fetchProductBySlug(slug: string) {
   if (!res.ok) return null;
   const arr = (await res.json()) as any[];
   if (!Array.isArray(arr) || arr.length === 0) return null;
-  return mapWoo(arr[0]) as WooProduct;
+  const product = mapWoo(arr[0]) as WooProduct;
+  return attachColorGalleries(product, arr[0]);
 }
 
 // 4. 抓取所有 Slugs (用於 generateStaticParams)

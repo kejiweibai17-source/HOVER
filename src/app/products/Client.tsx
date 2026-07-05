@@ -286,7 +286,7 @@ function WishlistHeart({ product }: { product: Product }) {
         isSaved ? "opacity-100" : "opacity-80"
       }`}
     >
-      <WishlistIcon active={isSaved} size={40} />
+      <WishlistIcon active={isSaved} size={48} />
     </button>
   );
 }
@@ -405,7 +405,13 @@ function Pagination({
 
 /* ─── Main Client Component ─────────────────────────────────────────────── */
 
-export default function Client({ items }: { items: Product[] }) {
+export default function Client({
+  items,
+  categoryLabel = "ALL ITEMS",
+}: {
+  items: Product[];
+  categoryLabel?: string;
+}) {
   const products: Product[] = items?.length > 0 ? items : MOCK_PRODUCTS;
 
   const [filterOpen, setFilterOpen] = useState(false);
@@ -469,7 +475,7 @@ export default function Client({ items }: { items: Product[] }) {
               HOME
             </Link>
             <span>&gt;</span>
-            <span className="text-black">ALL ITEMS</span>
+            <span className="text-black">{categoryLabel}</span>
           </nav>
 
           {/* Filter & Sort bar */}

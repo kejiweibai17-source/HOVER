@@ -8,6 +8,10 @@ import WishlistIcon from "@/components/hover/WishlistIcon";
 import { useWishlistStore } from "@/lib/wishlistStore";
 import { useAuthStore } from "@/lib/authStore";
 import InfiniteCarousel from "@/components/hover/InfiniteCarousel";
+import HoverPopup from "@/components/hover/HoverPopup";
+import HoverHero from "@/components/hover/HoverHero";
+import BrandStoryCarousel from "@/components/hover/BrandStoryCarousel";
+import { HOVER_PLACEHOLDER_IMAGE } from "@/lib/hoverPlaceholder";
 
 /* ─── Data ──────────────────────────────────────────────────────────── */
 
@@ -121,6 +125,12 @@ const PEOPLE_ITEMS = PEOPLE.map((src, i) => ({
   src,
 }));
 
+const BRAND_STORY_SLIDES = [1, 2, 3].map((n) => ({
+  id: `brand-story-${n}`,
+  src: HOVER_PLACEHOLDER_IMAGE,
+  alt: "HOVER brand story",
+}));
+
 const CATEGORIES = [
   {
     label: "TOPS",
@@ -144,36 +154,6 @@ const CATEGORIES = [
     image: "/images/hover/category-2.jpg",
   },
 ];
-
-/* ─── Section 2 · Hero ───────────────────────────────────────────────── */
-
-const HERO_BANNER_SRC = "/images/hover/hero.jpg";
-
-function HeroSection() {
-  return (
-    <section className="relative w-full overflow-hidden">
-      <Image
-        src={HERO_BANNER_SRC}
-        alt="HOVER"
-        width={2400}
-        height={1100}
-        priority
-        sizes="100vw"
-        className="h-[85vh] min-h-[560px] w-full object-cover object-top"
-      />
-
-      <Link
-        href="/products"
-        className="group absolute bottom-14 left-1/2 flex -translate-x-1/2 flex-col items-center text-white"
-      >
-        <span className="font-serif text-[18px] tracking-widest md:text-[22px]">
-          SHOP NOW
-        </span>
-        <span className="mt-2 h-px w-[120px] bg-white transition-all duration-300 group-hover:w-[160px]" />
-      </Link>
-    </section>
-  );
-}
 
 /* ─── Section 3 & 6 · Product Grid (NEW ARRIVALS / BEST SELLER) ─────── */
 
@@ -213,8 +193,8 @@ function ProductCard({ product }) {
   const hasHoverImage = hoverImage !== product.image;
 
   return (
-    <article className="group relative flex flex-col">
-      {/* Image + badges + hover actions */}
+    <article className="group relative flex min-w-0 w-full flex-col overflow-hidden">
+      {/* Image + badges + wishlist */}
       <div className="relative aspect-[404/479] overflow-hidden bg-white">
         <Link href={product.href} className="absolute inset-0 block">
           <Image
@@ -237,23 +217,23 @@ function ProductCard({ product }) {
           )}
         </Link>
 
-        {/* NEW badge */}
         {product.isNew && (
-          <span className="pointer-events-none absolute left-3 top-3 z-20 bg-white px-2 py-0.5 text-[10px] font-semibold tracking-widest text-black">
+          <span className="pointer-events-none absolute left-2 top-2 z-20 bg-white px-2 py-0.5 text-[10px] font-semibold tracking-widest text-black md:left-3 md:top-3">
             NEW
           </span>
         )}
       </div>
 
       {/* Info */}
-      <div className="mt-3 space-y-1 text-left">
-        <p className="text-[11px] tracking-widest text-[#888]">
+      <div className="mt-2 min-w-0 space-y-1 pr-1 text-left md:mt-3">
+        <p className="truncate text-[10px] tracking-widest text-[#888] md:text-[11px]">
           {product.category}
         </p>
-        <div className="flex items-start justify-between gap-2">
+
+        <div className="flex min-w-0 items-start justify-between gap-1">
           <Link
             href={product.href}
-            className="flex-1 text-[13px] font-semibold text-black hover:opacity-60"
+            className="min-w-0 flex-1 break-words text-[12px] font-semibold leading-snug text-black line-clamp-2 hover:opacity-60 md:text-[13px]"
           >
             {product.name}
           </Link>
@@ -262,40 +242,41 @@ function ProductCard({ product }) {
             aria-label={isSaved ? "取消收藏" : "加入收藏"}
             onClick={handleWishlist}
             disabled={wishlistPending}
-            className={`shrink-0 transition-opacity hover:opacity-60 ${
+            className={`shrink-0 pt-0.5 transition-opacity hover:opacity-60 ${
               isSaved ? "opacity-100" : "opacity-80"
             }`}
           >
-            <WishlistIcon active={isSaved} size={40} />
+            <WishlistIcon active={isSaved} size={36} className="md:hidden" />
+            <WishlistIcon active={isSaved} size={48} className="hidden md:block" />
           </button>
         </div>
 
-        {/* Color swatch */}
-        <div className="flex items-center gap-2 pt-0.5">
+        <div className="flex min-w-0 items-center gap-1.5 pt-0.5">
           <span
-            className="inline-block h-3 w-3 rounded-full border border-[#ccc]"
+            className="inline-block h-3 w-3 shrink-0 rounded-full border border-[#ccc]"
             style={{ background: product.colorHex }}
           />
-          <span className="text-[11px] text-[#888]">{product.colorLabel}</span>
+          <span className="truncate text-[10px] text-[#888] md:text-[11px]">
+            {product.colorLabel}
+          </span>
         </div>
 
-        {/* Price */}
-        <div className="flex items-center gap-3 pt-0.5">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 pt-0.5">
           {product.soldOut ? (
             <>
-              <span className="text-[12px] text-[#b3b3b3] line-through">
+              <span className="text-[11px] text-[#b3b3b3] line-through md:text-[12px]">
                 NT. {product.originalPrice}
               </span>
-              <span className="text-[13px] font-bold text-[#222]">
+              <span className="text-[12px] font-bold text-[#222] md:text-[13px]">
                 SOLD OUT
               </span>
             </>
           ) : (
             <>
-              <span className="text-[12px] text-[#b3b3b3] line-through">
+              <span className="text-[11px] text-[#b3b3b3] line-through md:text-[12px]">
                 NT. {product.originalPrice}
               </span>
-              <span className="text-[13px] font-bold text-[#222]">
+              <span className="text-[12px] font-bold text-[#222] md:text-[13px]">
                 NT. {product.salePrice}
               </span>
             </>
@@ -325,19 +306,10 @@ function ProductSection({ title, products }) {
 function BrandStorySection() {
   return (
     <section className="bg-hover-bg md:grid md:h-[85vh] md:grid-cols-[58%_42%]">
-      {/* Left — photo */}
-      <div className="relative min-h-[380px] overflow-hidden md:min-h-[600px]">
-        <Image
-          src="/images/hover/brand-story.jpg"
-          alt="HOVER brand story"
-          fill
-          className="object-cover"
-          sizes="(max-width: 768px) 100vw, 58vw"
-        />
-        <span className="absolute bottom-8 left-8 font-black text-[36px] leading-none tracking-tight text-black mix-blend-multiply opacity-90 md:text-[52px]">
-          HOVER
-        </span>
-      </div>
+      <BrandStoryCarousel
+        slides={BRAND_STORY_SLIDES}
+        className="min-h-[380px] md:min-h-[600px]"
+      />
 
       {/* Right — brand text（僅桌機顯示） */}
       <div className="hidden flex-col items-center justify-between bg-hover-bg px-10 py-12 md:my-10 md:flex md:px-14 md:py-16">
@@ -349,7 +321,6 @@ function BrandStorySection() {
             生活態度、
           </p>
         </div>
-        http://localhost:3000/products/chambray-ribbon-shirt
         <p className="mt-8 max-w-[280px] text-right text-[12px] leading-[2] tracking-wide text-[#4d4b48] md:text-[13px]">
           HOVER 是一個為日常而設計的服飾品牌。
           <br />
@@ -439,10 +410,11 @@ function HoverPeopleSection() {
 /* ─── Page ───────────────────────────────────────────────────────────── */
 /* HoverHeader & HoverFooter are rendered globally by ClientLayout */
 
-export default function Home() {
+export default function Home({ initialHero = null }) {
   return (
     <div className="bg-white">
-      <HeroSection />
+      <HoverPopup />
+      <HoverHero initialHero={initialHero} />
       <ProductSection title="NEW ARRIVALS" products={CAROUSEL_PRODUCTS} />
       <BrandStorySection />
       <CategoryGrid />

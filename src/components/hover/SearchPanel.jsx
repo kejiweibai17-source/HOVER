@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import Image from "next/image";
 import { Link } from "next-view-transitions";
 import { AnimatePresence, motion } from "framer-motion";
@@ -8,67 +8,98 @@ import { X } from "lucide-react";
 import HoverIcon from "@/components/hover/HoverIcon";
 import { useSearchStore, selectSearchOpen } from "@/lib/searchStore";
 import { formatSearchPrice } from "@/lib/searchProducts";
+import { useProductSearch } from "@/lib/useProductSearch";
 
-const DEBOUNCE_MS = 280;
+function SearchResults({
+  query,
+  loading,
+  results,
+  onResultClick,
+  compact = false,
+}) {
+  const trimmed = query.trim();
 
-export default function SearchPanel() {
-  const open = useSearchStore(selectSearchOpen);
+  if (!trimmed) {
+    return (
+      <p className="py-6 text-center text-[13px] tracking-[0.06em] text-[#888]">
+        輸入關鍵字，即時搜尋商品
+      </p>
+    );
+  }
+
+  if (loading) {
+    return (
+      <p className="py-6 text-center text-[13px] tracking-[0.06em] text-[#888]">
+        搜尋中...
+      </p>
+    );
+  }
+
+  if (results.length === 0) {
+    return (
+      <p className="py-6 text-center text-[13px] tracking-[0.06em] text-[#888]">
+        找不到相關商品
+      </p>
+    );
+  }
+
+  return (
+    <ul className="space-y-1">
+      {results.map((item) => (
+        <li key={`${item.id}-${item.slug}`}>
+          <Link
+            href={`/products/${item.slug}`}
+            onClick={onResultClick}
+            className="flex items-center gap-3 rounded-sm px-1 py-2.5 transition-colors hover:bg-[#f5f5f5] md:gap-4 md:px-2 md:py-3"
+          >
+            <div
+              className={`relative shrink-0 overflow-hidden bg-[#f0f0f0] ${
+                compact ? "h-14 w-11" : "h-[72px] w-[56px]"
+              }`}
+            >
+              {item.image ? (
+                <Image
+                  src={item.image}
+                  alt={item.name}
+                  fill
+                  className="object-cover"
+                  sizes={compact ? "44px" : "56px"}
+                />
+              ) : (
+                <div className="flex h-full w-full items-center justify-center text-[9px] text-[#bbb] md:text-[10px]">
+                  NO IMG
+                </div>
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[13px] tracking-[0.04em] text-black md:text-[15px]">
+                {item.name}
+              </p>
+              <p className="mt-0.5 text-[12px] tracking-[0.04em] text-[#555] md:mt-1 md:text-[13px]">
+                {formatSearchPrice(item.price)}
+              </p>
+            </div>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function DesktopSearchPanel({ open }) {
   const closeSearch = useSearchStore((s) => s.closeSearch);
   const inputRef = useRef(null);
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const abortRef = useRef(null);
-
-  const runSearch = useCallback(async (value) => {
-    const q = value.trim();
-    abortRef.current?.abort();
-    if (!q) {
-      setResults([]);
-      setLoading(false);
-      return;
-    }
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-    setLoading(true);
-
-    try {
-      const res = await fetch(
-        `/api/search?q=${encodeURIComponent(q)}&limit=10`,
-        { signal: controller.signal },
-      );
-      const data = await res.json();
-      if (!controller.signal.aborted) {
-        setResults(Array.isArray(data?.results) ? data.results : []);
-      }
-    } catch (err) {
-      if (err?.name !== "AbortError" && !controller.signal.aborted) {
-        setResults([]);
-      }
-    } finally {
-      if (!controller.signal.aborted) setLoading(false);
-    }
-  }, []);
+  const { query, setQuery, results, loading, reset } = useProductSearch(open, 10);
 
   useEffect(() => {
     if (!open) {
-      setQuery("");
-      setResults([]);
-      setLoading(false);
-      abortRef.current?.abort();
+      reset();
       return;
     }
 
     const timer = window.setTimeout(() => inputRef.current?.focus(), 120);
     return () => window.clearTimeout(timer);
-  }, [open]);
-
-  useEffect(() => {
-    if (!open) return;
-    const timer = window.setTimeout(() => runSearch(query), DEBOUNCE_MS);
-    return () => window.clearTimeout(timer);
-  }, [query, open, runSearch]);
+  }, [open, reset]);
 
   useEffect(() => {
     if (!open) return;
@@ -85,10 +116,6 @@ export default function SearchPanel() {
     };
   }, [open, closeSearch]);
 
-  const handleResultClick = () => {
-    closeSearch();
-  };
-
   return (
     <AnimatePresence>
       {open && (
@@ -96,7 +123,7 @@ export default function SearchPanel() {
           <motion.button
             type="button"
             aria-label="關閉搜尋"
-            className="fixed inset-0 z-[1050] bg-black/30"
+            className="fixed inset-0 z-[1200] hidden bg-black/30 md:block"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -107,22 +134,26 @@ export default function SearchPanel() {
             role="dialog"
             aria-modal="true"
             aria-label="商品搜尋"
-            className="fixed bottom-0 right-0 top-[var(--hover-header-height,116px)] z-[1060] flex w-full max-w-[520px] flex-col border-l border-[#e8e8e8] bg-white shadow-[-8px_0_32px_rgba(0,0,0,0.08)]"
+            className="fixed inset-y-0 right-0 z-[1210] hidden h-dvh w-full max-w-[520px] flex-col overflow-hidden border-l border-[#e8e8e8] bg-white shadow-[-8px_0_32px_rgba(0,0,0,0.08)] md:flex"
             initial={{ x: "100%" }}
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "spring", stiffness: 320, damping: 32 }}
           >
-            {/* 搜尋列 */}
-            <div className="flex items-center gap-3 border-b border-[#ececec] px-5 py-4 md:px-6 md:py-5">
-              <HoverIcon name="search" size={28} alt="" className="shrink-0 opacity-70" />
+            <div className="flex shrink-0 items-center gap-3 border-b border-[#ececec] px-6 py-5">
+              <HoverIcon
+                name="search"
+                size={28}
+                alt=""
+                className="shrink-0 opacity-70"
+              />
               <input
                 ref={inputRef}
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="搜尋商品..."
-                className="min-w-0 flex-1 bg-transparent text-[15px] tracking-[0.04em] text-black outline-none placeholder:text-[#999] md:text-[16px]"
+                className="min-w-0 flex-1 bg-transparent text-[16px] tracking-[0.04em] text-black outline-none placeholder:text-[#999]"
                 autoComplete="off"
               />
               <button
@@ -135,67 +166,109 @@ export default function SearchPanel() {
               </button>
             </div>
 
-            {/* 結果 */}
-            <div className="flex-1 overflow-y-auto px-5 py-4 md:px-6 md:py-5">
-              {!query.trim() && (
-                <p className="py-8 text-center text-[13px] tracking-[0.06em] text-[#888]">
-                  輸入關鍵字，即時搜尋商品
-                </p>
-              )}
-
-              {query.trim() && loading && (
-                <p className="py-8 text-center text-[13px] tracking-[0.06em] text-[#888]">
-                  搜尋中...
-                </p>
-              )}
-
-              {query.trim() && !loading && results.length === 0 && (
-                <p className="py-8 text-center text-[13px] tracking-[0.06em] text-[#888]">
-                  找不到相關商品
-                </p>
-              )}
-
-              {!loading && results.length > 0 && (
-                <ul className="space-y-1">
-                  {results.map((item) => (
-                    <li key={`${item.id}-${item.slug}`}>
-                      <Link
-                        href={`/products/${item.slug}`}
-                        onClick={handleResultClick}
-                        className="flex items-center gap-4 rounded-sm px-2 py-3 transition-colors hover:bg-[#f5f5f5]"
-                      >
-                        <div className="relative h-[72px] w-[56px] shrink-0 overflow-hidden bg-[#f0f0f0]">
-                          {item.image ? (
-                            <Image
-                              src={item.image}
-                              alt={item.name}
-                              fill
-                              className="object-cover"
-                              sizes="56px"
-                            />
-                          ) : (
-                            <div className="flex h-full w-full items-center justify-center text-[10px] text-[#bbb]">
-                              NO IMG
-                            </div>
-                          )}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="truncate text-[14px] tracking-[0.04em] text-black md:text-[15px]">
-                            {item.name}
-                          </p>
-                          <p className="mt-1 text-[13px] tracking-[0.04em] text-[#555]">
-                            {formatSearchPrice(item.price)}
-                          </p>
-                        </div>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              )}
+            <div
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-5"
+              data-lenis-prevent
+            >
+              <SearchResults
+                query={query}
+                loading={loading}
+                results={results}
+                onResultClick={closeSearch}
+              />
             </div>
           </motion.aside>
         </>
       )}
     </AnimatePresence>
   );
+}
+
+export function MobileSearchBar({ open, inputRef }) {
+  const closeSearch = useSearchStore((s) => s.closeSearch);
+  const { query, setQuery, results, loading, reset } = useProductSearch(open, 12);
+
+  useEffect(() => {
+    if (!open) {
+      reset();
+      return;
+    }
+
+    const timer = window.setTimeout(() => inputRef?.current?.focus(), 120);
+    return () => window.clearTimeout(timer);
+  }, [open, reset, inputRef]);
+
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const mq = window.matchMedia("(max-width: 767px)");
+    const lockScroll = () => {
+      if (mq.matches) document.body.style.overflow = "hidden";
+    };
+    const unlockScroll = () => {
+      document.body.style.overflow = "";
+    };
+
+    lockScroll();
+    mq.addEventListener("change", lockScroll);
+
+    return () => {
+      mq.removeEventListener("change", lockScroll);
+      unlockScroll();
+    };
+  }, [open]);
+
+  if (!open) return null;
+
+  return (
+    <>
+      <div className="shrink-0 border-t border-[#ececec] bg-white px-4 py-3 md:hidden">
+        <div className="flex items-center border border-[#d4d4d4] px-4 py-3">
+          <input
+            ref={inputRef}
+            type="search"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="search"
+            className="min-w-0 flex-1 bg-transparent font-serif text-[15px] tracking-[0.04em] text-black outline-none placeholder:text-[#b8b8b8]"
+            autoComplete="off"
+            enterKeyHint="search"
+          />
+          {query && (
+            <button
+              type="button"
+              aria-label="清除搜尋"
+              onClick={() => setQuery("")}
+              className="shrink-0 pl-3 text-[#999] transition-opacity hover:opacity-60"
+            >
+              <X size={18} strokeWidth={1.25} />
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div
+        className="fixed inset-x-0 bottom-0 z-[1200] flex flex-col overflow-hidden bg-white md:hidden"
+        style={{ top: "var(--hover-header-height, 88px)" }}
+      >
+        <div
+          className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 py-3"
+          data-lenis-prevent
+        >
+          <SearchResults
+            query={query}
+            loading={loading}
+            results={results}
+            onResultClick={closeSearch}
+            compact
+          />
+        </div>
+      </div>
+    </>
+  );
+}
+
+export default function SearchPanel() {
+  const open = useSearchStore(selectSearchOpen);
+  return <DesktopSearchPanel open={open} />;
 }

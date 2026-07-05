@@ -105,8 +105,9 @@ async function grantWelcomeCoupon(newCustomerId: number, email: string) {
         code,
         amount: 100,
         email,
-        description: "HOVER FRIENDS 入會禮 NT$100（單筆滿 NT$1,000 可使用）",
+        description: "HOVER FRIENDS 入會禮 HOVER100（單筆滿 NT$1,000 可使用，限本人一次）",
         expiryDays: 90,
+        kind: "welcome",
       }),
     ),
   });
@@ -182,6 +183,7 @@ export async function POST(req: Request) {
     const email: string = String(body.email || "").trim().toLowerCase();
     const username: string = String(body.username || "").trim();
     const password: string = String(body.password || "");
+    const birthday: string = String(body.birthday || "").trim();
     const ref: string | null = body.ref ? String(body.ref) : null;
 
     if (!email || !password) {
@@ -200,6 +202,13 @@ export async function POST(req: Request) {
 
     // 1) 建立 WooCommerce customer，預設 email 未驗證
     const meta_data: any[] = [{ key: "email_verified", value: "0" }];
+    if (birthday) {
+      meta_data.push(
+        { key: "birthday", value: birthday },
+        { key: "billing_birth_date", value: birthday },
+        { key: "_billing_birth_date", value: birthday },
+      );
+    }
 
     // referral: 若 ref 合法，先寫 uf_referred_by
     if (ambassadorOk && ambassadorId) {
@@ -237,8 +246,10 @@ export async function POST(req: Request) {
     const createdEmail = String(data?.email || email).trim().toLowerCase();
 
     // 入會禮
+    let welcomeCode = welcomeCouponCode(newCustomerId);
     try {
       await grantWelcomeCoupon(newCustomerId, createdEmail);
+      welcomeCode = welcomeCouponCode(newCustomerId);
     } catch (e) {
       console.error("grantWelcomeCoupon error:", e);
     }
@@ -279,6 +290,12 @@ export async function POST(req: Request) {
           <h2 style="color: #222; border-bottom: 2px solid #f58a9c; padding-bottom: 10px;">會員註冊信箱驗證</h2>
           <p>親愛的會員您好：</p>
           <p>感謝您註冊 HOVER，請點擊下方按鈕完成信箱驗證：</p>
+
+          <div style="margin: 24px 0; padding: 16px; background: #f6f7f7; border-radius: 8px; text-align: left;">
+            <p style="margin: 0 0 8px; font-weight: 700;">🎁 入會禮折扣碼</p>
+            <p style="margin: 0 0 6px; font-size: 14px;">您的專屬代碼：<strong style="letter-spacing: 0.08em;">${welcomeCode}</strong></p>
+            <p style="margin: 0; font-size: 13px; color: #666;">NT$100 購物金，單筆滿 NT$1,000 可使用，限登入會員本人使用一次。</p>
+          </div>
           
           <div style="margin: 30px 0; text-align: center;">
             <a href="${url.toString()}" target="_blank"

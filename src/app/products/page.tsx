@@ -3,6 +3,13 @@ import Client from "./Client";
 import Script from "next/script";
 import type { Metadata } from "next";
 import { MOCK_PRODUCTS } from "@/lib/mockProducts";
+import {
+  fetchAllProducts,
+  fetchProductCategories,
+  filterListableProducts,
+  filterProductsByCategorySlug,
+  mapWooToListProduct,
+} from "@/lib/woo";
 
 const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -35,8 +42,49 @@ export const metadata: Metadata = {
   },
 };
 
-export default function ProductsPage() {
-  const items = MOCK_PRODUCTS;
+export const revalidate = 60;
+
+type PageProps = {
+  searchParams: Promise<{ category?: string }>;
+};
+
+export default async function ProductsPage({ searchParams }: PageProps) {
+  const { category: categorySlug } = await searchParams;
+
+  let items = MOCK_PRODUCTS;
+  let categoryLabel = "ALL ITEMS";
+
+  try {
+    const [wooProducts, categories] = await Promise.all([
+      fetchAllProducts(),
+      fetchProductCategories(),
+    ]);
+
+    const listableProducts = filterListableProducts(wooProducts);
+
+    const filtered = categorySlug
+      ? filterProductsByCategorySlug(listableProducts, categories, categorySlug)
+      : listableProducts;
+
+    items = filtered.map(mapWooToListProduct);
+
+    if (categorySlug) {
+      const matched = categories.find(
+        (category) =>
+          category.slug.toLowerCase() ===
+          decodeURIComponent(categorySlug).toLowerCase(),
+      );
+      categoryLabel = matched?.name || categorySlug.toUpperCase();
+    }
+
+    console.log(
+      "🌐 [商品列表] WooCommerce 商品數:",
+      wooProducts.length,
+      categorySlug ? `篩選 ${categorySlug}: ${filtered.length}` : "",
+    );
+  } catch (error) {
+    console.error("❌ 商品列表抓取失敗，使用 mock 資料:", error);
+  }
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -65,7 +113,7 @@ export default function ProductsPage() {
       />
 
       {/* 渲染 Client Component */}
-      <Client items={items} />
+      <Client items={items} categoryLabel={categoryLabel} />
     </>
   );
 }

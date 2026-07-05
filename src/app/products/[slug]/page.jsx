@@ -2,6 +2,9 @@
 import { fetchAllProductSlugs, fetchProductBySlug } from "@/lib/woo";
 import { MOCK_PRODUCTS } from "@/lib/mockProducts";
 import ProductClient from "./Client";
+import { DEFAULT_SIZE_GUIDE } from "@/lib/sizeGuide";
+import { DEFAULT_WASHING_INSTRUCTIONS } from "@/lib/washingInstructions";
+import { DEFAULT_PRODUCT_COLORS } from "@/lib/productColors";
 
 export const revalidate = 60;
 
@@ -403,8 +406,19 @@ export default async function ProductPage({ params }) {
                 images: schemaImages,
                 attributes: woo.attributes || [],
                 acf: woo.acf || null,
+                sizeGuide: woo.sizeGuide,
+                washingInstructions: woo.washingInstructions,
+                colors: woo.colors,
+                sizes: woo.sizes,
+                colorGalleries: woo.colorGalleries,
               }
-            : fallback
+            : {
+                ...fallback,
+                sizeGuide: DEFAULT_SIZE_GUIDE,
+                washingInstructions: DEFAULT_WASHING_INSTRUCTIONS,
+                colors: DEFAULT_PRODUCT_COLORS,
+                sizes: ["S", "M", "L", "XL"],
+              }
         }
       />
     </>

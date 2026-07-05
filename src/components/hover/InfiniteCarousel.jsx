@@ -259,7 +259,7 @@ export default function InfiniteCarousel({
               <div
                 key={item._carouselKey}
                 style={{ width: `${slideWidthPercent}%` }}
-                className={`shrink-0 ${slideClassName}`}
+                className={`min-w-0 shrink-0 overflow-hidden ${slideClassName}`}
               >
                 {renderItem(item, i % baseLength)}
               </div>

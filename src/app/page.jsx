@@ -1,6 +1,7 @@
 // app/page.jsx
 import Client from "./home";
-import { fetchAllProducts } from "@/lib/woo"; // 🚀 引入抓取商品的 API
+import { fetchAllProducts } from "@/lib/woo";
+import { fetchHeroSettings } from "@/lib/heroDefaults";
 
 // 🌟 1. 動態獲取網址，解決本地端與正式機網址判定問題
 const getSiteUrl = () => {
@@ -169,6 +170,8 @@ export default async function Page() {
     console.error("❌ 首頁抓取產品失敗:", error);
   }
 
+  const initialHero = await fetchHeroSettings();
+
   return (
     <>
       <script
@@ -198,7 +201,7 @@ export default async function Page() {
       />
 
       {/* 🚀 把 faqs 和 items 一起傳遞給前端畫面 */}
-      <Client />
+      <Client initialHero={initialHero} />
     </>
   );
 }

@@ -6,7 +6,7 @@ import { authOptions } from "@/lib/auth-options";
 import {
   calcMemberDiscountAmount,
   computeMembership,
-  type WcOrderLite,
+  mapWcOrdersToLite,
 } from "@/lib/membership";
 
 export const runtime = "nodejs";
@@ -27,7 +27,63 @@ const LINEPAY_BASE_URL = process.env.LINEPAY_BASE_URL || "https://api-pay.line.m
 interface CartItem { wcProductId: number; qty: number; price: number; title: string; id?: string | number; }
 interface ContactInfo { email: string; }
 interface AddressInfo { firstName: string; lastName: string; line1: string; phone: string; storeId?: string; storeName?: string; storeAddr?: string; }
-interface RequestBody { items: CartItem[]; contact: ContactInfo; addr: AddressInfo; total: number; shipMethod: string; payMethod?: string; coupon?: { code: string; amount: number } | null; memberDiscount?: number; }
+interface RequestBody { items: CartItem[]; contact: ContactInfo; addr: AddressInfo; total: number; shipMethod: string; payMethod?: string; coupon?: { code: string; amount: number } | string | null; memberDiscount?: number; }
+
+async function productIsOnSale(auth: string, productId: number): Promise<boolean> {
+  try {
+    const res = await fetch(`${BASE.replace(/\/$/, "")}/wp-json/wc/v3/products/${productId}`, {
+      headers: { Authorization: auth },
+      cache: "no-store",
+    });
+    if (!res.ok) return false;
+    const product = await res.json();
+    return Boolean(product.on_sale);
+  } catch {
+    return false;
+  }
+}
+
+async function validateCouponOnServer(
+  auth: string,
+  code: string,
+  email: string,
+  subtotalAfterMember: number,
+  hasMemberDiscount: boolean,
+): Promise<{ amount: number; code: string } | null> {
+  const res = await fetch(
+    `${BASE.replace(/\/$/, "")}/wp-json/wc/v3/coupons?code=${encodeURIComponent(code)}`,
+    { headers: { Authorization: auth }, cache: "no-store" },
+  );
+  if (!res.ok) return null;
+  const arr = await res.json();
+  if (!Array.isArray(arr) || arr.length === 0) return null;
+  const coupon = arr[0];
+
+  if (coupon.individual_use && hasMemberDiscount) return null;
+  if (coupon.date_expires && new Date(coupon.date_expires).getTime() < Date.now()) return null;
+
+  const usageLimit = Number(coupon.usage_limit || 0);
+  const usageCount = Number(coupon.usage_count || 0);
+  if (usageLimit > 0 && usageCount >= usageLimit) return null;
+
+  const minAmount = Number(coupon.minimum_amount || 0);
+  if (minAmount > 0 && subtotalAfterMember < minAmount) return null;
+
+  const emails: string[] = Array.isArray(coupon.email_restrictions)
+    ? coupon.email_restrictions.map((e: string) => String(e).toLowerCase())
+    : [];
+  if (emails.length > 0 && !emails.includes(email.trim().toLowerCase())) return null;
+
+  const type = String(coupon.discount_type || "fixed_cart");
+  const amount = Number(coupon.amount || 0);
+  let discount = 0;
+  if (type === "percent") discount = Math.round(subtotalAfterMember * (amount / 100));
+  else if (type === "fixed_cart" || type === "fixed_product") {
+    discount = Math.min(amount, subtotalAfterMember);
+  }
+  if (discount <= 0) return null;
+  return { amount: discount, code: String(coupon.code || code) };
+}
 
 function getEcpayDate(): string {
   const d = new Date();
@@ -77,23 +133,36 @@ export async function POST(req: Request) {
     let loggedInCustomerId = (session as any)?.customerId || 0;
 
     const body: RequestBody = await req.json();
-    const { items, contact, addr, total, shipMethod, payMethod, coupon, memberDiscount } = body;
+    const { items, contact, addr, total, shipMethod, payMethod, memberDiscount } = body;
+    let couponInput = body.coupon;
+    if (typeof couponInput === "string") {
+      couponInput = couponInput ? { code: couponInput, amount: 0 } : null;
+    }
+    const coupon = couponInput && typeof couponInput === "object" ? couponInput : null;
 
     // ============================================================================
     // 🛡️ 後端計價防護網 (平衡版：嚴格驗算數學邏輯，完美相容 WooCommerce 變體與外掛)
     // ============================================================================
     let calculatedSubtotal = 0;
+    let regularSubtotal = 0;
     for (const item of items) {
       // 確保至少有傳入 ID
       if (!item.wcProductId && !item.id) {
         return NextResponse.json({ ok: false, message: "商品資料異常" }, { status: 400 });
       }
-      // 計算小計：單價 x 數量
-      calculatedSubtotal += Number(item.price) * Number(item.qty);
+      const lineTotal = Number(item.price) * Number(item.qty);
+      calculatedSubtotal += lineTotal;
+      const productId = Number(item.wcProductId || item.id);
+      if (auth && productId) {
+        const onSale = await productIsOnSale(auth, productId);
+        if (!onSale) regularSubtotal += lineTotal;
+      } else {
+        regularSubtotal += lineTotal;
+      }
     }
 
     const claimedMemberDiscount = Number(memberDiscount) || 0;
-    const claimedCouponDiscount = coupon ? Number(coupon.amount) || 0 : 0;
+    let claimedCouponDiscount = coupon ? Number(coupon.amount) || 0 : 0;
 
     // 伺服器端會員折扣驗算
     let serverMemberDiscount = 0;
@@ -112,16 +181,13 @@ export async function POST(req: Request) {
             { headers: { Authorization: auth }, cache: "no-store" },
           );
           const ordersForCalc = oRes.ok ? await oRes.json() : [];
-          const ordersLite: WcOrderLite[] = (ordersForCalc || []).map((o: any) => ({
-            total: parseFloat(o.total) || 0,
-            date_created: o.date_created,
-          }));
+          const ordersLite = mapWcOrdersToLite(ordersForCalc || []);
           const membership = computeMembership(
             ordersLite,
             customer.meta_data || [],
           );
           serverMemberDiscount = calcMemberDiscountAmount(
-            calculatedSubtotal,
+            regularSubtotal,
             membership.tierId,
             membership.exclusiveActive,
           );
@@ -141,7 +207,32 @@ export async function POST(req: Request) {
       );
     }
 
-    const totalDiscount = serverMemberDiscount + claimedCouponDiscount;
+    const subtotalAfterMember = Math.max(0, calculatedSubtotal - serverMemberDiscount);
+    let serverCouponDiscount = 0;
+    let validatedCouponCode: string | null = null;
+
+    if (coupon?.code && auth) {
+      const validated = await validateCouponOnServer(
+        auth,
+        coupon.code,
+        contact?.email || session?.user?.email || "",
+        subtotalAfterMember,
+        serverMemberDiscount > 0,
+      );
+      if (!validated) {
+        return NextResponse.json(
+          { ok: false, message: "折扣碼驗證失敗，請重新輸入。" },
+          { status: 403 },
+        );
+      }
+      serverCouponDiscount = validated.amount;
+      validatedCouponCode = validated.code;
+      if (Math.abs(claimedCouponDiscount - serverCouponDiscount) > 1) {
+        claimedCouponDiscount = serverCouponDiscount;
+      }
+    }
+
+    const totalDiscount = serverMemberDiscount + serverCouponDiscount;
     const discountedSubtotal = Math.max(0, calculatedSubtotal - totalDiscount);
 
     // 🌟 後端真實運費邏輯
@@ -227,13 +318,14 @@ export async function POST(req: Request) {
           );
         }
 
-        if (coupon?.code) meta_data.push({ key: "_used_coupon_code", value: coupon.code });
+        if (validatedCouponCode) meta_data.push({ key: "_used_coupon_code", value: validatedCouponCode });
 
         const fee_lines = [];
-        if (claimedMemberDiscount > 0) fee_lines.push({ name: "HOVER 會員優惠", total: String(-claimedMemberDiscount) });
-        if (claimedCouponDiscount > 0 && coupon?.code) fee_lines.push({ name: `優惠券折抵 (${coupon.code})`, total: String(-claimedCouponDiscount) });
+        if (serverMemberDiscount > 0) {
+          fee_lines.push({ name: "HOVER 臻享會員 95 折", total: String(-serverMemberDiscount) });
+        }
 
-        const wcOrderPayload = {
+        const wcOrderPayload: Record<string, unknown> = {
           customer_id: loggedInCustomerId, 
           payment_method: payMethod === "linepay" ? "linepay" : "ecpay",
           payment_method_title: payMethod === "linepay" ? "LINE Pay" : "綠界科技 ECPay",
@@ -248,11 +340,14 @@ export async function POST(req: Request) {
             address_1: finalAddress, country: "TW",
           },
           shipping_lines: [{ method_id: methodId, method_title: shippingTitle, total: String(realShippingCost) }],
-          fee_lines: fee_lines,
-          // 🚀 防呆：如果 wcProductId 是 undefined，就抓 id
+          fee_lines,
           line_items: items.map((it) => ({ product_id: Number(it.wcProductId || it.id), quantity: Number(it.qty) })),
-          meta_data: meta_data, 
+          meta_data,
         };
+
+        if (validatedCouponCode) {
+          wcOrderPayload.coupon_lines = [{ code: validatedCouponCode }];
+        }
 
         const wcRes = await fetch(`${BASE.replace(/\/$/, "")}/wp-json/wc/v3/orders`, {
           method: "POST",

@@ -105,8 +105,9 @@ export async function POST(req: Request) {
           code,
           amount,
           email: customerEmail,
-          description: `HOVER FRIENDS 入會禮 NT$${amount}（單筆滿 NT$${MEMBERSHIP_RULES.giftMinSpend} 可使用）`,
+          description: `HOVER FRIENDS 入會禮 HOVER100（單筆滿 NT$${MEMBERSHIP_RULES.giftMinSpend} 可使用）`,
           expiryDays: MEMBERSHIP_RULES.giftValidityDays,
+          kind: "welcome",
         }),
       );
 
@@ -162,8 +163,9 @@ export async function POST(req: Request) {
         code,
         amount,
         email: customerEmail,
-        description: `${tierLabel} 生日禮 NT$${amount}（單筆滿 NT$${MEMBERSHIP_RULES.giftMinSpend} 可使用）`,
+        description: `${tierLabel} 生日禮 NT$${amount}（單筆滿 NT$${MEMBERSHIP_RULES.giftMinSpend} 可使用，不可與其他優惠併用）`,
         expiryDays: MEMBERSHIP_RULES.birthdayValidityDays,
+        kind: "birthday",
       }),
     );
 

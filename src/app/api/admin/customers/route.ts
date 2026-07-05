@@ -200,7 +200,11 @@ export async function GET() {
       }
 
       const ordersLite: WcOrderLite[] = [
-        { total: totalSpent, date_created: lastOrderDate || new Date().toISOString() },
+        {
+          total: totalSpent,
+          totalRefunded: 0,
+          date_created: lastOrderDate || new Date().toISOString(),
+        },
       ];
       const membership = computeMembership(ordersLite, c.meta_data || []);
 

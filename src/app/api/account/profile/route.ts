@@ -7,7 +7,8 @@ import { authOptions } from "@/lib/auth-options";
 import {
   buildExclusiveMetaUpdates,
   computeMembership,
-  type WcOrderLite,
+  mapWcOrdersToLite,
+  netOrderTotal,
 } from "@/lib/membership";
 
 export const dynamic = "force-dynamic";
@@ -239,14 +240,11 @@ export async function GET() {
     }
 
     totalSpent12m = ordersForCalc.reduce(
-      (sum, o) => sum + (parseFloat(o.total) || 0),
-      0
+      (sum, o) => sum + netOrderTotal({ total: o.total, totalRefunded: o.total_refunded, date_created: o.date_created }),
+      0,
     );
 
-    const ordersLite: WcOrderLite[] = ordersForCalc.map((o: any) => ({
-      total: parseFloat(o.total) || 0,
-      date_created: o.date_created,
-    }));
+    const ordersLite = mapWcOrdersToLite(ordersForCalc);
 
     // 同步臻享會員效期 meta（升級 / 續會）
     if (customer?.id) {

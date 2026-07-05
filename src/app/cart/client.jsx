@@ -440,8 +440,12 @@ function calcPricing(
     0,
   );
   let memberDiscountAmount = 0;
-  if (tierDiscountRate < 1 && subtotal > 0)
-    memberDiscountAmount = Math.round(subtotal * (1 - tierDiscountRate));
+  const regularSubtotal = items.reduce((s, it) => {
+    if (it.onSale) return s;
+    return s + (Number(it.price) || 0) * (Number(it.qty) || 0);
+  }, 0);
+  if (tierDiscountRate < 1 && regularSubtotal > 0)
+    memberDiscountAmount = Math.round(regularSubtotal * (1 - tierDiscountRate));
 
   const subtotalAfterMember = Math.max(0, subtotal - memberDiscountAmount);
   const safeCouponDiscount = Math.min(
@@ -1086,7 +1090,11 @@ function CheckoutStep({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ code, subtotalAfterMember }),
+        body: JSON.stringify({
+          code,
+          subtotalAfterMember,
+          hasMemberDiscount: (pricing.memberDiscountAmount || 0) > 0,
+        }),
       });
       const data = await res.json();
       if (!data.valid) {
@@ -1239,7 +1247,9 @@ function CheckoutStep({
       },
       shipMethod,
       payMethod,
-      coupon: appliedCoupon?.code || null,
+      coupon: appliedCoupon
+        ? { code: appliedCoupon.code, amount: appliedCoupon.discount || 0 }
+        : null,
       total: checkoutPricing.total,
       memberDiscount: checkoutPricing.memberDiscountAmount,
       couponDiscount: checkoutPricing.couponDiscount,

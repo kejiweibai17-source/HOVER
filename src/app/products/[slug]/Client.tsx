@@ -1,16 +1,34 @@
 // app/products/[slug]/Client.tsx
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import Image from "next/image";
 import { Link } from "next-view-transitions";
 import { useRouter, useParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, Minus, Plus } from "lucide-react";
 import WishlistIcon from "@/components/hover/WishlistIcon";
+import SizeGuideTable from "@/components/hover/SizeGuideTable";
+import WashingInstructionsList from "@/components/hover/WashingInstructionsList";
 import { useCartStore } from "@/lib/cartStore";
 import { useWishlistStore } from "@/lib/wishlistStore";
 import { useAuthStore } from "@/lib/authStore";
+import {
+  isSizeGuideVisible,
+  type SizeGuide,
+} from "@/lib/sizeGuide";
+import {
+  DEFAULT_PRODUCT_COLORS,
+  type ProductColor,
+} from "@/lib/productColors";
+import {
+  resolveGalleryForColor,
+  type ColorGalleries,
+} from "@/lib/variationGallery";
+import {
+  isWashingInstructionsVisible,
+  type WashingInstructions,
+} from "@/lib/washingInstructions";
 
 interface FAQ {
   question: string;
@@ -30,6 +48,11 @@ interface ProductProps {
     images: string[];
     attributes: { name: string; options: string[] }[];
     acf: any;
+    sizeGuide?: SizeGuide;
+    washingInstructions?: WashingInstructions;
+    colors?: ProductColor[];
+    sizes?: string[];
+    colorGalleries?: ColorGalleries;
   };
   faqs?: FAQ[];
 }
@@ -44,25 +67,8 @@ const MOCK_GALLERY = [
   "/images/hover/people-4.jpg",
 ];
 
-const COLORS = [
-  { label: "紅", hex: "#b20000" },
-  { label: "黑", hex: "#111111" },
-  { label: "粉", hex: "#ffe0f4" },
-  { label: "白", hex: "#ffffff" },
-];
-
-const SIZES = ["S", "M", "L", "XL"];
-const MOBILE_SIZES = ["S", "M", "L", "XL", "2XL"];
-
-const SIZE_GUIDE = {
-  headers: ["尺寸(公分)", "S", "M", "L", "XL"],
-  rows: [
-    ["肩寬", "41", "45.5", "48.5", "54"],
-    ["胸寬", "48.5", "52", "55", "58.5"],
-    ["衣長", "65", "69.5", "72", "76.5"],
-    ["袖長", "18.5", "20", "21.5", "24"],
-  ],
-};
+const DEFAULT_SIZES = ["S", "M", "L", "XL"];
+const MOBILE_DEFAULT_SIZES = ["S", "M", "L", "XL", "2XL"];
 
 function Accordion({
   title,
@@ -217,6 +223,8 @@ function ProductPurchasePanel({
   setSelectedColor,
   selectedSize,
   setSelectedSize,
+  colors,
+  sizes,
   qty,
   setQty,
   displayPrice,
@@ -232,7 +240,9 @@ function ProductPurchasePanel({
   selectedColor: string;
   setSelectedColor: (v: string) => void;
   selectedSize: string | null;
-  setSelectedSize: (v: string) => void;
+  setSelectedSize: (v: string | null) => void;
+  colors: ProductColor[];
+  sizes: string[];
   qty: number;
   setQty: React.Dispatch<React.SetStateAction<number>>;
   displayPrice: number;
@@ -241,7 +251,11 @@ function ProductPurchasePanel({
   onAddToCart: () => void;
   isMobile?: boolean;
 }) {
-  const sizeOptions = isMobile ? MOBILE_SIZES : SIZES;
+  const sizeOptions = sizes.length
+    ? sizes
+    : isMobile
+      ? MOBILE_DEFAULT_SIZES
+      : DEFAULT_SIZES;
 
   return (
     <>
@@ -262,7 +276,7 @@ function ProductPurchasePanel({
             isSaved ? "opacity-100" : "opacity-80"
           }`}
         >
-          <WishlistIcon active={isSaved} size={isMobile ? 40 : 44} />
+          <WishlistIcon active={isSaved} size={isMobile ? 48 : 44} />
         </button>
       </div>
 
@@ -273,7 +287,7 @@ function ProductPurchasePanel({
               isMobile ? "text-[14px]" : "text-[16px] md:text-[18px]"
             }`}
           >
-            NT$ {product.regularPrice.toLocaleString()}
+            NT. {product.regularPrice.toLocaleString()}
           </span>
         )}
         <span
@@ -281,35 +295,37 @@ function ProductPurchasePanel({
             isMobile ? "text-[16px]" : "text-[18px] md:text-[20px]"
           } ${hasDiscount ? "text-[#c90000]" : "text-black"}`}
         >
-          NT$ {displayPrice.toLocaleString()}
+          NT. {displayPrice.toLocaleString()}
         </span>
       </div>
 
-      <div className={isMobile ? "mb-6" : "mb-8"}>
-        <p className="mb-3 text-[13px] tracking-[0.06em] text-black">
-          COLOR{isMobile ? "：" : " : "}
-          {selectedColor}
-        </p>
-        <div className="flex flex-wrap gap-3">
-          {COLORS.map((c) => {
-            const active = selectedColor === c.label;
-            return (
-              <button
-                key={c.label}
-                type="button"
-                aria-label={c.label}
-                onClick={() => setSelectedColor(c.label)}
-                className={`h-9 w-9 border transition-all md:h-[35px] md:w-[35px] ${
-                  active
-                    ? "border-black ring-1 ring-black ring-offset-2"
-                    : "border-[#ccc] hover:border-[#888]"
-                }`}
-                style={{ backgroundColor: c.hex }}
-              />
-            );
-          })}
+      {colors.length > 0 && (
+        <div className={isMobile ? "mb-6" : "mb-8"}>
+          <p className="mb-3 text-[13px] tracking-[0.06em] text-black">
+            COLOR{isMobile ? "：" : " : "}
+            {selectedColor}
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {colors.map((c) => {
+              const active = selectedColor === c.label;
+              return (
+                <button
+                  key={c.label}
+                  type="button"
+                  aria-label={c.label}
+                  onClick={() => setSelectedColor(c.label)}
+                  className={`h-9 w-9 border transition-all md:h-[35px] md:w-[35px] ${
+                    active
+                      ? "border-black ring-1 ring-black ring-offset-2"
+                      : "border-[#ccc] hover:border-[#888]"
+                  }`}
+                  style={{ backgroundColor: c.hex }}
+                />
+              );
+            })}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className={isMobile ? "mb-4" : "mb-3"}>
         <div className="flex flex-wrap gap-3">
@@ -337,7 +353,7 @@ function ProductPurchasePanel({
       </div>
 
       <p className={`text-[#2a514d] ${isMobile ? "mb-5 text-[13px]" : "mb-6 text-[14px]"}`}>
-        {isMobile ? "Unisex 版型偏寬鬆" : "UNISEX(男女皆適穿)"}
+        UNISEX(男女皆適穿)
       </p>
 
       <div className={isMobile ? "mb-4" : "mb-4"}>
@@ -383,65 +399,39 @@ function ProductPurchasePanel({
 function ProductDetailAccordions({
   cleanDescription,
   faqs,
+  sizeGuide,
+  washingInstructions,
   isMobile = false,
 }: {
   cleanDescription: string;
   faqs: FAQ[];
+  sizeGuide?: SizeGuide;
+  washingInstructions?: WashingInstructions;
   isMobile?: boolean;
 }) {
   return (
     <div className={isMobile ? "border-b border-[#d8d8d8]" : undefined}>
       <Accordion title="商品詳情" defaultOpen>
         <div className="space-y-3 text-[14px] leading-[1.7] tracking-[0.06em] text-black">
-          {cleanDescription.split("\n").map((line, i) => (
-            <p key={i}>{line}</p>
-          ))}
+          {cleanDescription ? (
+            cleanDescription.split("\n").map((line, i) => <p key={i}>{line}</p>)
+          ) : (
+            <p className="text-[#888]">尚無商品說明，請於 WooCommerce 商品「描述」欄位填寫。</p>
+          )}
         </div>
       </Accordion>
 
-      <Accordion title="洗滌方式">
-        <div className="space-y-2 text-[14px] leading-[1.7] tracking-[0.06em] text-black">
-          <p>・建議手洗或機洗冷水輕柔模式</p>
-          <p>・請勿使用漂白劑</p>
-          <p>・請勿烘乾</p>
-          <p>・可低溫熨燙（最高 110°C）</p>
-          <p>・洗滌前請將衣物翻面</p>
-        </div>
-      </Accordion>
+      {washingInstructions && isWashingInstructionsVisible(washingInstructions) && (
+        <Accordion title="洗滌方式">
+          <WashingInstructionsList guide={washingInstructions} />
+        </Accordion>
+      )}
 
-      <Accordion title="尺寸指南">
-        <div className="text-[13px]">
-          <table className="w-full border-collapse">
-            <thead>
-              <tr className="border-b border-[#ddd]">
-                {SIZE_GUIDE.headers.map((h) => (
-                  <th
-                    key={h}
-                    className="py-2 pr-4 text-left font-medium text-[#555] first:text-[#333]"
-                  >
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {SIZE_GUIDE.rows.map(([label, ...vals]) => (
-                <tr key={label} className="border-b border-[#eee]">
-                  <td className="py-2 pr-4 font-medium text-[#333]">{label}</td>
-                  {vals.map((v, i) => (
-                    <td key={i} className="py-2 pr-4 text-[#555]">
-                      {v}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="mt-3 text-[11px] text-[#888]">
-            ※為平放測量，±2cm誤差範圍屬於製作標準範圍內。
-          </p>
-        </div>
-      </Accordion>
+      {sizeGuide && isSizeGuideVisible(sizeGuide) && (
+        <Accordion title="尺寸指南">
+          <SizeGuideTable guide={sizeGuide} />
+        </Accordion>
+      )}
 
       {faqs.length > 0 &&
         faqs.map((faq) => (
@@ -465,14 +455,23 @@ export default function ProductClient({ product, faqs = [] }: ProductProps) {
   const productId = Number(product.id) || product.id;
   const isSaved = hasItem(productId);
 
-  const gallery =
+  const baseGallery =
     product.images && product.images.length > 0 ? product.images : MOCK_GALLERY;
+  const colorGalleries = product.colorGalleries || {};
 
-  const [selectedColor, setSelectedColor] = useState(COLORS[0].label);
+  const colors = product.colors?.length ? product.colors : DEFAULT_PRODUCT_COLORS;
+  const sizes = product.sizes?.length ? product.sizes : DEFAULT_SIZES;
+
+  const [selectedColor, setSelectedColor] = useState(colors[0]?.label || "");
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [qty, setQty] = useState(1);
   const [wishlistPending, setWishlistPending] = useState(false);
   const [adding, setAdding] = useState(false);
+
+  const gallery = useMemo(
+    () => resolveGalleryForColor(selectedColor, colorGalleries, baseGallery),
+    [selectedColor, colorGalleries, baseGallery],
+  );
 
   const handleToggleWishlist = async () => {
     if (wishlistPending) return;
@@ -515,7 +514,10 @@ export default function ProductClient({ product, faqs = [] }: ProductProps) {
 
   const cleanDescription = product.description
     ? product.description.replace(/<[^>]+>/g, "").trim()
-    : "短袖T恤帶有單色鱷魚刺繡的微妙口音。使用的球衣材料與皮克不同，具有細膩的質地，增強了物品的吸引力，儘管它具有休閒性質，但給人一種優雅的印象。\n當與乾淨的褲款搭配時，它創造了一種智慧和精緻的風格。\n它也與牛仔布和短褲等休閒單品完美搭配，使其成為一件自然適合輕鬆週末風格的單品。";
+    : product.shortDescription?.replace(/<[^>]+>/g, "").trim() || "";
+
+  const sizeGuide = product.sizeGuide;
+  const washingInstructions = product.washingInstructions;
 
   return (
     <div className="bg-hover-bg">
@@ -534,7 +536,7 @@ export default function ProductClient({ product, faqs = [] }: ProductProps) {
       {/* 桌機 — 雙欄 */}
       <div className="mx-auto hidden max-w-[1400px] grid-cols-2 items-start gap-10 px-10 pb-16 md:grid lg:gap-14">
         <div className="w-full">
-          <ProductGallery images={gallery} name={product.name} />
+          <ProductGallery key={selectedColor} images={gallery} name={product.name} />
         </div>
 
         <div className="w-full md:sticky md:top-[calc(var(--hover-header-height,116px)+16px)] md:self-start">
@@ -547,6 +549,8 @@ export default function ProductClient({ product, faqs = [] }: ProductProps) {
             setSelectedColor={setSelectedColor}
             selectedSize={selectedSize}
             setSelectedSize={setSelectedSize}
+            colors={colors}
+            sizes={sizes}
             qty={qty}
             setQty={setQty}
             displayPrice={displayPrice}
@@ -557,13 +561,15 @@ export default function ProductClient({ product, faqs = [] }: ProductProps) {
           <ProductDetailAccordions
             cleanDescription={cleanDescription}
             faqs={faqs}
+            sizeGuide={sizeGuide}
+            washingInstructions={washingInstructions}
           />
         </div>
       </div>
 
       {/* 手機 — 主圖 → 購買資訊 → 手風琴 → 下方圖片區 */}
       <div className="bg-white pb-16 md:hidden">
-        <ProductGallery images={gallery} name={product.name} part="hero" />
+        <ProductGallery key={`${selectedColor}-hero`} images={gallery} name={product.name} part="hero" />
 
         <div className="px-5 pt-5">
           <ProductPurchasePanel
@@ -575,6 +581,8 @@ export default function ProductClient({ product, faqs = [] }: ProductProps) {
             setSelectedColor={setSelectedColor}
             selectedSize={selectedSize}
             setSelectedSize={setSelectedSize}
+            colors={colors}
+            sizes={sizes}
             qty={qty}
             setQty={setQty}
             displayPrice={displayPrice}
@@ -589,12 +597,15 @@ export default function ProductClient({ product, faqs = [] }: ProductProps) {
           <ProductDetailAccordions
             cleanDescription={cleanDescription}
             faqs={faqs}
+            sizeGuide={sizeGuide}
+            washingInstructions={washingInstructions}
             isMobile
           />
         </div>
 
         <div className="mt-6 px-5">
           <ProductGallery
+            key={`${selectedColor}-rest`}
             images={gallery}
             name={product.name}
             part="rest"
