@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
 import Image from "next/image";
 import { Link } from "next-view-transitions";
 import { useRouter } from "next/navigation";
@@ -14,6 +14,7 @@ import WishlistIcon from "@/components/hover/WishlistIcon";
 import { useWishlistStore } from "@/lib/wishlistStore";
 import { useAuthStore } from "@/lib/authStore";
 import { MOCK_PRODUCTS } from "@/lib/mockProducts";
+import { guessColorHex } from "@/lib/productColors";
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 
 export type Product = {
@@ -38,16 +39,7 @@ const FILTER_CATEGORIES: Record<string, Record<string, string[]> | string[]> = {
     包袋: ["托特包", "帆布袋", "側背包"],
   } as Record<string, string[]>,
   顏色: ["黑", "白", "綠", "藍", "粉", "紅"],
-  尺寸: ["S", "M", "L", "XL", "2XL"],
-};
-
-const COLOR_SWATCHES: Record<string, string> = {
-  黑: "#1a1a1a",
-  白: "#f0f0f0",
-  綠: "#4a7c59",
-  藍: "#4a6fa5",
-  粉: "#e8a5a5",
-  紅: "#c0392b",
+  尺寸: ["S", "M", "L", "XL"],
 };
 
 const SORT_OPTIONS = ["最新上架", "人氣排序", "價格: 低至高", "價格: 高至低"];
@@ -71,14 +63,14 @@ function FilterSidebar({
     <>
       {/* Overlay — covers navbar + page */}
       {open && (
-        <div className="fixed inset-0 z-[1100] bg-black/40" onClick={onClose} />
+        <div className="fixed inset-0 z-[1100] bg-black/20" onClick={onClose} />
       )}
 
       {/* Sidebar panel */}
       <aside
         data-lenis-prevent
         style={{ width: FILTER_SIDEBAR_WIDTH }}
-        className={`fixed left-0 top-0 z-[1200] h-full overflow-y-auto bg-hover-bg pt-[var(--hover-header-height,116px)] pb-8 px-8 transition-transform duration-300 ${
+        className={`fixed left-0 top-0 z-[1200] h-full overflow-y-auto bg-white pt-[var(--hover-header-height,116px)] pb-8 px-6 transition-transform duration-300 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
@@ -111,29 +103,13 @@ function FilterSidebar({
                     className="flex cursor-pointer items-center gap-2"
                   >
                     <span
-                      className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-sm border text-white transition-colors ${
+                      className={`flex h-4 w-4 shrink-0 rounded-sm border-2 transition-colors ${
                         selected.has(item)
                           ? "border-[#2a514d] bg-[#2a514d]"
                           : "border-[#ccc] bg-white"
                       }`}
-                      onClick={() => onToggle(item)}
-                    >
-                      {selected.has(item) && (
-                        <svg
-                          viewBox="0 0 10 8"
-                          className="h-2.5 w-2.5 fill-white"
-                        >
-                          <path
-                            d="M1 4l3 3 5-5"
-                            stroke="white"
-                            strokeWidth="1.5"
-                            fill="none"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          />
-                        </svg>
-                      )}
-                    </span>
+                      onClick={() => { onToggle(item); onClose(); }}
+                    />
                     <span className="text-[12px] text-[#333]">{item}</span>
                   </label>
                 ))}
@@ -142,55 +118,58 @@ function FilterSidebar({
           ))}
         </div>
 
-        {/* 顏色 */}
+        {/* 顏色 — 同商品頁 */}
         <div className="mb-6">
-          <div className="mb-3 flex items-center justify-between">
-            <p className="text-[12px] font-semibold tracking-widest text-[#333]">
-              顏色
-            </p>
-            <span className="text-[11px] text-[#999]">+</span>
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            {(FILTER_CATEGORIES["顏色"] as string[]).map((color) => (
-              <label
-                key={color}
-                className="flex cursor-pointer flex-col items-center gap-1"
-              >
-                <span
-                  className={`h-6 w-6 rounded-sm border-2 transition-all ${
-                    selected.has(color)
-                      ? "border-[#2a514d] scale-110"
-                      : "border-transparent"
+          <p className="mb-3 text-[13px] tracking-[0.06em] text-black">
+            COLOR :
+          </p>
+          <div className="flex flex-wrap gap-3">
+            {(FILTER_CATEGORIES["顏色"] as string[]).map((color) => {
+              const active = selected.has(color);
+              return (
+                <button
+                  key={color}
+                  type="button"
+                  aria-label={color}
+                  onClick={() => {
+                    onToggle(color);
+                    onClose();
+                  }}
+                  className={`h-9 w-9 border transition-all md:h-[35px] md:w-[35px] ${
+                    active
+                      ? "border-black ring-1 ring-black ring-offset-2"
+                      : "border-[#ccc] hover:border-[#888]"
                   }`}
-                  style={{ backgroundColor: COLOR_SWATCHES[color] }}
-                  onClick={() => onToggle(color)}
+                  style={{ backgroundColor: guessColorHex(color) }}
                 />
-                <span className="text-[10px] text-[#555]">{color}</span>
-              </label>
-            ))}
+              );
+            })}
           </div>
         </div>
 
-        {/* 尺寸 */}
+        {/* 尺寸 — 同商品頁 */}
         <div>
-          <p className="mb-3 text-[12px] font-semibold tracking-widest text-[#333]">
-            尺寸
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {(FILTER_CATEGORIES["尺寸"] as string[]).map((size) => (
-              <button
-                key={size}
-                type="button"
-                onClick={() => onToggle(size)}
-                className={`h-8 min-w-[40px] rounded border px-2 text-[12px] transition-colors ${
-                  selected.has(size)
-                    ? "border-[#2a514d] bg-[#2a514d] text-white"
-                    : "border-[#ccc] bg-white text-[#333] hover:border-[#999]"
-                }`}
-              >
-                {size}
-              </button>
-            ))}
+          <div className="flex flex-wrap gap-3">
+            {(FILTER_CATEGORIES["尺寸"] as string[]).map((size) => {
+              const active = selected.has(size);
+              return (
+                <button
+                  key={size}
+                  type="button"
+                  onClick={() => {
+                    onToggle(size);
+                    onClose();
+                  }}
+                  className={`flex h-9 w-9 items-center justify-center border text-[13px] font-bold transition-all md:h-[35px] md:w-[35px] ${
+                    active
+                      ? "border-[#8b8b8b] bg-[#8b8b8b] text-white"
+                      : "border-[#ccc] bg-white text-black hover:border-[#888]"
+                  }`}
+                >
+                  {size}
+                </button>
+              );
+            })}
           </div>
         </div>
       </aside>
@@ -282,11 +261,11 @@ function WishlistHeart({ product }: { product: Product }) {
       aria-label={isSaved ? "取消收藏" : "加入收藏"}
       onClick={handleClick}
       disabled={pending}
-      className={`shrink-0 transition-opacity hover:opacity-60 ${
+      className={`flex h-9 w-9 shrink-0 items-center justify-center transition-opacity hover:opacity-60 ${
         isSaved ? "opacity-100" : "opacity-80"
       }`}
     >
-      <WishlistIcon active={isSaved} size={48} />
+      <WishlistIcon active={isSaved} size={36} />
     </button>
   );
 }
@@ -318,12 +297,8 @@ function ProductCard({ product }: { product: Product }) {
 
       {/* Info */}
       <div className="px-0.5">
-        <p className="mb-0.5 text-[10px] text-[#888]">
-          {product.category || "Products"}
-        </p>
-
-        <div className="mb-1 flex items-start justify-between gap-2">
-          <p className="flex-1 text-[12px] font-semibold uppercase leading-snug text-black line-clamp-2">
+        <div className="mb-1 flex min-h-9 items-center justify-between gap-2">
+          <p className="flex min-w-0 flex-1 items-center text-[12px] font-semibold leading-snug text-black line-clamp-2">
             {product.name}
           </p>
           <WishlistHeart product={product} />
@@ -428,6 +403,10 @@ export default function Client({
       return next;
     });
     setCurrentPage(1);
+    // 立即捲到商品區
+    setTimeout(() => {
+      gridRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
   }, []);
 
   const sorted = useMemo(() => {
@@ -445,8 +424,10 @@ export default function Client({
     currentPage * ITEMS_PER_PAGE,
   );
 
+  const gridRef = useRef<HTMLDivElement>(null);
+
   return (
-    <div className="bg-hover-bg pb-[100px] pt-10 text-black">
+    <div className="bg-white pb-[100px] pt-10 text-black">
       {/* Filter sidebar drawer */}
       <FilterSidebar
         open={filterOpen}
@@ -468,18 +449,18 @@ export default function Client({
           </h1>
         </div>
 
-        <div className="mx-auto max-w-[1200px] px-4 md:px-8">
-          {/* Breadcrumb */}
-          <nav className="mb-4 flex items-center gap-1 text-[11px] text-[#888]">
-            <Link href="/" className="hover:text-black">
-              HOME
-            </Link>
-            <span>&gt;</span>
-            <span className="text-black">{categoryLabel}</span>
-          </nav>
+        {/* Breadcrumb — align left with filter bar */}
+        <nav className="mb-4 flex items-center gap-1 px-4 text-[11px] text-[#888] md:px-12 lg:px-16">
+          <Link href="/" className="hover:text-black">
+            HOME
+          </Link>
+          <span>&gt;</span>
+          <span className="text-black">{categoryLabel}</span>
+        </nav>
 
-          {/* Filter & Sort bar */}
-          <div className="mb-8 flex items-center justify-between border-t pt-3 border-b border-[#e8e8e8] pb-4">
+        {/* Filter & Sort bar — full width, content at both edges */}
+        <div className="mb-8 w-full border-t border-b border-[#e8e8e8]">
+          <div className="flex w-full items-center justify-between px-4 pb-4 pt-3 md:px-12 lg:px-16">
             <button
               type="button"
               onClick={() => setFilterOpen((o) => !o)}
@@ -490,9 +471,11 @@ export default function Client({
             </button>
             <SortDropdown value={sortBy} onChange={setSortBy} />
           </div>
+        </div>
 
+        <div className="mx-auto max-w-[1200px] px-4 md:px-8">
           {/* Product grid */}
-          <div className="grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-3 md:grid-cols-4 md:gap-x-5 md:gap-y-10">
+          <div ref={gridRef} className="grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-3 md:grid-cols-4 md:gap-x-5 md:gap-y-10">
             {paginated.map((product) => (
               <ProductCard key={product.id} product={product} />
             ))}

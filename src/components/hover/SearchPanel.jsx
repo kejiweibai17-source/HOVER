@@ -5,7 +5,6 @@ import Image from "next/image";
 import { Link } from "next-view-transitions";
 import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
-import HoverIcon from "@/components/hover/HoverIcon";
 import { useSearchStore, selectSearchOpen } from "@/lib/searchStore";
 import { formatSearchPrice } from "@/lib/searchProducts";
 import { useProductSearch } from "@/lib/useProductSearch";
@@ -123,61 +122,64 @@ function DesktopSearchPanel({ open }) {
           <motion.button
             type="button"
             aria-label="關閉搜尋"
-            className="fixed inset-0 z-[1200] hidden bg-black/30 md:block"
+            className="fixed inset-x-0 bottom-0 z-[1200] hidden bg-black/10 md:block"
+            style={{ top: "var(--hover-header-height, 88px)" }}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={closeSearch}
           />
 
-          <motion.aside
+          <motion.div
             role="dialog"
             aria-modal="true"
             aria-label="商品搜尋"
-            className="fixed inset-y-0 right-0 z-[1210] hidden h-dvh w-full max-w-[520px] flex-col overflow-hidden border-l border-[#e8e8e8] bg-white shadow-[-8px_0_32px_rgba(0,0,0,0.08)] md:flex"
-            initial={{ x: "100%" }}
-            animate={{ x: 0 }}
-            exit={{ x: "100%" }}
-            transition={{ type: "spring", stiffness: 320, damping: 32 }}
+            className="fixed inset-x-0 z-[1210] hidden flex-col overflow-hidden bg-white md:flex"
+            style={{
+              top: "var(--hover-header-height, 88px)",
+              maxHeight: "calc(100dvh - var(--hover-header-height, 88px))",
+            }}
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -6 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
           >
-            <div className="flex shrink-0 items-center gap-3 border-b border-[#ececec] px-6 py-5">
-              <HoverIcon
-                name="search"
-                size={28}
-                alt=""
-                className="shrink-0 opacity-70"
-              />
-              <input
-                ref={inputRef}
-                type="search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="搜尋商品..."
-                className="min-w-0 flex-1 bg-transparent text-[16px] tracking-[0.04em] text-black outline-none placeholder:text-[#999]"
-                autoComplete="off"
-              />
-              <button
-                type="button"
-                onClick={closeSearch}
-                aria-label="關閉"
-                className="shrink-0 text-black transition-opacity hover:opacity-50"
-              >
-                <X size={22} strokeWidth={1.5} />
-              </button>
+            <div className="flex shrink-0 justify-center px-6 py-5">
+              <div className="flex w-full max-w-[520px] items-center border border-[#d4d4d4] px-4 py-3">
+                <input
+                  ref={inputRef}
+                  type="search"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="search"
+                  className="min-w-0 flex-1 bg-transparent font-serif text-[15px] tracking-[0.04em] text-black outline-none placeholder:text-[#b8b8b8]"
+                  autoComplete="off"
+                />
+                <button
+                  type="button"
+                  onClick={closeSearch}
+                  aria-label="關閉"
+                  className="shrink-0 pl-3 text-[#999] transition-opacity hover:opacity-60"
+                >
+                  <X size={18} strokeWidth={1.25} />
+                </button>
+              </div>
             </div>
 
             <div
-              className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-6 py-5"
+              className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[#fafafa] px-6 pb-6"
               data-lenis-prevent
             >
-              <SearchResults
-                query={query}
-                loading={loading}
-                results={results}
-                onResultClick={closeSearch}
-              />
+              <div className="mx-auto max-w-[520px]">
+                <SearchResults
+                  query={query}
+                  loading={loading}
+                  results={results}
+                  onResultClick={closeSearch}
+                />
+              </div>
             </div>
-          </motion.aside>
+          </motion.div>
         </>
       )}
     </AnimatePresence>

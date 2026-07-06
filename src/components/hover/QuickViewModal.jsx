@@ -265,10 +265,6 @@ export default function QuickViewModal({ product, onClose }) {
 
                 {/* Right: product info */}
                 <div className="w-full md:w-[52%]">
-                  <p className="mb-1 text-[11px] tracking-[0.15em] text-[#888]">
-                    {product.category}
-                  </p>
-
                   <div className="mb-4 flex items-start justify-between gap-3">
                     <h2 className="text-[18px] font-bold uppercase leading-snug text-black md:text-[20px]">
                       {product.name}

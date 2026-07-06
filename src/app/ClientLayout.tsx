@@ -26,7 +26,9 @@ function ScrollToTopOnNav() {
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const hideAnnouncement = pathname === "/cart";
+  const hideAnnouncement =
+    pathname === "/cart" ||
+    (pathname.startsWith("/products/") && pathname !== "/products");
 
   useEffect(() => {
     AOS.init({ duration: 800, once: false });

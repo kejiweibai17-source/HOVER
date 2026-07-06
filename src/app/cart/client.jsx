@@ -414,7 +414,7 @@ const TW_CITIES = {
 };
 
 const currency = (n) =>
-  `NT$${(Math.round((Number(n) || 0) * 100) / 100).toLocaleString("zh-TW")}`;
+  `NT. ${(Math.round((Number(n) || 0) * 100) / 100).toLocaleString("zh-TW")}`;
 
 // HOVER 會員折扣（FRIENDS 無折扣 / EXCLUSIVE 正價 95 折）
 const TIER_DISCOUNTS = {
@@ -487,7 +487,9 @@ function buildCheckoutPricing(pricing, shipMethod, couponDiscount = 0) {
   const finalSubtotal = Math.max(0, subtotalAfterMember - safeCoupon);
   const freeShipThreshold = pricing.freeShipThreshold || 1500;
   const shipping =
-    finalSubtotal >= freeShipThreshold || finalSubtotal === 0 ? 0 : shippingBase;
+    finalSubtotal >= freeShipThreshold || finalSubtotal === 0
+      ? 0
+      : shippingBase;
 
   return {
     subtotal,
@@ -696,42 +698,6 @@ function CartBreadcrumb({ currentStep, onStepClick }) {
       aria-label="購物流程"
       className="mx-auto max-w-[1200px] px-4 pb-10 pt-8 md:px-8"
     >
-      {/* Text trail */}
-      <ol className="mb-6 flex items-center justify-center gap-1.5 text-[11px] tracking-wide text-[#888]">
-        <li>
-          <a href="/" className="transition-colors hover:text-black">
-            HOME
-          </a>
-        </li>
-        {steps.map((s) => {
-          const isActive = currentStep === s.step;
-          const isPast = currentStep > s.step;
-          const canClick = isPast && onStepClick;
-
-          return (
-            <li key={s.step} className="flex items-center gap-1.5">
-              <span aria-hidden className="text-[#ccc]">
-                /
-              </span>
-              {canClick ? (
-                <button
-                  type="button"
-                  onClick={() => onStepClick(s.step)}
-                  className="transition-colors hover:text-black"
-                >
-                  {s.en}
-                </button>
-              ) : (
-                <span className={isActive ? "font-medium text-black" : ""}>
-                  {s.en}
-                </span>
-              )}
-            </li>
-          );
-        })}
-      </ol>
-
-      {/* Step indicator */}
       <ol className="flex items-center justify-center">
         {steps.map((s, i) => {
           const isActive = currentStep === s.step;
@@ -774,9 +740,7 @@ function CartBreadcrumb({ currentStep, onStepClick }) {
                   </span>
                   <span
                     className={`text-[12px] ${
-                      isActive
-                        ? "font-medium text-black"
-                        : "text-[#bbb]"
+                      isActive ? "font-medium text-black" : "text-[#bbb]"
                     }`}
                   >
                     {s.zh}
@@ -878,85 +842,87 @@ function CartStep({
             const { color, size } = getItemMeta(it);
 
             return (
-            <div
-              key={it.id}
-              className={`flex gap-5 py-6 ${idx === 0 ? "border-t" : ""} border-b border-[#d4d4d4]`}
-            >
-              {/* Image */}
-              <div className="h-[148px] w-[106px] shrink-0 overflow-hidden bg-[#e8e6e2]">
-                <img
-                  src={it.image || it.img || "/images/hover/product-1.jpg"}
-                  className="h-full w-full object-cover"
-                  alt={it.name || it.title}
-                />
-              </div>
-
-              {/* Info */}
-              <div className="flex flex-1 flex-col justify-between">
-                <div className="flex items-start justify-between gap-4">
-                  {/* Name + meta */}
-                  <div>
-                    <p className="text-[13px] font-semibold uppercase leading-snug text-black">
-                      {it.name || it.title}
-                    </p>
-                    {color && (
-                      <p className="mt-1 text-[12px] text-black">{color}</p>
-                    )}
-                    {size && (
-                      <p className="text-[12px] text-black">{size}</p>
-                    )}
-                    <p className="mt-2 text-[14px] font-bold text-black">
-                      NT$ {Number(it.price).toLocaleString()}
-                    </p>
-                  </div>
-
-                  {/* Wishlist + remove */}
-                  <div className="flex shrink-0 items-center gap-3">
-                    <button
-                      type="button"
-                      aria-label="收藏"
-                      className="text-[#aaa] transition-colors hover:text-black"
-                    >
-                      <WishlistIcon size={40} />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label="移除"
-                      onClick={() => onRemove(it.id || it.wcProductId)}
-                      className="text-[#aaa] transition-colors hover:text-black"
-                    >
-                      <X className="h-[15px] w-[15px]" strokeWidth={1.5} />
-                    </button>
-                  </div>
+              <div
+                key={it.id}
+                className={`flex gap-5 py-6 ${idx === 0 ? "border-t" : ""} border-b border-[#d4d4d4]`}
+              >
+                {/* Image */}
+                <div className="h-[148px] w-[106px] shrink-0 overflow-hidden bg-[#e8e6e2]">
+                  <img
+                    src={it.image || it.img || "/images/hover/product-1.jpg"}
+                    className="h-full w-full object-cover"
+                    alt={it.name || it.title}
+                  />
                 </div>
 
-                {/* Qty + subtotal */}
-                <div className="flex items-center justify-between">
-                  <div className="flex h-8 items-center border border-black bg-white">
-                    <button
-                      type="button"
-                      className="flex h-full w-8 items-center justify-center text-black transition-colors hover:bg-[#f0f0f0]"
-                      onClick={() => onUpdateQty(it.id || it.wcProductId, it.qty - 1)}
-                    >
-                      <Minus className="h-3 w-3" />
-                    </button>
-                    <span className="w-8 text-center text-[13px] font-medium">
-                      {it.qty}
-                    </span>
-                    <button
-                      type="button"
-                      className="flex h-full w-8 items-center justify-center text-black transition-colors hover:bg-[#f0f0f0]"
-                      onClick={() => onUpdateQty(it.id || it.wcProductId, it.qty + 1)}
-                    >
-                      <Plus className="h-3 w-3" />
-                    </button>
+                {/* Info */}
+                <div className="flex flex-1 flex-col justify-between">
+                  <div className="flex items-start justify-between gap-4">
+                    {/* Name + meta */}
+                    <div>
+                      <p className="text-[13px] font-semibold uppercase leading-snug text-black">
+                        {it.name || it.title}
+                      </p>
+                      {color && (
+                        <p className="mt-1 text-[12px] text-black">{color}</p>
+                      )}
+                      {size && <p className="text-[12px] text-black">{size}</p>}
+                      <p className="mt-2 text-[14px] font-bold text-black">
+                        {currency(Number(it.price))}
+                      </p>
+                    </div>
+
+                    {/* Wishlist + remove */}
+                    <div className="flex shrink-0 items-center gap-3">
+                      <button
+                        type="button"
+                        aria-label="收藏"
+                        className="text-[#aaa] transition-colors hover:text-black"
+                      >
+                        <WishlistIcon size={40} />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="移除"
+                        onClick={() => onRemove(it.id || it.wcProductId)}
+                        className="text-[#aaa] transition-colors hover:text-black"
+                      >
+                        <X className="h-[15px] w-[15px]" strokeWidth={1.5} />
+                      </button>
+                    </div>
                   </div>
-                  <p className="text-[12px] text-[#555]">
-                    小計 NT$ {(Number(it.price) * it.qty).toLocaleString()}
-                  </p>
+
+                  {/* Qty + subtotal */}
+                  <div className="flex items-center justify-between">
+                    <div className="flex h-8 items-center border border-black bg-white">
+                      <button
+                        type="button"
+                        className="flex h-full w-8 items-center justify-center text-black transition-colors hover:bg-[#f0f0f0]"
+                        onClick={() =>
+                          onUpdateQty(it.id || it.wcProductId, it.qty - 1)
+                        }
+                      >
+                        <Minus className="h-3 w-3" />
+                      </button>
+                      <span className="w-8 text-center text-[13px] font-medium">
+                        {it.qty}
+                      </span>
+                      <button
+                        type="button"
+                        className="flex h-full w-8 items-center justify-center text-black transition-colors hover:bg-[#f0f0f0]"
+                        onClick={() =>
+                          onUpdateQty(it.id || it.wcProductId, it.qty + 1)
+                        }
+                      >
+                        <Plus className="h-3 w-3" />
+                      </button>
+                    </div>
+                    <p className="text-[12px] text-[#555]">
+                      小計 {currency(Number(it.price) * it.qty)}
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
             );
           })}
         </div>
@@ -968,25 +934,23 @@ function CartStep({
             <div className="space-y-3 text-[13px]">
               <div className="flex items-center justify-between">
                 <span className="text-[#555]">商品總金額</span>
-                <span className="text-black">
-                  NT$ {pricing.subtotal.toLocaleString()}
-                </span>
+                <span className="text-black">{currency(pricing.subtotal)}</span>
               </div>
 
               {pricing.memberDiscountAmount > 0 && (
                 <div className="flex items-center justify-between">
-                  <span className="text-[#555]">{membership?.tierName} 折扣</span>
+                  <span className="text-[#555]">
+                    {membership?.tierName} 折扣
+                  </span>
                   <span className="text-[#c90000]">
-                    - NT$ {pricing.memberDiscountAmount.toLocaleString()}
+                    - {currency(pricing.memberDiscountAmount)}
                   </span>
                 </div>
               )}
 
               <div className="flex items-center justify-between">
                 <span className="text-[#555]">運費</span>
-                <span className="text-black">
-                  NT$ {pricing.shipping.toLocaleString()}
-                </span>
+                <span className="text-black">{currency(pricing.shipping)}</span>
               </div>
             </div>
 
@@ -994,9 +958,11 @@ function CartStep({
 
             {/* Total */}
             <div className="mb-6 flex items-center justify-between">
-              <span className="text-[14px] font-semibold text-black">總金額</span>
+              <span className="text-[14px] font-semibold text-black">
+                總金額
+              </span>
               <span className="text-[16px] font-bold text-black">
-                NT$ {pricing.total.toLocaleString()}
+                {currency(pricing.total)}
               </span>
             </div>
 
@@ -1012,7 +978,7 @@ function CartStep({
             {/* Free shipping hint */}
             {pricing.needForFreeShip > 0 && (
               <p className="mt-3 text-center text-[11px] text-[#888]">
-                再消費 NT$ {pricing.needForFreeShip.toLocaleString()} 即可享免運費
+                再消費 {currency(pricing.needForFreeShip)} 即可享免運費
               </p>
             )}
             {pricing.needForFreeShip === 0 && pricing.subtotal > 0 && (
@@ -1057,16 +1023,16 @@ function CheckoutStep({
   const [couponError, setCouponError] = useState("");
   const [couponApplying, setCouponApplying] = useState(false);
 
-  const displayName = [addr.lastName, addr.firstName].filter(Boolean).join("").trim();
-  const setDisplayName = (v) => setAddr({ ...addr, lastName: v, firstName: "" });
+  const displayName = [addr.lastName, addr.firstName]
+    .filter(Boolean)
+    .join("")
+    .trim();
+  const setDisplayName = (v) =>
+    setAddr({ ...addr, lastName: v, firstName: "" });
 
   const checkoutPricing = useMemo(
     () =>
-      buildCheckoutPricing(
-        pricing,
-        shipMethod,
-        appliedCoupon?.discount || 0,
-      ),
+      buildCheckoutPricing(pricing, shipMethod, appliedCoupon?.discount || 0),
     [pricing, shipMethod, appliedCoupon],
   );
 
@@ -1104,7 +1070,7 @@ function CheckoutStep({
       }
       setAppliedCoupon({
         code: data.code,
-        label: data.label || `折 NT$${data.amount}`,
+        label: data.label || `折 ${currency(data.amount)}`,
         discount: data.amount,
       });
       setCouponError("");
@@ -1310,8 +1276,8 @@ function CheckoutStep({
               label="台灣本島"
             />
             <p className="mt-3 text-[11px] leading-[1.7] text-[#888]">
-              目前僅提供台灣本島配送。離島（澎湖、金門、馬祖、綠島）請選擇超商取貨。
-              全館消費滿 NT$2,000 享免運費。
+              * 目前配送範圍以台灣本島為主。 離島地區如有訂購需求,請先聯繫 HOVER
+              客服,我們將協助確認配送方式與運費。
             </p>
           </section>
 
@@ -1323,7 +1289,12 @@ function CheckoutStep({
                 checked={shipMethod === "711"}
                 onChange={() => {
                   setShipMethod("711");
-                  setAddr({ ...addr, storeId: "", storeName: "", storeAddr: "" });
+                  setAddr({
+                    ...addr,
+                    storeId: "",
+                    storeName: "",
+                    storeAddr: "",
+                  });
                 }}
                 label="7-11超商取貨"
               />
@@ -1332,11 +1303,19 @@ function CheckoutStep({
                 checked={shipMethod === "CVS"}
                 onChange={() => {
                   setShipMethod("CVS");
-                  setAddr({ ...addr, storeId: "", storeName: "", storeAddr: "" });
+                  setAddr({
+                    ...addr,
+                    storeId: "",
+                    storeName: "",
+                    storeAddr: "",
+                  });
                 }}
                 label="全家超商取貨"
               />
             </div>
+            <p className="mt-3 text-[11px] leading-[1.7] text-[#888]">
+              * 運送方式 7-11超商僅取貨、全家超商僅取貨
+            </p>
           </section>
 
           <section>
@@ -1440,10 +1419,12 @@ function CheckoutStep({
             {payMethod === "atm" && (
               <ul className="mt-4 space-y-2 text-[11px] leading-[1.75] text-[#888]">
                 <li>
-                  * 訂單成立後系統將自動產生一組專屬付款資訊，包含銀行代碼、虛擬帳號、付款金額與繳費期限。
+                  *
+                  訂單成立後系統將自動產生一組專屬付款資訊，包含銀行代碼、虛擬帳號、付款金額與繳費期限。
                 </li>
                 <li>
-                  * 請於繳費期限內完成支付，若逾期未付款，訂單將自動取消，請重新下單。
+                  *
+                  請於繳費期限內完成支付，若逾期未付款，訂單將自動取消，請重新下單。
                 </li>
                 <li>* 可透過網路銀行、手機銀行或 ATM 機台完成轉帳。</li>
                 <li>
@@ -1515,8 +1496,9 @@ function CheckoutStep({
                 >
                   <span>
                     {donateCode
-                      ? INVOICE_DONATE_OPTIONS.find((o) => o.code === donateCode)
-                          ?.name || `愛心碼 ${donateCode}`
+                      ? INVOICE_DONATE_OPTIONS.find(
+                          (o) => o.code === donateCode,
+                        )?.name || `愛心碼 ${donateCode}`
                       : "推薦愛心碼參考"}
                   </span>
                   <ChevronRight
@@ -1557,7 +1539,8 @@ function CheckoutStep({
                 </div>
 
                 <p className="mt-3 text-[11px] leading-[1.7] text-[#888]">
-                  * 發票一經捐贈後，將無法改為個人發票或公司戶發票，請於送出訂單前再次確認。
+                  *
+                  發票一經捐贈後，將無法改為個人發票或公司戶發票，請於送出訂單前再次確認。
                 </p>
               </div>
             )}
@@ -1579,7 +1562,7 @@ function CheckoutStep({
                     <span>{size || "—"}</span>
                     <span>{it.qty}</span>
                     <span className="whitespace-nowrap">
-                      NT${(Number(it.price) * it.qty).toLocaleString()}
+                      {currency(Number(it.price) * it.qty)}
                     </span>
                   </div>
                 );
@@ -1626,14 +1609,14 @@ function CheckoutStep({
             <div className="mt-8 space-y-2.5 text-[14px] text-black">
               <div className="flex justify-between">
                 <span>商品總金額</span>
-                <span>NT$ {checkoutPricing.subtotal.toLocaleString()}</span>
+                <span>{currency(checkoutPricing.subtotal)}</span>
               </div>
               <div className="flex justify-between">
                 <span>活動折扣</span>
                 <span>
                   {checkoutPricing.activityDiscount > 0
-                    ? `- NT$ ${checkoutPricing.activityDiscount.toLocaleString()}`
-                    : "NT$ 0"}
+                    ? `- ${currency(checkoutPricing.activityDiscount)}`
+                    : currency(0)}
                 </span>
               </div>
               <div className="flex justify-between">
@@ -1644,16 +1627,16 @@ function CheckoutStep({
                       <span className="text-[12px] text-[#888]">
                         已達免運門檻{" "}
                       </span>
-                      NT$ 0
+                      {currency(0)}
                     </>
                   ) : (
-                    `NT$ ${checkoutPricing.shipping.toLocaleString()}`
+                    currency(checkoutPricing.shipping)
                   )}
                 </span>
               </div>
               <div className="flex justify-between pt-2 text-[15px] font-bold">
                 <span>總金額</span>
-                <span>NT$ {checkoutPricing.total.toLocaleString()}</span>
+                <span>{currency(checkoutPricing.total)}</span>
               </div>
             </div>
           </section>
@@ -1882,34 +1865,15 @@ function CartContent() {
 
   if (!itemsLoaded)
     return (
-      <div className="flex h-[60vh] items-center justify-center bg-hover-bg">
+      <div className="flex h-[60vh] items-center justify-center bg-white">
         <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#dfe0e5] border-t-[#2a514d]" />
       </div>
     );
 
   return (
-    <div className="min-h-screen bg-hover-bg">
-      {items.length > 0 ? (
+    <div className="min-h-screen bg-white">
+      {items.length > 0 && (
         <CartBreadcrumb currentStep={step} onStepClick={goToStep} />
-      ) : (
-        <nav
-          aria-label="購物流程"
-          className="mx-auto max-w-[1200px] px-4 pt-8 md:px-8"
-        >
-          <ol className="flex items-center justify-center gap-1.5 text-[11px] tracking-wide text-[#888]">
-            <li>
-              <a href="/" className="transition-colors hover:text-black">
-                HOME
-              </a>
-            </li>
-            <li className="flex items-center gap-1.5">
-              <span aria-hidden className="text-[#ccc]">
-                /
-              </span>
-              <span className="font-medium text-black">SHOPPING BAG</span>
-            </li>
-          </ol>
-        </nav>
       )}
       <main>
         <AnimatePresence mode="wait">
@@ -1970,7 +1934,7 @@ export default function CartPage() {
   return (
     <Suspense
       fallback={
-        <div className="flex h-screen items-center justify-center bg-hover-bg">
+        <div className="flex h-screen items-center justify-center bg-white">
           <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#dfe0e5] border-t-[#2a514d]" />
         </div>
       }

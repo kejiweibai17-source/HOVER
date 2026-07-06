@@ -71,7 +71,7 @@ export const DEFAULT_FOOTER: FooterSettings = {
     {
       title: "政策條款",
       links: [
-        { label: "服務條款", href: "/terms" },
+        { label: "政策與條款", href: "/terms" },
         { label: "隱私權保護", href: "/privacy" },
       ],
     },
@@ -83,7 +83,7 @@ export const DEFAULT_FOOTER: FooterSettings = {
     hours: "MON.-FRI. 10:00-19:00",
     lineId: "@HOVER",
     lineUrl: "https://line.me/R/ti/p/@330kefmm",
-    companyInfo: "停機坪國際文創股份有限公司 | 90230279",
+    companyInfo: "威爾特國際文創股份有限公司 | 90230279",
   },
   social: [
     {
@@ -142,6 +142,18 @@ export function normalizeFooterSettings(raw: unknown): FooterSettings {
         .filter((item) => item.label)
     : d.social;
 
+  let copyright = String(o.copyright || d.copyright).trim();
+  const companyInfo = String(
+    contactRaw.companyInfo || contactRaw.company_info || d.contact.companyInfo,
+  ).trim();
+
+  if (companyInfo && copyright.includes(companyInfo)) {
+    copyright = copyright
+      .replace(companyInfo, "")
+      .replace(/\s*\|\s*$/, "")
+      .trim();
+  }
+
   return {
     logo: {
       url: String(logoRaw.url || "").trim(),
@@ -163,14 +175,12 @@ export function normalizeFooterSettings(raw: unknown): FooterSettings {
       hours: String(contactRaw.hours || d.contact.hours).trim(),
       lineId: String(contactRaw.lineId || contactRaw.line_id || d.contact.lineId).trim(),
       lineUrl: String(contactRaw.lineUrl || contactRaw.line_url || d.contact.lineUrl).trim(),
-      companyInfo: String(
-        contactRaw.companyInfo || contactRaw.company_info || d.contact.companyInfo,
-      ).trim(),
+      companyInfo,
     },
     social: social.length > 0 ? social : d.social,
     mobileSocialTitle: String(
       o.mobileSocialTitle || o.mobile_social_title || d.mobileSocialTitle,
     ).trim(),
-    copyright: String(o.copyright || d.copyright).trim(),
+    copyright,
   };
 }

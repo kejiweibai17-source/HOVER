@@ -15,16 +15,8 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: [
-          '"GenWanMinTW"',
-          '"Noto Serif TC"',
-          "serif",
-        ],
-        serif: [
-          '"GenWanMinTW"',
-          '"Noto Serif TC"',
-          "serif",
-        ],
+        sans: ['"Noto Serif HK"', "serif"],
+        serif: ['"Noto Serif HK"', "serif"],
       },
       transitionDuration: {
         2000: "2000ms",

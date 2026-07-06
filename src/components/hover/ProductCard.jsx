@@ -3,7 +3,6 @@ import { Link } from "next-view-transitions";
 
 export default function ProductCard({
   href = "#",
-  category,
   name,
   image,
   colors = [],
@@ -24,7 +23,6 @@ export default function ProductCard({
       </Link>
 
       <div className="mt-4 space-y-1">
-        <p className="text-[14px] text-black">{category}</p>
         <Link href={href} className="block text-[16px] font-semibold text-black hover:opacity-70">
           {name}
         </Link>

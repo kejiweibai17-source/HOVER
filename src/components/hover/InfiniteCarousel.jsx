@@ -8,7 +8,7 @@ const SWIPE_THRESHOLD = 48;
 
 function CarouselArrows({ onPrev, onNext, imageAspectRatio, visible }) {
   const btnClass =
-    "absolute top-1/2 z-10 flex -translate-y-1/2 items-center justify-center text-black transition-opacity hover:opacity-50";
+    "absolute top-1/2 z-10 flex -translate-y-1/2 items-center justify-center text-[#999] transition-opacity hover:opacity-60";
 
   if (imageAspectRatio && visible > 0) {
     const slideWidth = `${100 / visible}%`;
@@ -81,6 +81,7 @@ export default function InfiniteCarousel({
   trackClassName = "",
   slideClassName = "pr-2 md:pr-3",
   mobileAutoplayInterval = 0,
+  autoplayInterval = 0,
   mobileDraggable = false,
   imageAspectRatio = "",
 }) {
@@ -128,7 +129,8 @@ export default function InfiniteCarousel({
   }, []);
 
   const pauseAutoplay = useCallback(() => {
-    if (!mobileAutoplayInterval) return;
+    const interval = autoplayInterval || mobileAutoplayInterval;
+    if (!interval) return;
     autoplayPausedRef.current = true;
     if (autoplayResumeTimer.current) {
       clearTimeout(autoplayResumeTimer.current);
@@ -136,7 +138,7 @@ export default function InfiniteCarousel({
     autoplayResumeTimer.current = setTimeout(() => {
       autoplayPausedRef.current = false;
     }, 6000);
-  }, [mobileAutoplayInterval]);
+  }, [autoplayInterval, mobileAutoplayInterval]);
 
   const go = useCallback(
     (delta) => {
@@ -148,15 +150,16 @@ export default function InfiniteCarousel({
   );
 
   useEffect(() => {
-    if (!mobileAutoplayInterval || !isMobile || !baseLength) return;
+    const interval = autoplayInterval || (isMobile ? mobileAutoplayInterval : 0);
+    if (!interval || !baseLength) return;
 
     const timer = window.setInterval(() => {
       if (autoplayPausedRef.current || draggingRef.current) return;
       go(1);
-    }, mobileAutoplayInterval);
+    }, interval);
 
     return () => window.clearInterval(timer);
-  }, [mobileAutoplayInterval, isMobile, baseLength, go]);
+  }, [autoplayInterval, mobileAutoplayInterval, isMobile, baseLength, go]);
 
   const handleDragStart = useCallback(
     (clientX) => {

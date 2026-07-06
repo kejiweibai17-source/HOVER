@@ -130,7 +130,7 @@ function hfs_defaults(): array
             [
                 'title' => '政策條款',
                 'links' => [
-                    ['label' => '服務條款', 'href' => '/terms'],
+                    ['label' => '政策與條款', 'href' => '/terms'],
                     ['label' => '隱私權保護', 'href' => '/privacy'],
                 ],
             ],
@@ -142,7 +142,7 @@ function hfs_defaults(): array
             'hours'       => 'MON.-FRI. 10:00-19:00',
             'lineId'      => '@HOVER',
             'lineUrl'     => 'https://line.me/R/ti/p/@330kefmm',
-            'companyInfo' => '停機坪國際文創股份有限公司 | 90230279',
+            'companyInfo' => '威爾特國際文創股份有限公司 | 90230279',
         ],
         'social' => [
             ['label' => 'LINE', 'href' => 'https://line.me/R/ti/p/@330kefmm', 'icon' => 'line', 'iconUrl' => ''],
@@ -151,7 +151,7 @@ function hfs_defaults(): array
             ['label' => 'YouTube', 'href' => '#', 'icon' => 'yt', 'iconUrl' => ''],
         ],
         'mobileSocialTitle' => '追蹤我們',
-        'copyright' => '© 2026 HOVER. All Rights Reserved.',
+        'copyright' => '© 2026 HOVER. All Rights Reserved. 威爾特國際文創股份有限公司 | 90230279',
     ];
 }
 

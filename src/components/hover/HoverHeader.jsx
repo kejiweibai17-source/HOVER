@@ -5,6 +5,7 @@ import { Link } from "next-view-transitions";
 import { useRouter, usePathname } from "next/navigation";
 import { useLenis } from "lenis/react";
 import HoverIcon from "@/components/hover/HoverIcon";
+import CartIcon from "@/components/hover/CartIcon";
 import WishlistIcon from "@/components/hover/WishlistIcon";
 import { useCartStore } from "@/lib/cartStore";
 import { useWishlistStore } from "@/lib/wishlistStore";
@@ -51,7 +52,7 @@ function CategoryNavItem({ category }) {
     <div className="group relative">
       <Link
         href={category.href}
-        className="inline-flex items-center text-[13px] tracking-wide text-black transition-opacity hover:opacity-50"
+        className="inline-flex items-center text-[13px] font-bold tracking-wide text-black transition-opacity hover:opacity-50"
       >
         {category.label}
       </Link>
@@ -219,7 +220,13 @@ export default function HoverHeader({
         className="fixed inset-x-0 top-0 z-[1000]"
         style={{ backgroundColor: bgColor }}
       >
-        {/* 手機 — 公告列置頂 */}
+        {/* 手機 — 頂部留白 */}
+        <div
+          className="h-10 w-full bg-white md:hidden"
+          aria-hidden
+        />
+
+        {/* 手機 — 公告列 */}
         {!hideAnnouncement && showAnnouncement && (
           <div
             className="flex h-10 w-full items-center justify-center md:hidden"
@@ -263,20 +270,17 @@ export default function HoverHeader({
                 openSearch();
               }}
             >
-              <HoverIcon name="search" size={44} alt="搜尋" />
+              <HoverIcon name="search" size={52} alt="搜尋" />
             </button>
             <Link
               href="/cart"
-              aria-label="購物車"
+              aria-label={
+                cartCount > 0 ? `購物車，${cartCount} 件商品` : "購物車"
+              }
               className="relative shrink-0 p-0.5 text-black"
               onClick={() => setMenuOpen(false)}
             >
-              <HoverIcon name="cart" size={44} alt="購物車" />
-              {cartCount > 0 && (
-                <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#2a514d] px-0.5 text-[9px] font-bold text-white">
-                  {cartCount > 99 ? "99+" : cartCount}
-                </span>
-              )}
+              <CartIcon count={cartCount} size={52} />
             </Link>
           </div>
         </div>
@@ -309,7 +313,7 @@ export default function HoverHeader({
             <nav className="hidden flex-wrap items-center justify-center gap-x-4 gap-y-2 md:flex lg:gap-x-5">
               <Link
                 href="/products"
-                className="text-[13px] tracking-wide text-black transition-opacity hover:opacity-50"
+                className="text-[13px] font-bold tracking-wide text-black transition-opacity hover:opacity-50"
               >
                 ALL ITEMS
               </Link>
@@ -325,7 +329,7 @@ export default function HoverHeader({
                 className="shrink-0 p-0.5 text-black transition-opacity hover:opacity-50"
                 onClick={openSearch}
               >
-                <HoverIcon name="search" size={48} alt="搜尋" />
+                <HoverIcon name="search" size={56} alt="搜尋" />
               </button>
               <button
                 type="button"
@@ -342,7 +346,7 @@ export default function HoverHeader({
                   }
                 }}
               >
-                <WishlistIcon size={48} />
+                <WishlistIcon size={56} />
                 {wishlistCount > 0 && (
                   <span className="absolute right-0 top-0 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#2a514d] px-1 text-[10px] font-bold text-white">
                     {wishlistCount > 99 ? "99+" : wishlistCount}
@@ -351,15 +355,12 @@ export default function HoverHeader({
               </button>
               <Link
                 href="/cart"
-                aria-label="購物車"
+                aria-label={
+                  cartCount > 0 ? `購物車，${cartCount} 件商品` : "購物車"
+                }
                 className="relative shrink-0 p-0.5 text-black transition-opacity hover:opacity-50"
               >
-                <HoverIcon name="cart" size={48} alt="購物車" />
-                {cartCount > 0 && (
-                  <span className="absolute right-0 top-0 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#2a514d] px-1 text-[10px] font-bold text-white">
-                    {cartCount > 99 ? "99+" : cartCount}
-                  </span>
-                )}
+                <CartIcon count={cartCount} size={56} />
               </Link>
               <Link
                 href="/account"
@@ -375,11 +376,11 @@ export default function HoverHeader({
                       <img
                         src={authUser.avatarUrl}
                         alt=""
-                        className="h-8 w-8 rounded-full object-cover ring-1 ring-black/10"
+                        className="h-10 w-10 rounded-full object-cover ring-1 ring-black/10"
                         referrerPolicy="no-referrer"
                       />
                     ) : (
-                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#2a514d] text-[11px] font-bold text-white">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#2a514d] text-[12px] font-bold text-white">
                         {authUser.name.charAt(0).toUpperCase()}
                       </span>
                     )}
@@ -388,7 +389,7 @@ export default function HoverHeader({
                     </span>
                   </>
                 ) : (
-                  <HoverIcon name="member" size={48} alt="會員" />
+                  <HoverIcon name="member" size={56} alt="會員" />
                 )}
               </Link>
             </div>

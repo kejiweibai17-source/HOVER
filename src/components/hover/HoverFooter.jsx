@@ -4,10 +4,7 @@ import { useEffect, useState } from "react";
 import { Link } from "next-view-transitions";
 import HoverLogo from "@/components/hover/HoverLogo";
 import HoverIcon from "@/components/hover/HoverIcon";
-import {
-  DEFAULT_FOOTER,
-  normalizeFooterSettings,
-} from "@/lib/footerDefaults";
+import { DEFAULT_FOOTER, normalizeFooterSettings } from "@/lib/footerDefaults";
 import { getSvgLogoProxyUrl, isSvgLogo } from "@/lib/svgLogo";
 
 function FooterAccordion({ title, children, defaultOpen = false }) {
@@ -126,12 +123,7 @@ function FooterLogo({ logo, className = "" }) {
         />
       );
     } else if (svg && !svgFailed) {
-      content = (
-        <span
-          className={`block ${className}`}
-          aria-hidden
-        />
-      );
+      content = <span className={`block ${className}`} aria-hidden />;
     } else {
       content = (
         // eslint-disable-next-line @next/next/no-img-element
@@ -143,9 +135,7 @@ function FooterLogo({ logo, className = "" }) {
       );
     }
   } else {
-    content = (
-      <HoverLogo className={className} style={{ color }} aria-hidden />
-    );
+    content = <HoverLogo className={className} style={{ color }} aria-hidden />;
   }
 
   const href = logo.link || "/";
@@ -282,29 +272,25 @@ export default function HoverFooter() {
 
   return (
     <footer className="text-white" style={{ backgroundColor }}>
-      <div className="mx-auto w-full max-w-[1680px] px-6 py-12 md:px-12 md:py-16 lg:px-16 lg:py-[72px] xl:px-12">
-        <div className="hidden lg:flex lg:items-start">
-          <div className="flex w-[26%] max-w-[300px] shrink-0 items-stretch gap-8 xl:gap-10">
-            <div className="block min-w-0 flex-1 text-white">
-              <FooterLogo
-                logo={logo}
-                className="h-[100px] w-full xl:h-[120px]"
-              />
-            </div>
-            <div className="w-px shrink-0 bg-white/40" aria-hidden />
+      <div className="mx-auto w-full max-w-[1680px] px-6 pt-12 md:px-12 md:pt-16 lg:px-16 lg:pt-[72px] xl:px-12">
+        <div className="hidden lg:flex lg:min-h-[300px] lg:w-full lg:items-stretch lg:justify-between xl:min-h-[340px]">
+          <div className="flex shrink-0 items-center">
+            <FooterLogo
+              logo={logo}
+              className="h-[100px] w-[220px] xl:h-[120px] xl:w-[260px]"
+            />
           </div>
 
-          <div className="min-w-0 flex-1 pl-8 xl:pl-10">
-            <div className="grid grid-cols-4 gap-x-6 xl:gap-x-10 2xl:gap-x-14">
-              {columns.map((col) => (
-                <FooterColumn
-                  key={col.title}
-                  title={col.title}
-                  links={col.links}
-                />
-              ))}
-              <ContactColumn contact={contact} social={social} />
+          <div className="w-px shrink-0 self-stretch bg-white/40" aria-hidden />
+
+          {columns.map((col) => (
+            <div key={col.title} className="shrink-0">
+              <FooterColumn title={col.title} links={col.links} />
             </div>
+          ))}
+
+          <div className="shrink-0">
+            <ContactColumn contact={contact} social={social} />
           </div>
         </div>
 
@@ -354,21 +340,25 @@ export default function HoverFooter() {
             </ul>
           </FooterAccordion>
 
-          <div className="flex items-center justify-center gap-5 py-8">
+          <div className="flex items-center gap-4 px-0 py-6">
             <SocialLinks items={social} size={44} />
           </div>
 
-          <div className="flex justify-center px-6 pb-6">
+          <div className="flex justify-center px-6 pb-4 pt-4">
             <FooterLogo logo={logo} className="h-16 w-full max-w-[240px]" />
           </div>
 
-          <p className="pb-2 text-center text-[12px] leading-relaxed tracking-[0.04em] text-white/70">
+          <p className="pb-8 text-center text-[12px] leading-relaxed tracking-[0.04em] text-white/70">
             {copyright}
           </p>
         </div>
 
-        <div className="hidden border-t border-white/20 pt-8 text-center text-[12px] leading-relaxed tracking-[0.04em] text-white/70 lg:mt-12 lg:block md:text-[13px]">
-          <p>{copyright}</p>
+        <div className="hidden pb-10 pt-16 text-center text-[12px] leading-relaxed tracking-[0.04em] text-white/70 lg:block md:text-[13px] lg:pb-12 lg:pt-20">
+          <p>
+            {contact.companyInfo
+              ? `${copyright} ${contact.companyInfo}`
+              : copyright}
+          </p>
         </div>
       </div>
     </footer>

@@ -16,9 +16,13 @@ export const metadata: Metadata = {
 };
 
 // App Router 規定：<html> / <body> 只能放在 Server Component layout
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   return (
-    <html lang="zh-Hant">
+    <html lang="zh-Hant  ">
       <body className="min-h-screen bg-hover-bg font-sans text-slate-900 antialiased">
         <ClientLayout>{children}</ClientLayout>
       </body>

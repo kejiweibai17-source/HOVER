@@ -37,7 +37,7 @@ export default function MobileNavMenu({
   };
 
   const linkClass =
-    "block border-b border-[#e8e8e8] py-4 text-[14px] font-medium tracking-[0.18em] text-black transition-colors hover:bg-[#fafafa]";
+    "block border-b border-[#e8e8e8] py-4 text-[14px] font-bold tracking-[0.18em] text-black transition-colors hover:bg-[#fafafa]";
 
   return (
     <AnimatePresence>
@@ -76,7 +76,7 @@ export default function MobileNavMenu({
                 onClick={handleFavorites}
               >
                 <WishlistIcon size={36} />
-                <span className="text-[14px] tracking-[0.12em]">收藏清單</span>
+                <span className="text-[14px] font-bold tracking-[0.12em]">收藏清單</span>
               </button>
 
               <button
@@ -85,7 +85,7 @@ export default function MobileNavMenu({
                 onClick={handleAccount}
               >
                 <HoverIcon name="member" size={36} alt="" />
-                <span className="text-[14px] tracking-[0.12em]">
+                <span className="text-[14px] font-bold tracking-[0.12em]">
                   {loggedIn ? "會員中心" : "會員登入"}
                 </span>
               </button>

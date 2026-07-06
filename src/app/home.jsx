@@ -10,8 +10,6 @@ import { useAuthStore } from "@/lib/authStore";
 import InfiniteCarousel from "@/components/hover/InfiniteCarousel";
 import HoverPopup from "@/components/hover/HoverPopup";
 import HoverHero from "@/components/hover/HoverHero";
-import BrandStoryCarousel from "@/components/hover/BrandStoryCarousel";
-import { HOVER_PLACEHOLDER_IMAGE } from "@/lib/hoverPlaceholder";
 
 /* ─── Data ──────────────────────────────────────────────────────────── */
 
@@ -19,7 +17,6 @@ const PRODUCTS = [
   {
     id: "hover-product-1",
     href: "/products/chambray-ribbon-shirt",
-    category: "DRAWER",
     name: "ChambrayRIBBONSHIRT",
     image: "/images/hover/product-1.jpg",
     isNew: false,
@@ -44,7 +41,6 @@ const PRODUCTS = [
   {
     id: "hover-product-2",
     href: "/products/chambray-ribbon-shirt-2",
-    category: "DRAWER",
     name: "ChambrayRIBBONSHIRT",
     image: "/images/hover/product-2.jpg",
     isNew: true,
@@ -64,7 +60,6 @@ const PRODUCTS = [
   {
     id: "hover-product-3",
     href: "/products/chambray-ribbon-shirt-3",
-    category: "DRAWER",
     name: "ChambrayRIBBONSHIRT",
     image: "/images/hover/product-3.jpg",
     isNew: true,
@@ -87,7 +82,6 @@ const PRODUCTS = [
   {
     id: "hover-product-4",
     href: "/products/chambray-ribbon-shirt-4",
-    category: "DRAWER",
     name: "ChambrayRIBBONSHIRT",
     image: "/images/hover/product-4.jpg",
     isNew: false,
@@ -125,11 +119,28 @@ const PEOPLE_ITEMS = PEOPLE.map((src, i) => ({
   src,
 }));
 
-const BRAND_STORY_SLIDES = [1, 2, 3].map((n) => ({
-  id: `brand-story-${n}`,
-  src: HOVER_PLACEHOLDER_IMAGE,
-  alt: "HOVER brand story",
-}));
+const BRAND_STORY_SLIDES = [
+  {
+    id: "brand-story-1",
+    src: "https://lee.hpplus.jp/wp-content/uploads/2026/06/05/08RA2607000010000001_00.jpg",
+    alt: "HOVER brand story 1",
+  },
+  {
+    id: "brand-story-2",
+    src: "https://lee.hpplus.jp/wp-content/uploads/2026/06/11/ce3228d9829fd8e63101261a1cb7b06f.jpg",
+    alt: "HOVER brand story 2",
+  },
+  {
+    id: "brand-story-3",
+    src: "https://lee.hpplus.jp/wp-content/uploads/2026/06/17/7_slider10.jpg",
+    alt: "HOVER brand story 3",
+  },
+  {
+    id: "brand-story-4",
+    src: "https://lee.hpplus.jp/wp-content/uploads/2026/06/03/7_slider13.jpg",
+    alt: "HOVER brand story 4",
+  },
+];
 
 const CATEGORIES = [
   {
@@ -226,14 +237,10 @@ function ProductCard({ product }) {
 
       {/* Info */}
       <div className="mt-2 min-w-0 space-y-1 pr-1 text-left md:mt-3">
-        <p className="truncate text-[10px] tracking-widest text-[#888] md:text-[11px]">
-          {product.category}
-        </p>
-
-        <div className="flex min-w-0 items-start justify-between gap-1">
+        <div className="flex min-h-9 min-w-0 items-center justify-between gap-2">
           <Link
             href={product.href}
-            className="min-w-0 flex-1 break-words text-[12px] font-semibold leading-snug text-black line-clamp-2 hover:opacity-60 md:text-[13px]"
+            className="flex min-w-0 flex-1 items-center break-words text-[12px] font-semibold leading-snug text-black line-clamp-2 hover:opacity-60 md:text-[13px]"
           >
             {product.name}
           </Link>
@@ -242,12 +249,11 @@ function ProductCard({ product }) {
             aria-label={isSaved ? "取消收藏" : "加入收藏"}
             onClick={handleWishlist}
             disabled={wishlistPending}
-            className={`shrink-0 pt-0.5 transition-opacity hover:opacity-60 ${
+            className={`flex h-9 w-9 shrink-0 items-center justify-center transition-opacity hover:opacity-60 ${
               isSaved ? "opacity-100" : "opacity-80"
             }`}
           >
-            <WishlistIcon active={isSaved} size={36} className="md:hidden" />
-            <WishlistIcon active={isSaved} size={48} className="hidden md:block" />
+            <WishlistIcon active={isSaved} size={36} />
           </button>
         </div>
 
@@ -306,12 +312,31 @@ function ProductSection({ title, products }) {
 function BrandStorySection() {
   return (
     <section className="bg-hover-bg md:grid md:h-[85vh] md:grid-cols-[58%_42%]">
-      <BrandStoryCarousel
-        slides={BRAND_STORY_SLIDES}
-        className="min-h-[380px] md:min-h-[600px]"
+      <InfiniteCarousel
+        items={BRAND_STORY_SLIDES}
+        visibleMd={2}
+        visibleSm={1}
+        className="bg-hover-bg h-full min-h-[380px] pb-0"
+        contentClassName="px-0"
+        trackContentClassName="!py-0 h-full px-0"
+        trackClassName="h-full min-h-[380px] md:min-h-[600px]"
+        slideClassName="h-full"
+        autoplayInterval={5000}
+        mobileDraggable
+        imageAspectRatio="4/5"
+        renderItem={(slide) => (
+          <div className="relative h-full min-h-[380px] overflow-hidden md:min-h-[600px]">
+            <Image
+              src={slide.src}
+              alt={slide.alt || "HOVER brand story"}
+              fill
+              className="object-cover"
+              sizes="(max-width: 768px) 100vw, 29vw"
+            />
+          </div>
+        )}
       />
 
-      {/* Right — brand text（僅桌機顯示） */}
       <div className="hidden flex-col items-center justify-between bg-hover-bg px-10 py-12 md:my-10 md:flex md:px-14 md:py-16">
         <div className="flex justify-end gap-6">
           <p className="[writing-mode:vertical-rl] text-[22px] leading-[1.6] tracking-[0.25em] text-black md:text-[26px]">

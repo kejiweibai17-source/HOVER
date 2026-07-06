@@ -3,7 +3,6 @@
 
 import React, { useState, useMemo } from "react";
 import Image from "next/image";
-import { Link } from "next-view-transitions";
 import { useRouter, useParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { ChevronLeft, ChevronRight, Minus, Plus } from "lucide-react";
@@ -65,7 +64,18 @@ const MOCK_GALLERY = [
   "/images/hover/product-1.jpg",
   "/images/hover/product-3.jpg",
   "/images/hover/people-4.jpg",
+  "/images/hover/people-2.jpg",
 ];
+
+const GALLERY_IMAGE_COUNT = 8;
+
+function normalizeGalleryImages(images: string[]): string[] {
+  const source = images.length > 0 ? images : MOCK_GALLERY;
+  return Array.from(
+    { length: GALLERY_IMAGE_COUNT },
+    (_, i) => source[i % source.length],
+  );
+}
 
 const DEFAULT_SIZES = ["S", "M", "L", "XL"];
 const MOBILE_DEFAULT_SIZES = ["S", "M", "L", "XL", "2XL"];
@@ -112,10 +122,11 @@ function ProductGallery({
   name: string;
   part?: "all" | "hero" | "rest";
 }) {
+  const gallery = useMemo(() => normalizeGalleryImages(images), [images]);
   const [index, setIndex] = useState(0);
-  const heroTail = images.slice(1, 3);
-  const gridImages = images.slice(3);
-  const total = images.length;
+  const secondLarge = gallery[1];
+  const gridImages = gallery.slice(2, GALLERY_IMAGE_COUNT);
+  const total = gallery.length;
   const showHero = part === "all" || part === "hero";
   const showRest = part === "all" || part === "rest";
 
@@ -133,7 +144,7 @@ function ProductGallery({
         >
           <AnimatePresence mode="wait" initial={false}>
             <motion.div
-              key={images[index]}
+              key={gallery[index]}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -141,7 +152,7 @@ function ProductGallery({
               className="absolute inset-0"
             >
               <Image
-                src={images[index]}
+                src={gallery[index]}
                 alt={`${name} ${index + 1}`}
                 fill
                 sizes="(max-width: 768px) 100vw, 50vw"
@@ -174,22 +185,20 @@ function ProductGallery({
         </div>
       )}
 
-      {showRest &&
-        heroTail.map((src, i) => (
-          <div
-            key={`hero-${src}-${i}`}
-            className="relative w-full overflow-hidden bg-[#e8e6e2]"
-            style={{ aspectRatio: "3/4" }}
-          >
-            <Image
-              src={src}
-              alt={`${name} ${i + 2}`}
-              fill
-              sizes="(max-width: 768px) 100vw, 50vw"
-              className="object-cover"
-            />
-          </div>
-        ))}
+      {showRest && secondLarge && (
+        <div
+          className="relative w-full overflow-hidden bg-[#e8e6e2]"
+          style={{ aspectRatio: "3/4" }}
+        >
+          <Image
+            src={secondLarge}
+            alt={`${name} 2`}
+            fill
+            sizes="(max-width: 768px) 100vw, 50vw"
+            className="object-cover"
+          />
+        </div>
+      )}
 
       {showRest && gridImages.length > 0 && (
         <div className="grid grid-cols-2 gap-2">
@@ -201,7 +210,7 @@ function ProductGallery({
             >
               <Image
                 src={src}
-                alt={`${name} ${i + 4}`}
+                alt={`${name} ${i + 3}`}
                 fill
                 sizes="(max-width: 768px) 50vw, 25vw"
                 className="object-cover"
@@ -521,20 +530,8 @@ export default function ProductClient({ product, faqs = [] }: ProductProps) {
 
   return (
     <div className="bg-hover-bg">
-      <nav className="mx-auto hidden max-w-[1400px] flex-wrap items-center gap-1 px-6 pb-4 pt-5 text-[11px] tracking-[0.04em] text-[#888] md:flex md:px-10 md:pt-6">
-        <Link href="/" className="hover:text-black">
-          HOME
-        </Link>
-        <span>&gt;</span>
-        <Link href="/products" className="hover:text-black">
-          ALL ITEMS
-        </Link>
-        <span>&gt;</span>
-        <span className="text-black">{product.name}</span>
-      </nav>
-
       {/* 桌機 — 雙欄 */}
-      <div className="mx-auto hidden max-w-[1400px] grid-cols-2 items-start gap-10 px-10 pb-16 md:grid lg:gap-14">
+      <div className="mx-auto hidden max-w-[1400px] grid-cols-2 items-start gap-12 px-10 pb-16 pt-6 md:grid lg:gap-20 xl:gap-24">
         <div className="w-full">
           <ProductGallery key={selectedColor} images={gallery} name={product.name} />
         </div>

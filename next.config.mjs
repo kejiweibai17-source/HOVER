@@ -51,6 +51,10 @@ const nextConfig = {
       {
         protocol: 'https',
         hostname: 'united-arrows-global.com',
+      },
+      {
+        protocol: 'https',
+        hostname: 'lee.hpplus.jp',
       }
     ],
   },
