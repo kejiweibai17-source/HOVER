@@ -6,8 +6,9 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 const MOBILE_MQ = "(max-width: 767px)";
 const SWIPE_THRESHOLD = 48;
 
-function CarouselArrows({ onPrev, onNext, imageAspectRatio, visible }) {
+function CarouselArrows({ onPrev, onNext, imageAspectRatio, visible, arrowClassName }) {
   const btnClass =
+    arrowClassName ||
     "absolute top-1/2 z-10 flex -translate-y-1/2 items-center justify-center text-[#999] transition-opacity hover:opacity-60";
 
   if (imageAspectRatio && visible > 0) {
@@ -84,6 +85,7 @@ export default function InfiniteCarousel({
   autoplayInterval = 0,
   mobileDraggable = false,
   imageAspectRatio = "",
+  arrowClassName = "",
 }) {
   const baseLength = items.length;
   const [visible, setVisible] = useState(visibleMd);
@@ -248,6 +250,7 @@ export default function InfiniteCarousel({
             onNext={() => go(1)}
             imageAspectRatio={imageAspectRatio}
             visible={visible}
+            arrowClassName={arrowClassName}
           />
 
           <div

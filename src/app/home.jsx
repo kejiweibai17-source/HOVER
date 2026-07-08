@@ -120,22 +120,22 @@ const PEOPLE_ITEMS = PEOPLE.map((src, i) => ({
 const BRAND_STORY_SLIDES = [
   {
     id: "brand-story-1",
-    src: "https://lee.hpplus.jp/wp-content/uploads/2026/06/05/08RA2607000010000001_00.jpg",
+    src: "https://united-arrows-global.com/cdn/shop/files/bnr_global_1600_900_w.jpg?v=1782724871&width=2400",
     alt: "HOVER brand story 1",
   },
   {
     id: "brand-story-2",
-    src: "https://lee.hpplus.jp/wp-content/uploads/2026/06/11/ce3228d9829fd8e63101261a1cb7b06f.jpg",
+    src: "https://united-arrows-global.com/cdn/shop/files/collection_top_1600_900.jpg?v=1782727109&width=2000",
     alt: "HOVER brand story 2",
   },
   {
     id: "brand-story-3",
-    src: "https://lee.hpplus.jp/wp-content/uploads/2026/06/17/7_slider10.jpg",
+    src: "https://united-arrows-global.com/cdn/shop/files/WOMEN_PC_b0601636-c7ee-401e-a411-8cb83323cbef.jpg?v=1779843749&width=2000",
     alt: "HOVER brand story 3",
   },
   {
     id: "brand-story-4",
-    src: "https://lee.hpplus.jp/wp-content/uploads/2026/06/03/7_slider13.jpg",
+    src: "https://united-arrows-global.com/cdn/shop/files/MEN_PC_7c49d7ce-4819-48ea-a1ba-1b91031081d1.jpg?v=1779843749&width=2000",
     alt: "HOVER brand story 4",
   },
 ];
@@ -298,49 +298,29 @@ function ProductSection({ title, products }) {
 
 function BrandStorySection() {
   return (
-    <section className="bg-hover-bg md:grid md:h-[85vh] md:grid-cols-[58%_42%]">
+    <section className="bg-hover-bg">
       <InfiniteCarousel
         items={BRAND_STORY_SLIDES}
         visibleMd={2}
         visibleSm={1}
-        className="bg-hover-bg h-full min-h-[380px] pb-0"
+        className="bg-hover-bg pb-0"
         contentClassName="px-0"
-        trackContentClassName="!py-0 h-full px-0"
-        trackClassName="h-full min-h-[380px] md:min-h-[600px]"
-        slideClassName="h-full"
+        trackContentClassName="!py-0 px-0"
         autoplayInterval={5000}
         mobileDraggable
-        imageAspectRatio="4/5"
+        imageAspectRatio="16/9"
         renderItem={(slide) => (
-          <div className="relative h-full min-h-[380px] overflow-hidden md:min-h-[600px]">
+          <div className="relative aspect-[16/9] max-h-[100vh] w-full overflow-hidden">
             <Image
               src={slide.src}
               alt={slide.alt || "HOVER brand story"}
               fill
               className="object-cover"
-              sizes="(max-width: 768px) 100vw, 29vw"
+              sizes="(max-width: 768px) 100vw, 50vw"
             />
           </div>
         )}
       />
-
-      <div className="hidden flex-col items-center justify-between bg-hover-bg px-10 py-12 md:my-10 md:flex md:px-14 md:py-16">
-        <div className="flex justify-end gap-6">
-          <p className="[writing-mode:vertical-rl] text-[22px] leading-[1.6] tracking-[0.25em] text-black md:text-[26px]">
-            輕盈與穩定之間的
-          </p>
-          <p className="[writing-mode:vertical-rl] text-[22px] leading-[1.6] tracking-[0.25em] text-black md:text-[26px]">
-            生活態度、
-          </p>
-        </div>
-        <p className="mt-8 max-w-[280px] text-right text-[12px] leading-[2] tracking-wide text-[#4d4b48] md:text-[13px]">
-          HOVER 是一個為日常而設計的服飾品牌。
-          <br />
-          我們精選兼具舒適、質感與實穿性的服飾單品，
-          <br />
-          在輕盈與穩定之間，找到屬於你的日常風格。
-        </p>
-      </div>
     </section>
   );
 }
