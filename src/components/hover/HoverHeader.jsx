@@ -24,6 +24,24 @@ import { FALLBACK_NAV_CATEGORIES } from "@/lib/categoryNav";
 
 const SCROLL_TOP_THRESHOLD = 20;
 
+/** PNG 圖檔含透明留白，實際繪製尺寸略小於容器 */
+const HEADER_ICON = {
+  mobile: { box: 32, search: 28, cart: 30 },
+  desktop: { box: 36, search: 30, wishlist: 30, cart: 32, member: 30 },
+};
+
+function HeaderIconButton({ children, className = "", ...props }) {
+  return (
+    <button
+      type="button"
+      className={`flex shrink-0 items-center justify-center text-black ${className}`}
+      {...props}
+    >
+      {children}
+    </button>
+  );
+}
+
 function MenuToggle({ open, onClick }) {
   return (
     <button
@@ -52,7 +70,7 @@ function CategoryNavItem({ category }) {
     <div className="group relative">
       <Link
         href={category.href}
-        className="inline-flex items-center text-[13px] font-bold tracking-wide text-black transition-opacity hover:opacity-50"
+        className="inline-flex items-center text-[15px] xl:text-[16px] font-bold tracking-wide text-black transition-opacity hover:opacity-50"
       >
         {category.label}
       </Link>
@@ -221,10 +239,7 @@ export default function HoverHeader({
         style={{ backgroundColor: bgColor }}
       >
         {/* 手機 — 頂部留白 */}
-        <div
-          className="h-10 w-full bg-white md:hidden"
-          aria-hidden
-        />
+        <div className="h-5 w-full bg-white md:hidden" aria-hidden />
 
         {/* 手機 — 公告列 */}
         {!hideAnnouncement && showAnnouncement && (
@@ -260,27 +275,37 @@ export default function HoverHeader({
           >
             <HoverLogo aria-hidden className="h-8 w-auto" />
           </Link>
-          <div className="flex items-center gap-0.5">
-            <button
-              type="button"
+          <div className="-mr-0.5 flex items-center justify-end gap-0">
+            <HeaderIconButton
               aria-label="搜尋"
-              className="shrink-0 p-0.5 text-black"
+              style={{
+                width: HEADER_ICON.mobile.box,
+                height: HEADER_ICON.mobile.box,
+              }}
               onClick={() => {
                 setMenuOpen(false);
                 openSearch();
               }}
             >
-              <HoverIcon name="search" size={52} alt="搜尋" />
-            </button>
+              <HoverIcon
+                name="search"
+                size={HEADER_ICON.mobile.search}
+                alt="搜尋"
+              />
+            </HeaderIconButton>
             <Link
               href="/cart"
               aria-label={
                 cartCount > 0 ? `購物車，${cartCount} 件商品` : "購物車"
               }
-              className="relative shrink-0 p-0.5 text-black"
+              className="relative flex shrink-0 items-center justify-center text-black"
+              style={{
+                width: HEADER_ICON.mobile.box,
+                height: HEADER_ICON.mobile.box,
+              }}
               onClick={() => setMenuOpen(false)}
             >
-              <CartIcon count={cartCount} size={52} />
+              <CartIcon count={cartCount} size={HEADER_ICON.mobile.cart} />
             </Link>
           </div>
         </div>
@@ -313,7 +338,7 @@ export default function HoverHeader({
             <nav className="hidden flex-wrap items-center justify-center gap-x-4 gap-y-2 md:flex lg:gap-x-5">
               <Link
                 href="/products"
-                className="text-[13px] font-bold tracking-wide text-black transition-opacity hover:opacity-50"
+                className="text-[15px] xl:text-[16px] font-bold tracking-wide text-black transition-opacity hover:opacity-50"
               >
                 ALL ITEMS
               </Link>
@@ -322,19 +347,29 @@ export default function HoverHeader({
               ))}
             </nav>
 
-            <div className="col-start-3 flex items-center justify-end gap-2 md:gap-2.5">
-              <button
-                type="button"
+            <div className="col-start-3 -mr-1 flex items-center justify-end gap-0">
+              <HeaderIconButton
                 aria-label="搜尋"
-                className="shrink-0 p-0.5 text-black transition-opacity hover:opacity-50"
+                className="transition-opacity hover:opacity-50"
+                style={{
+                  width: HEADER_ICON.desktop.box,
+                  height: HEADER_ICON.desktop.box,
+                }}
                 onClick={openSearch}
               >
-                <HoverIcon name="search" size={56} alt="搜尋" />
-              </button>
-              <button
-                type="button"
+                <HoverIcon
+                  name="search"
+                  size={HEADER_ICON.desktop.search}
+                  alt="搜尋"
+                />
+              </HeaderIconButton>
+              <HeaderIconButton
                 aria-label="收藏"
-                className="relative shrink-0 p-0.5 text-black transition-opacity hover:opacity-50"
+                className="relative transition-opacity hover:opacity-50"
+                style={{
+                  width: HEADER_ICON.desktop.box,
+                  height: HEADER_ICON.desktop.box,
+                }}
                 onClick={async () => {
                   const isLoggedIn = await checkAuth();
                   if (isLoggedIn) {
@@ -346,28 +381,40 @@ export default function HoverHeader({
                   }
                 }}
               >
-                <WishlistIcon size={56} />
+                <WishlistIcon size={HEADER_ICON.desktop.wishlist} />
                 {wishlistCount > 0 && (
-                  <span className="absolute right-0 top-0 flex h-5 min-w-5 items-center justify-center rounded-full bg-[#2a514d] px-1 text-[10px] font-bold text-white">
+                  <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#2a514d] px-0.5 text-[9px] font-bold text-white">
                     {wishlistCount > 99 ? "99+" : wishlistCount}
                   </span>
                 )}
-              </button>
+              </HeaderIconButton>
               <Link
                 href="/cart"
                 aria-label={
                   cartCount > 0 ? `購物車，${cartCount} 件商品` : "購物車"
                 }
-                className="relative shrink-0 p-0.5 text-black transition-opacity hover:opacity-50"
+                className="relative flex shrink-0 m-2  items-center justify-center text-black transition-opacity hover:opacity-50"
+                style={{
+                  width: HEADER_ICON.desktop.box,
+                  height: HEADER_ICON.desktop.box,
+                }}
               >
-                <CartIcon count={cartCount} size={56} />
+                <CartIcon count={cartCount} size={HEADER_ICON.desktop.cart} />
               </Link>
               <Link
                 href="/account"
                 aria-label={
                   loggedIn && authUser ? `Hi ${authUser.name}` : "會員"
                 }
-                className="flex shrink-0 items-center gap-1.5 text-black hover:opacity-50"
+                className="flex shrink-0 items-center justify-center gap-1.5 text-black hover:opacity-50"
+                style={
+                  loggedIn && authUser
+                    ? undefined
+                    : {
+                        width: HEADER_ICON.desktop.box,
+                        height: HEADER_ICON.desktop.box,
+                      }
+                }
               >
                 {loggedIn && authUser ? (
                   <>
@@ -376,11 +423,11 @@ export default function HoverHeader({
                       <img
                         src={authUser.avatarUrl}
                         alt=""
-                        className="h-10 w-10 rounded-full object-cover ring-1 ring-black/10"
+                        className="h-8 w-8 rounded-full object-cover ring-1 ring-black/10"
                         referrerPolicy="no-referrer"
                       />
                     ) : (
-                      <span className="flex h-10 w-10 items-center justify-center rounded-full bg-[#2a514d] text-[12px] font-bold text-white">
+                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#2a514d] text-[11px] font-bold text-white">
                         {authUser.name.charAt(0).toUpperCase()}
                       </span>
                     )}
@@ -389,7 +436,11 @@ export default function HoverHeader({
                     </span>
                   </>
                 ) : (
-                  <HoverIcon name="member" size={56} alt="會員" />
+                  <HoverIcon
+                    name="member"
+                    size={HEADER_ICON.desktop.member}
+                    alt="會員"
+                  />
                 )}
               </Link>
             </div>

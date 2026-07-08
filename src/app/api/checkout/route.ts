@@ -24,7 +24,7 @@ const LINEPAY_CHANNEL_ID = process.env.LINEPAY_CHANNEL_ID!;
 const LINEPAY_CHANNEL_SECRET = process.env.LINEPAY_CHANNEL_SECRET!;
 const LINEPAY_BASE_URL = process.env.LINEPAY_BASE_URL || "https://api-pay.line.me"; 
 
-interface CartItem { wcProductId: number; qty: number; price: number; title: string; id?: string | number; }
+interface CartItem { wcProductId: number; wcVariationId?: number; qty: number; price: number; title: string; id?: string | number; }
 interface ContactInfo { email: string; }
 interface AddressInfo { firstName: string; lastName: string; line1: string; phone: string; storeId?: string; storeName?: string; storeAddr?: string; }
 interface RequestBody { items: CartItem[]; contact: ContactInfo; addr: AddressInfo; total: number; shipMethod: string; payMethod?: string; coupon?: { code: string; amount: number } | string | null; memberDiscount?: number; }
@@ -341,7 +341,13 @@ export async function POST(req: Request) {
           },
           shipping_lines: [{ method_id: methodId, method_title: shippingTitle, total: String(realShippingCost) }],
           fee_lines,
-          line_items: items.map((it) => ({ product_id: Number(it.wcProductId || it.id), quantity: Number(it.qty) })),
+          line_items: items.map((it) => ({
+            product_id: Number(it.wcProductId || it.id),
+            ...(it.wcVariationId
+              ? { variation_id: Number(it.wcVariationId) }
+              : {}),
+            quantity: Number(it.qty),
+          })),
           meta_data,
         };
 

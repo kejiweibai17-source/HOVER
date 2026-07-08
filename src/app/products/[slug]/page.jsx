@@ -174,9 +174,9 @@ export default async function ProductPage({ params }) {
     id: "hover-product",
     name: "LACOSTE FOR BEAUTY&YOUTH ONE-TONE SHORT SLEEVE T SHIRT",
     subname: "",
-    price: 1344,
-    regularPrice: 1680,
-    salePrice: 1344,
+    price: 1280,
+    regularPrice: 1280,
+    salePrice: null,
     shortDescription: "",
     description: "",
     images: [
@@ -411,6 +411,7 @@ export default async function ProductPage({ params }) {
                 colors: woo.colors,
                 sizes: woo.sizes,
                 colorGalleries: woo.colorGalleries,
+                variations: woo.variations,
               }
             : {
                 ...fallback,

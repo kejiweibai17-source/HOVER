@@ -273,7 +273,7 @@ export default function HoverFooter() {
   return (
     <footer className="text-white" style={{ backgroundColor }}>
       <div className="mx-auto w-full max-w-[1680px] px-6 pt-12 md:px-12 md:pt-16 lg:px-16 lg:pt-[72px] xl:px-12">
-        <div className="hidden lg:flex lg:min-h-[300px] lg:w-full lg:items-stretch lg:justify-between xl:min-h-[340px]">
+        <div className="hidden lg:flex   lg:w-full lg:items-stretch lg:justify-between  ">
           <div className="flex shrink-0 items-center">
             <FooterLogo
               logo={logo}
@@ -344,21 +344,17 @@ export default function HoverFooter() {
             <SocialLinks items={social} size={44} />
           </div>
 
-          <div className="flex justify-center px-6 pb-4 pt-4">
+          <div className="flex justify-center mt-10 sm:mt-0 px-6 pb-4 pt-4">
             <FooterLogo logo={logo} className="h-16 w-full max-w-[240px]" />
           </div>
 
-          <p className="pb-8 text-center text-[12px] leading-relaxed tracking-[0.04em] text-white/70">
+          <p className="mx-auto max-w-[200px] pb-8 text-center text-[12px] leading-relaxed tracking-[0.04em] text-white/70">
             {copyright}
           </p>
         </div>
 
-        <div className="hidden pb-10 pt-16 text-center text-[12px] leading-relaxed tracking-[0.04em] text-white/70 lg:block md:text-[13px] lg:pb-12 lg:pt-20">
-          <p>
-            {contact.companyInfo
-              ? `${copyright} ${contact.companyInfo}`
-              : copyright}
-          </p>
+        <div className="hidden pb-10 pt-16 text-center text-[12px] leading-relaxed tracking-[0.04em] text-white/70 lg:block md:text-[13px] lg:pb-12 lg:pt-10">
+          <p>{copyright}</p>
         </div>
       </div>
     </footer>

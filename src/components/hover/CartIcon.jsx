@@ -2,7 +2,7 @@ import HoverIcon from "@/components/hover/HoverIcon";
 
 export default function CartIcon({ count = 0, size = 48, className = "" }) {
   const display = count > 99 ? "99+" : String(count);
-  const fontSize = size >= 56 ? 14 : size >= 52 ? 13 : size >= 48 ? 12 : 11;
+  const fontSize = size >= 56 ? 11 : size >= 52 ? 10 : size >= 48 ? 9 : size >= 32 ? 8 : 7;
 
   return (
     <span

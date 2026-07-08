@@ -5,7 +5,66 @@ import {
   PRIVACY_INTRO,
   PRIVACY_SECTIONS,
   type PrivacySection,
+  type PrivacySubSection,
 } from "./privacy-data";
+
+function SubAccordionPanel({
+  subSections,
+}: {
+  subSections: PrivacySubSection[];
+}) {
+  const [openSubs, setOpenSubs] = useState<Set<number>>(
+    () => new Set(subSections.map((_, i) => i)),
+  );
+
+  const toggleSub = (index: number) => {
+    setOpenSubs((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) next.delete(index);
+      else next.add(index);
+      return next;
+    });
+  };
+
+  return (
+    <div className="overflow-hidden">
+      {subSections.map((sub, i) => {
+        const open = openSubs.has(i);
+        return (
+          <div key={sub.title} className="border-b border-[#ddd] last:border-b-0">
+            <button
+              type="button"
+              onClick={() => toggleSub(i)}
+              aria-expanded={open}
+              className="flex w-full items-center justify-between gap-4 py-3.5 text-left md:py-4"
+            >
+              <span className="text-[13px] font-bold tracking-[0.04em] text-black md:text-[14px]">
+                {sub.title}
+              </span>
+              <span
+                className="shrink-0 text-[20px] font-light leading-none text-black"
+                aria-hidden
+              >
+                {open ? "−" : "+"}
+              </span>
+            </button>
+            <div
+              className={`overflow-hidden transition-all duration-300 ${
+                open ? "max-h-[800px] opacity-100" : "max-h-0 opacity-0"
+              }`}
+            >
+              <div className="space-y-3 pb-4 pt-1 text-[12px] leading-[2] tracking-[0.04em] text-[#555] md:pb-5 md:text-[13px]">
+                {sub.paragraphs.map((p, idx) => (
+                  <p key={`${sub.title}-p-${idx}`}>{p}</p>
+                ))}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function AccordionItem({
   section,
@@ -53,6 +112,9 @@ function AccordionItem({
               {p}
             </p>
           ))}
+          {section.subSections && (
+            <SubAccordionPanel subSections={section.subSections} />
+          )}
           {section.list && (
             <ul className="list-none space-y-2 pl-0">
               {section.list.map((item) => (
@@ -91,7 +153,7 @@ export default function PrivacyClient() {
         <h1 className="font-serif text-[28px] font-medium tracking-[0.12em] text-[#2a514d] md:text-[32px]">
           隱私權保護
         </h1>
-        <div className="mx-auto mt-6 max-w-[640px] space-y-3 text-left md:mt-8">
+        <div className="mx-auto mt-6 max-w-[640px] space-y-3 text-center md:mt-8">
           {PRIVACY_INTRO.map((p, idx) => (
             <p
               key={p}

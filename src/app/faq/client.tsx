@@ -24,12 +24,12 @@ function AccordionItem({
           <span className="text-[13px] font-light tracking-[0.08em] text-[#999] md:text-[14px]">
             {section.num}
           </span>
-          <span className="text-[15px] font-medium tracking-[0.06em] text-[#2a514d] md:text-[16px]">
+          <span className="text-[15px] font-bold tracking-[0.06em] text-gray-700 md:text-[16px]">
             {section.title}
           </span>
         </span>
         <span
-          className="shrink-0 text-[22px] font-light leading-none text-[#2a514d] transition-transform duration-300"
+          className="shrink-0 text-[22px] font-light leading-none text-black transition-transform duration-300"
           aria-hidden
         >
           {open ? "−" : "+"}
@@ -40,17 +40,19 @@ function AccordionItem({
           open ? "max-h-[4000px] pb-6 opacity-100" : "max-h-0 opacity-0"
         }`}
       >
-        <div className="space-y-6">
-          {section.items.map((item) => (
-            <div key={item.question}>
-              <p className="text-[13px] font-medium leading-relaxed tracking-[0.04em] text-[#2a514d] md:text-[14px]">
-                Q. {item.question}
-              </p>
-              <p className="mt-2 text-[12px] leading-[2] tracking-[0.04em] text-[#555] md:text-[13px]">
-                A. {item.answer}
-              </p>
-            </div>
-          ))}
+        <div className="bg-[#ececec] py-4 md:py-5">
+          <div className="space-y-5 px-4 md:px-5">
+            {section.items.map((item) => (
+              <div key={item.question}>
+                <p className="text-[13px] font-bold leading-relaxed tracking-[0.04em] text-black md:text-[14px]">
+                  Q. {item.question}
+                </p>
+                <p className="mt-2 text-[12px] leading-[2] tracking-[0.04em] text-[#555] md:text-[13px]">
+                  A. {item.answer}
+                </p>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
@@ -62,7 +64,7 @@ export default function FAQClient() {
 
   return (
     <div className="relative bg-white pb-24">
-      <header className="px-4 pb-10 pt-14 text-center md:pb-14 md:pt-20">
+      <header className="px-4 pb-8 pt-14 text-center md:pb-10 md:pt-20">
         <h1 className="font-serif text-[28px] font-medium tracking-[0.12em] text-[#2a514d] md:text-[32px]">
           常見問題
         </h1>

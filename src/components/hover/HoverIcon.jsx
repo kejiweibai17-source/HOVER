@@ -2,7 +2,7 @@ import { HOVER_ICONS } from "@/lib/hoverIcons";
 
 export default function HoverIcon({
   name,
-  size = 52,
+  size = 32,
   className = "",
   alt = "",
 }) {

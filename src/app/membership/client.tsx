@@ -40,16 +40,16 @@ const USAGE_NOTES = [
 
 function BenefitList({ items }: { items: string[] }) {
   return (
-    <div className="mt-6 flex flex-col items-center md:mt-8">
+    <div className="mt-6 flex w-full flex-col items-stretch md:mt-8">
       {items.map((item, i) => (
-        <span key={item} className="inline-block max-w-full">
-          <span className="block px-1 py-3 text-center text-[10px] leading-[1.75] tracking-[0.04em] text-[#2a514d] md:py-4 md:text-[13px] md:leading-[1.85]">
+        <div key={item} className="w-full">
+          <span className="block px-1 py-3 text-center text-[12px] leading-[1.75] tracking-[0.04em] text-[#2a514d] sm:text-[12.5px] md:py-4 md:text-[13px] md:leading-[1.85]">
             {item}
           </span>
           {i < items.length - 1 && (
-            <span className="block h-px bg-[#e8d8b0]" aria-hidden />
+            <span className="block h-px w-full bg-[#e8d8b0]" aria-hidden />
           )}
-        </span>
+        </div>
       ))}
     </div>
   );
@@ -77,18 +77,18 @@ function TierCard({
             alt={iconAlt}
             width={72}
             height={72}
-            className="h-[52px] w-[52px] object-contain md:h-[68px] md:w-[68px]"
+            className="h-[60px] w-[60px] object-contain md:h-[65px] md:w-[65px]"
           />
         </div>
       </div>
 
-      <p className="text-center font-serif text-[13px] font-bold tracking-[0.08em] text-[#2a514d] md:text-[22px] md:tracking-[0.1em]">
+      <p className="text-center font-serif text-[16px] font-bold tracking-[0.08em] text-[#2a514d] sm:text-[18px] md:text-[22px] md:tracking-[0.1em]">
         {titleEn}
       </p>
-      <p className="mt-1 text-center font-serif text-[14px] font-medium text-[#2a514d] md:mt-1.5 md:text-[20px]">
+      <p className="mt-1 text-center font-serif text-[15px] font-medium text-[#2a514d] sm:text-[16px] md:mt-1.5 md:text-[20px]">
         {titleZh}
       </p>
-      <div className="mx-auto mt-3 h-[3px] w-[48%] min-w-[100px] max-w-[180px] bg-[#2a514d] md:mt-4" />
+      <div className="mt-3 h-[1.3px] w-full bg-[#2a514d] md:mt-4" />
 
       <BenefitList items={benefits} />
     </div>
@@ -112,7 +112,7 @@ export default function MembershipClient() {
       </header>
 
       <div className="mx-auto max-w-[1100px] space-y-10 px-4 md:space-y-12 md:px-6">
-        <div className="grid grid-cols-2 gap-4 md:gap-8">
+        <div className="grid grid-cols-1 gap-10 sm:grid-cols-2 sm:gap-4 md:gap-8">
           <TierCard
             iconSrc="/images/icon/品牌好友.png"
             iconAlt="品牌好友"
@@ -127,20 +127,6 @@ export default function MembershipClient() {
             titleZh="臻享會員"
             benefits={EXCLUSIVE_BENEFITS}
           />
-        </div>
-
-        <div className="rounded-lg border border-[#e8e8e8] bg-white px-5 py-7 shadow-[0_2px_12px_rgba(0,0,0,0.04)] md:rounded-xl md:px-10 md:py-10">
-          <h2 className="mb-5 font-serif text-[16px] font-bold tracking-[0.06em] text-[#2a514d] md:mb-6 md:text-[18px]">
-            購物金使用說明
-          </h2>
-          <ol className="space-y-4 text-left font-serif text-[12px] leading-[2] tracking-[0.02em] text-[#333] md:text-[13px]">
-            {USAGE_NOTES.map((note, i) => (
-              <li key={note} className="flex gap-1.5">
-                <span className="shrink-0">{i + 1}.</span>
-                <span>{note}</span>
-              </li>
-            ))}
-          </ol>
         </div>
 
         <div className="overflow-hidden overflow-x-auto rounded-2xl border border-[#d8d8d8] bg-white">
@@ -178,6 +164,19 @@ export default function MembershipClient() {
               ))}
             </tbody>
           </table>
+        </div>
+        <div className="rounded-lg border border-[#e8e8e8] bg-white px-5 py-7   md:rounded-xl md:px-10 md:py-10">
+          <h2 className="mb-5 font-serif text-[16px] font-bold tracking-[0.06em] text-[#2a514d] md:mb-6 md:text-[18px]">
+            購物金使用說明
+          </h2>
+          <ol className="space-y-4 text-left font-serif text-[12px] leading-[2] tracking-[0.02em] text-[#2a514d] md:text-[13px]">
+            {USAGE_NOTES.map((note, i) => (
+              <li key={note} className="flex gap-1.5">
+                <span className="shrink-0">{i + 1}.</span>
+                <span>{note}</span>
+              </li>
+            ))}
+          </ol>
         </div>
       </div>
     </div>

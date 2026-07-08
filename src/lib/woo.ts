@@ -17,6 +17,10 @@ import {
   mergeColorGalleries,
 } from "./variationGallery";
 import type { WooCategoryRaw } from "./categoryNav";
+import {
+  parseWooVariation,
+  type ProductVariation,
+} from "./productVariations";
 
 export type WooImage = { id: number; src: string; alt?: string };
 export type WooCategoryRef = { id: number; name: string; slug: string };
@@ -39,6 +43,7 @@ export type WooProduct = {
   colors: ProductColor[];
   sizes: string[];
   colorGalleries: ColorGalleries;
+  variations: ProductVariation[];
 };
 
 /** 商品列表頁使用的精簡型別（與 products/Client 相容） */
@@ -112,6 +117,7 @@ const mapWoo = (p: any): WooProduct => {
     colors,
     sizes,
     colorGalleries: extractColorGalleriesFromWooProduct(p),
+    variations: [],
   } as WooProduct;
 };
 
@@ -230,21 +236,24 @@ async function fetchProductVariations(productId: number) {
   return Array.isArray(data) ? data : [];
 }
 
-async function attachColorGalleries(product: WooProduct, raw: any): Promise<WooProduct> {
+async function attachVariableProductData(
+  product: WooProduct,
+  raw: any,
+): Promise<WooProduct> {
   const fromProduct = extractColorGalleriesFromWooProduct(raw);
-  const hasProductGalleries = Object.keys(fromProduct).length > 0;
 
   if (raw?.type !== "variable") {
-    return { ...product, colorGalleries: fromProduct };
+    return { ...product, colorGalleries: fromProduct, variations: [] };
   }
 
-  const variations = await fetchProductVariations(product.id);
-  const fromVariations = buildColorGalleriesFromVariations(variations);
-  const colorGalleries = hasProductGalleries
+  const variationsRaw = await fetchProductVariations(product.id);
+  const fromVariations = buildColorGalleriesFromVariations(variationsRaw);
+  const colorGalleries = Object.keys(fromProduct).length
     ? mergeColorGalleries(fromProduct, fromVariations)
     : fromVariations;
+  const variations = variationsRaw.map(parseWooVariation);
 
-  return { ...product, colorGalleries };
+  return { ...product, colorGalleries, variations };
 }
 
 // 3. 單一產品抓取 (透過 Slug)
@@ -260,7 +269,7 @@ export async function fetchProductBySlug(slug: string) {
   const arr = (await res.json()) as any[];
   if (!Array.isArray(arr) || arr.length === 0) return null;
   const product = mapWoo(arr[0]) as WooProduct;
-  return attachColorGalleries(product, arr[0]);
+  return attachVariableProductData(product, arr[0]);
 }
 
 // 4. 抓取所有 Slugs (用於 generateStaticParams)
@@ -277,6 +286,7 @@ export async function fetchAllProductSlugs({
   return (data || []).map((p: any) => p.slug as string).filter(Boolean);
 }
 
+export type { ProductVariation } from "./productVariations";
 export type { WooCategoryRaw } from "./categoryNav";
 export { buildCategoryNav, isCategoryVisible } from "./categoryNav";
 

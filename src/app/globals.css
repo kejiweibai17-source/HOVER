@@ -13,6 +13,21 @@
     font-family: "Noto Serif HK", serif;
     background-color: var(--hover-bg);
   }
+
+  /* 隱藏 input[type="search"] 瀏覽器原生清除鈕（避免與自訂 X 重複） */
+  input[type="search"]::-webkit-search-cancel-button,
+  input[type="search"]::-webkit-search-decoration,
+  input[type="search"]::-webkit-search-results-button,
+  input[type="search"]::-webkit-search-results-decoration {
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
+  input[type="search"]::-ms-clear {
+    display: none;
+    width: 0;
+    height: 0;
+  }
 }
 @font-face {
   font-family: 'DF-01';

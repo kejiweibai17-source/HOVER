@@ -20,8 +20,7 @@ const PRODUCTS = [
     name: "ChambrayRIBBONSHIRT",
     image: "/images/hover/product-1.jpg",
     isNew: false,
-    originalPrice: 1690,
-    salePrice: 1290,
+    originalPrice: 1280,
     colorLabel: "藍",
     colorHex: "#9ab3d4",
     colors: [
@@ -44,7 +43,7 @@ const PRODUCTS = [
     name: "ChambrayRIBBONSHIRT",
     image: "/images/hover/product-2.jpg",
     isNew: true,
-    originalPrice: 2690,
+    originalPrice: 1280,
     soldOut: true,
     colorLabel: "藍",
     colorHex: "#9ab3d4",
@@ -63,8 +62,7 @@ const PRODUCTS = [
     name: "ChambrayRIBBONSHIRT",
     image: "/images/hover/product-3.jpg",
     isNew: true,
-    originalPrice: 1690,
-    salePrice: 1290,
+    originalPrice: 1280,
     colorLabel: "藍",
     colorHex: "#b8cad8",
     colors: [
@@ -85,7 +83,7 @@ const PRODUCTS = [
     name: "ChambrayRIBBONSHIRT",
     image: "/images/hover/product-4.jpg",
     isNew: false,
-    originalPrice: 2690,
+    originalPrice: 1280,
     soldOut: true,
     colorLabel: "藍",
     colorHex: "#9ab3d4",
@@ -253,7 +251,7 @@ function ProductCard({ product }) {
               isSaved ? "opacity-100" : "opacity-80"
             }`}
           >
-            <WishlistIcon active={isSaved} size={36} />
+            <WishlistIcon active={isSaved} size={20} />
           </button>
         </div>
 
@@ -268,24 +266,13 @@ function ProductCard({ product }) {
         </div>
 
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 pt-0.5">
-          {product.soldOut ? (
-            <>
-              <span className="text-[11px] text-[#b3b3b3] line-through md:text-[12px]">
-                NT. {product.originalPrice}
-              </span>
-              <span className="text-[12px] font-bold text-[#222] md:text-[13px]">
-                SOLD OUT
-              </span>
-            </>
-          ) : (
-            <>
-              <span className="text-[11px] text-[#b3b3b3] line-through md:text-[12px]">
-                NT. {product.originalPrice}
-              </span>
-              <span className="text-[12px] font-bold text-[#222] md:text-[13px]">
-                NT. {product.salePrice}
-              </span>
-            </>
+          <span className="text-[12px] font-bold text-[#222] md:text-[13px]">
+            NT {product.originalPrice}
+          </span>
+          {product.soldOut && (
+            <span className="text-[12px] font-bold text-[#222] md:text-[13px]">
+              SOLD OUT
+            </span>
           )}
         </div>
       </div>

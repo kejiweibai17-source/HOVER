@@ -10,6 +10,7 @@ export type CartItem = {
   image?: string;
   slug?: string;
   wcProductId?: number; // 確保前端結帳時能抓到這個 WooCommerce ID
+  wcVariationId?: number; // 可變商品變體 ID
   onSale?: boolean;
   regularPrice?: number;
   options?: Record<string, string>; // 例如 { 口味: '奶茶', 規格: '8 份' }

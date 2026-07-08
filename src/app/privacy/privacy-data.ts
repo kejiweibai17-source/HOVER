@@ -1,8 +1,14 @@
+export type PrivacySubSection = {
+  title: string;
+  paragraphs: string[];
+};
+
 export type PrivacySection = {
   num: string;
   title: string;
   paragraphs: string[];
   list?: string[];
+  subSections?: PrivacySubSection[];
 };
 
 export const PRIVACY_INTRO = [
@@ -51,11 +57,32 @@ export const PRIVACY_SECTIONS: PrivacySection[] = [
   {
     num: "04",
     title: "個人資料之利用期間、地區、對象及方式",
-    paragraphs: [
-      "利用期間：HOVER 將於會員關係存續期間、交易或服務處理期間、法令規定保存期間，或為完成蒐集目的所必要之期間內利用您的個人資料。",
-      "利用地區：您的個人資料將主要於台灣地區使用。若因系統、雲端服務、金流、物流或其他合作服務涉及跨境資料處理，HOVER 將於必要範圍內妥善處理。",
-      "利用對象：HOVER、受 HOVER 委託或合作之網站系統商、金流服務商、物流業者、電子發票服務商、客服系統、簡訊或 Email 通知服務商、行銷服務合作單位，以及依法有權調閱資料之主管機關或司法機關。",
-      "利用方式：包含但不限於會員管理、訂單處理、付款確認、商品配送、退貨退款、客服聯繫、電子發票開立、活動通知、系統維護、資料分析及法令要求之必要處理。",
+    paragraphs: [],
+    subSections: [
+      {
+        title: "利用期間",
+        paragraphs: [
+          "HOVER 將於會員關係存續期間、交易或服務處理期間、法令規定保存期間，或為完成蒐集目的所必要之期間內利用您的個人資料。",
+        ],
+      },
+      {
+        title: "利用地區",
+        paragraphs: [
+          "您的個人資料將主要於台灣地區使用。若因系統、雲端服務、金流、物流或其他合作服務涉及跨境資料處理，HOVER 將於必要範圍內妥善處理。",
+        ],
+      },
+      {
+        title: "利用對象",
+        paragraphs: [
+          "HOVER、受 HOVER 委託或合作之網站系統商、金流服務商、物流業者、電子發票服務商、客服系統、簡訊或 Email 通知服務商、行銷服務合作單位，以及依法有權調閱資料之主管機關或司法機關。",
+        ],
+      },
+      {
+        title: "利用方式",
+        paragraphs: [
+          "包含但不限於會員管理、訂單處理、付款確認、商品配送、退貨退款、客服聯繫、電子發票開立、活動通知、系統維護、資料分析及法令要求之必要處理。",
+        ],
+      },
     ],
   },
   {

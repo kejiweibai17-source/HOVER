@@ -82,7 +82,7 @@ export default function TermsClient() {
         <h1 className="font-serif text-[28px] font-medium tracking-[0.12em] text-[#2a514d] md:text-[32px]">
           服務條款
         </h1>
-        <div className="mx-auto mt-6 max-w-[640px] space-y-3 text-left md:mt-8">
+        <div className="mx-auto mt-6 max-w-[640px] space-y-3 text-center md:mt-8">
           {TERMS_INTRO.map((p, idx) => (
             <p
               key={p}

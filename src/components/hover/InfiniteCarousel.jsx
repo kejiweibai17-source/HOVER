@@ -69,7 +69,7 @@ function CarouselArrows({ onPrev, onNext, imageAspectRatio, visible }) {
 
 export default function InfiniteCarousel({
   title,
-  titleClassName = "mb-6 text-[22px] font-black tracking-[0.28em] text-black md:text-[28px]",
+  titleClassName = "mb-6 text-[16px] xl:text-[22px] font-black tracking-[0.28em] text-black md:text-[28px]",
   items = [],
   renderItem,
   visibleMd = 4,
@@ -150,7 +150,8 @@ export default function InfiniteCarousel({
   );
 
   useEffect(() => {
-    const interval = autoplayInterval || (isMobile ? mobileAutoplayInterval : 0);
+    const interval =
+      autoplayInterval || (isMobile ? mobileAutoplayInterval : 0);
     if (!interval || !baseLength) return;
 
     const timer = window.setInterval(() => {
@@ -223,7 +224,9 @@ export default function InfiniteCarousel({
   return (
     <section className={`relative bg-white ${className}`}>
       {title ? (
-        <div className={`${contentClassName} pt-10 md:pt-12 ${headerClassName}`}>
+        <div
+          className={`${contentClassName} pt-10 md:pt-12 ${headerClassName}`}
+        >
           <h2 className={titleClassName}>{title}</h2>
         </div>
       ) : null}
@@ -249,7 +252,9 @@ export default function InfiniteCarousel({
 
           <div
             className={`flex ${
-              animate && !dragging ? "transition-transform duration-300 ease-out" : ""
+              animate && !dragging
+                ? "transition-transform duration-300 ease-out"
+                : ""
             }`}
             style={{
               width: `${innerWidthPercent}%`,

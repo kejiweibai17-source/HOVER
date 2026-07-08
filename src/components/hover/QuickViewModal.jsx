@@ -278,7 +278,7 @@ export default function QuickViewModal({ product, onClose }) {
                         isSaved ? "opacity-100" : "opacity-80"
                       }`}
                     >
-                      <WishlistIcon active={isSaved} size={52} />
+                      <WishlistIcon active={isSaved} size={28} />
                     </button>
                   </div>
 
@@ -292,7 +292,7 @@ export default function QuickViewModal({ product, onClose }) {
                       <>
                         {hasDiscount && (
                           <span className="text-[16px] font-bold text-black line-through opacity-50">
-                            NT$ {product.originalPrice.toLocaleString()}
+                            NT {product.originalPrice.toLocaleString()}
                           </span>
                         )}
                         <span
@@ -300,7 +300,7 @@ export default function QuickViewModal({ product, onClose }) {
                             hasDiscount ? "text-[#c90000]" : "text-black"
                           }`}
                         >
-                          NT$ {displayPrice.toLocaleString()}
+                          NT {displayPrice.toLocaleString()}
                         </span>
                       </>
                     )}

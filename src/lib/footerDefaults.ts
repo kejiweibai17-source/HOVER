@@ -83,7 +83,7 @@ export const DEFAULT_FOOTER: FooterSettings = {
     hours: "MON.-FRI. 10:00-19:00",
     lineId: "@HOVER",
     lineUrl: "https://line.me/R/ti/p/@330kefmm",
-    companyInfo: "威爾特國際文創股份有限公司 | 90230279",
+    companyInfo: "",
   },
   social: [
     {
@@ -142,17 +142,10 @@ export function normalizeFooterSettings(raw: unknown): FooterSettings {
         .filter((item) => item.label)
     : d.social;
 
-  let copyright = String(o.copyright || d.copyright).trim();
+  const copyright = String(o.copyright || d.copyright).trim();
   const companyInfo = String(
     contactRaw.companyInfo || contactRaw.company_info || d.contact.companyInfo,
   ).trim();
-
-  if (companyInfo && copyright.includes(companyInfo)) {
-    copyright = copyright
-      .replace(companyInfo, "")
-      .replace(/\s*\|\s*$/, "")
-      .trim();
-  }
 
   return {
     logo: {

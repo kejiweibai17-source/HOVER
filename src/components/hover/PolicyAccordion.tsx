@@ -128,7 +128,7 @@ function PolicyAccordionItem({
           <span className="text-[13px] font-light tracking-[0.08em] text-[#999] md:text-[14px]">
             {section.num}
           </span>
-          <span className="text-[15px] font-bold tracking-[0.06em] text-black md:text-[16px]">
+          <span className="text-[15px] font-bold tracking-[0.06em] text-gray-700 md:text-[16px]">
             {section.title}
           </span>
         </span>

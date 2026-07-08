@@ -1,7 +1,7 @@
 // app/products/[slug]/Client.tsx
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import Image from "next/image";
 import { useRouter, useParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
@@ -28,6 +28,11 @@ import {
   isWashingInstructionsVisible,
   type WashingInstructions,
 } from "@/lib/washingInstructions";
+import {
+  findMatchingVariation,
+  getSizesForColor,
+  type ProductVariation,
+} from "@/lib/productVariations";
 
 interface FAQ {
   question: string;
@@ -52,6 +57,7 @@ interface ProductProps {
     colors?: ProductColor[];
     sizes?: string[];
     colorGalleries?: ColorGalleries;
+    variations?: ProductVariation[];
   };
   faqs?: FAQ[];
 }
@@ -237,6 +243,7 @@ function ProductPurchasePanel({
   qty,
   setQty,
   displayPrice,
+  regularPrice,
   hasDiscount,
   adding,
   onAddToCart,
@@ -255,6 +262,7 @@ function ProductPurchasePanel({
   qty: number;
   setQty: React.Dispatch<React.SetStateAction<number>>;
   displayPrice: number;
+  regularPrice: number;
   hasDiscount: boolean;
   adding: boolean;
   onAddToCart: () => void;
@@ -285,7 +293,7 @@ function ProductPurchasePanel({
             isSaved ? "opacity-100" : "opacity-80"
           }`}
         >
-          <WishlistIcon active={isSaved} size={isMobile ? 48 : 44} />
+          <WishlistIcon active={isSaved} size={isMobile ? 28 : 24} />
         </button>
       </div>
 
@@ -296,7 +304,7 @@ function ProductPurchasePanel({
               isMobile ? "text-[14px]" : "text-[16px] md:text-[18px]"
             }`}
           >
-            NT. {product.regularPrice.toLocaleString()}
+            NT. {regularPrice.toLocaleString()}
           </span>
         )}
         <span
@@ -337,15 +345,26 @@ function ProductPurchasePanel({
       )}
 
       <div className={isMobile ? "mb-4" : "mb-3"}>
+        {sizeOptions.length > 0 && (
+          <p className="mb-3 text-[13px] tracking-[0.06em] text-black">
+            SIZE{isMobile ? "：" : " : "}
+            {selectedSize || "請選擇"}
+          </p>
+        )}
         <div className="flex flex-wrap gap-3">
           {sizeOptions.map((s) => {
             const active = selectedSize === s;
+            const isLongLabel = s.length > 2;
             return (
               <button
                 key={s}
                 type="button"
                 onClick={() => setSelectedSize(s)}
-                className={`flex h-9 w-9 items-center justify-center border text-[13px] font-bold transition-all md:h-[35px] md:w-[35px] ${
+                className={`flex h-9 items-center justify-center border text-[13px] font-bold transition-all md:h-[35px] ${
+                  isLongLabel
+                    ? "min-w-[72px] px-3"
+                    : "h-9 w-9 md:h-[35px] md:w-[35px]"
+                } ${
                   active
                     ? "border-[#8b8b8b] bg-[#8b8b8b] text-white"
                     : "border-[#ccc] bg-white text-black hover:border-[#888]"
@@ -407,13 +426,11 @@ function ProductPurchasePanel({
 
 function ProductDetailAccordions({
   cleanDescription,
-  faqs,
   sizeGuide,
   washingInstructions,
   isMobile = false,
 }: {
   cleanDescription: string;
-  faqs: FAQ[];
   sizeGuide?: SizeGuide;
   washingInstructions?: WashingInstructions;
   isMobile?: boolean;
@@ -439,20 +456,22 @@ function ProductDetailAccordions({
       {sizeGuide && isSizeGuideVisible(sizeGuide) && (
         <Accordion title="尺寸指南">
           <SizeGuideTable guide={sizeGuide} />
+          <div className="relative mt-4 aspect-[4/3] w-full overflow-hidden">
+            <Image
+              src="/images/量測.png"
+              alt="尺寸量測方式說明"
+              fill
+              sizes="(max-width: 768px) 100vw, 50vw"
+              className="object-contain"
+            />
+          </div>
         </Accordion>
       )}
-
-      {faqs.length > 0 &&
-        faqs.map((faq) => (
-          <Accordion key={faq.question} title={faq.question}>
-            <p className="text-[14px] leading-relaxed text-[#555]">{faq.answer}</p>
-          </Accordion>
-        ))}
     </div>
   );
 }
 
-export default function ProductClient({ product, faqs = [] }: ProductProps) {
+export default function ProductClient({ product }: ProductProps) {
   const router = useRouter();
   const params = useParams();
   const productSlug = typeof params.slug === "string" ? params.slug : "";
@@ -470,6 +489,7 @@ export default function ProductClient({ product, faqs = [] }: ProductProps) {
 
   const colors = product.colors?.length ? product.colors : DEFAULT_PRODUCT_COLORS;
   const sizes = product.sizes?.length ? product.sizes : DEFAULT_SIZES;
+  const variations = product.variations || [];
 
   const [selectedColor, setSelectedColor] = useState(colors[0]?.label || "");
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
@@ -477,10 +497,44 @@ export default function ProductClient({ product, faqs = [] }: ProductProps) {
   const [wishlistPending, setWishlistPending] = useState(false);
   const [adding, setAdding] = useState(false);
 
+  const availableSizes = useMemo(
+    () => getSizesForColor(variations, selectedColor, sizes),
+    [variations, selectedColor, sizes],
+  );
+
+  useEffect(() => {
+    setSelectedSize((prev) => {
+      if (availableSizes.length === 1) return availableSizes[0];
+      if (prev && availableSizes.includes(prev)) return prev;
+      return null;
+    });
+  }, [availableSizes, selectedColor]);
+
+  const matchedVariation = useMemo(
+    () =>
+      findMatchingVariation(
+        variations,
+        selectedColor,
+        selectedSize || "",
+      ),
+    [variations, selectedColor, selectedSize],
+  );
+
   const gallery = useMemo(
     () => resolveGalleryForColor(selectedColor, colorGalleries, baseGallery),
     [selectedColor, colorGalleries, baseGallery],
   );
+
+  const displayPrice = matchedVariation
+    ? matchedVariation.salePrice ?? matchedVariation.price
+    : product.salePrice ?? product.price;
+  const regularPrice = matchedVariation
+    ? matchedVariation.regularPrice
+    : product.regularPrice;
+  const hasDiscount = matchedVariation
+    ? matchedVariation.salePrice !== null &&
+      matchedVariation.regularPrice > matchedVariation.salePrice
+    : product.salePrice !== null && product.regularPrice > product.salePrice;
 
   const handleToggleWishlist = async () => {
     if (wishlistPending) return;
@@ -497,22 +551,22 @@ export default function ProductClient({ product, faqs = [] }: ProductProps) {
       id: productId,
       slug: productSlug,
       name: product.name,
-      price: String(product.salePrice ?? product.price),
+      price: String(displayPrice),
       image: gallery[0],
     });
   };
-
-  const displayPrice = product.salePrice ?? product.price;
-  const hasDiscount =
-    product.salePrice !== null && product.regularPrice > product.salePrice;
 
   const handleAddToCart = () => {
     if (!selectedSize) return;
     setAdding(true);
     addItem({
       id: `${product.id}-${selectedColor}-${selectedSize}`,
+      wcProductId: Number(product.id),
+      wcVariationId: matchedVariation?.id,
       name: product.name,
       price: displayPrice,
+      regularPrice: hasDiscount ? regularPrice : undefined,
+      onSale: hasDiscount,
       qty,
       image: gallery[0] || "",
       slug: productSlug,
@@ -547,17 +601,17 @@ export default function ProductClient({ product, faqs = [] }: ProductProps) {
             selectedSize={selectedSize}
             setSelectedSize={setSelectedSize}
             colors={colors}
-            sizes={sizes}
+            sizes={availableSizes}
             qty={qty}
             setQty={setQty}
             displayPrice={displayPrice}
+            regularPrice={regularPrice}
             hasDiscount={hasDiscount}
             adding={adding}
             onAddToCart={handleAddToCart}
           />
           <ProductDetailAccordions
             cleanDescription={cleanDescription}
-            faqs={faqs}
             sizeGuide={sizeGuide}
             washingInstructions={washingInstructions}
           />
@@ -579,10 +633,11 @@ export default function ProductClient({ product, faqs = [] }: ProductProps) {
             selectedSize={selectedSize}
             setSelectedSize={setSelectedSize}
             colors={colors}
-            sizes={sizes}
+            sizes={availableSizes}
             qty={qty}
             setQty={setQty}
             displayPrice={displayPrice}
+            regularPrice={regularPrice}
             hasDiscount={hasDiscount}
             adding={adding}
             onAddToCart={handleAddToCart}
@@ -593,7 +648,6 @@ export default function ProductClient({ product, faqs = [] }: ProductProps) {
         <div className="mt-6 px-5">
           <ProductDetailAccordions
             cleanDescription={cleanDescription}
-            faqs={faqs}
             sizeGuide={sizeGuide}
             washingInstructions={washingInstructions}
             isMobile

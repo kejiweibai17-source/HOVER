@@ -4,15 +4,15 @@ import { useState, useMemo, useCallback, useRef } from "react";
 import Image from "next/image";
 import { Link } from "next-view-transitions";
 import { useRouter } from "next/navigation";
-import {
-  SlidersHorizontal,
-  ChevronDown,
-  X,
-  ChevronRight,
-} from "lucide-react";
+import { SlidersHorizontal, ChevronDown, X, ChevronRight } from "lucide-react";
 import WishlistIcon from "@/components/hover/WishlistIcon";
+import HoverLogo from "@/components/hover/HoverLogo";
+import HoverIcon from "@/components/hover/HoverIcon";
+import CartIcon from "@/components/hover/CartIcon";
 import { useWishlistStore } from "@/lib/wishlistStore";
 import { useAuthStore } from "@/lib/authStore";
+import { useSearchStore } from "@/lib/searchStore";
+import { useCartStore } from "@/lib/cartStore";
 import { MOCK_PRODUCTS } from "@/lib/mockProducts";
 import { guessColorHex } from "@/lib/productColors";
 /* ─── Types ─────────────────────────────────────────────────────────────── */
@@ -44,7 +44,6 @@ const FILTER_CATEGORIES: Record<string, Record<string, string[]> | string[]> = {
 
 const SORT_OPTIONS = ["最新上架", "人氣排序", "價格: 低至高", "價格: 高至低"];
 const ITEMS_PER_PAGE = 16;
-const FILTER_SIDEBAR_WIDTH = 300;
 
 /* ─── Sub-components ────────────────────────────────────────────────────── */
 
@@ -59,117 +58,183 @@ function FilterSidebar({
   selected: Set<string>;
   onToggle: (val: string) => void;
 }) {
+  const openSearch = useSearchStore((s) => s.openSearch);
+  const cartItems = useCartStore((s) => s.items);
+  const cartCount = cartItems.reduce((t, i) => t + (i.qty || 0), 0);
+
   return (
     <>
-      {/* Overlay — covers navbar + page */}
+      {/* Overlay — 桌機點擊外側關閉 */}
       {open && (
-        <div className="fixed inset-0 z-[1100] bg-black/20" onClick={onClose} />
+        <div
+          className="fixed inset-0 z-[1150] hidden bg-black/20 md:block"
+          onClick={onClose}
+        />
       )}
 
-      {/* Sidebar panel */}
       <aside
         data-lenis-prevent
-        style={{ width: FILTER_SIDEBAR_WIDTH }}
-        className={`fixed left-0 top-0 z-[1200] h-full overflow-y-auto bg-white pt-[var(--hover-header-height,116px)] pb-8 px-6 transition-transform duration-300 ${
+        className={`fixed bottom-0 left-0 top-0 z-[1200] flex h-full w-full flex-col overflow-y-auto bg-white transition-transform duration-300 md:w-[340px] ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        {/* Header */}
-        <div className="mb-6 flex items-center justify-between">
+        {/* Top bar — X / Logo / 搜尋 + 購物車（手機才顯示） */}
+        <div className="relative flex shrink-0 items-center justify-between border-b border-[#ececec] px-4 py-3 md:hidden">
           <button
             type="button"
             onClick={onClose}
-            className="flex items-center gap-2 text-[13px] font-medium hover:opacity-60"
+            aria-label="關閉篩選"
+            className="flex h-9 w-9 items-center justify-center text-black hover:opacity-60"
           >
-            <X size={14} />
-            Filter
+            <X size={20} strokeWidth={1.5} />
           </button>
-        </div>
 
-        {/* 商品類型 */}
-        <div className="mb-6">
-          <p className="mb-3 text-[12px] font-semibold tracking-widest text-[#333]">
-            商品類型
-          </p>
-          {Object.entries(
-            FILTER_CATEGORIES["商品類型"] as Record<string, string[]>,
-          ).map(([group, items]) => (
-            <div key={group} className="mb-4">
-              <p className="mb-2 text-[12px] text-[#666]">{group}</p>
-              <div className="space-y-2">
-                {items.map((item) => (
-                  <label
-                    key={item}
-                    className="flex cursor-pointer items-center gap-2"
-                  >
-                    <span
-                      className={`flex h-4 w-4 shrink-0 rounded-sm border-2 transition-colors ${
-                        selected.has(item)
-                          ? "border-[#2a514d] bg-[#2a514d]"
-                          : "border-[#ccc] bg-white"
-                      }`}
-                      onClick={() => { onToggle(item); onClose(); }}
-                    />
-                    <span className="text-[12px] text-[#333]">{item}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
-          ))}
-        </div>
+          <Link
+            href="/"
+            aria-label="HOVER"
+            onClick={onClose}
+            className="absolute left-1/2 -translate-x-1/2 text-black"
+          >
+            <HoverLogo aria-hidden className="h-7 w-auto" />
+          </Link>
 
-        {/* 顏色 — 同商品頁 */}
-        <div className="mb-6">
-          <p className="mb-3 text-[13px] tracking-[0.06em] text-black">
-            COLOR :
-          </p>
-          <div className="flex flex-wrap gap-3">
-            {(FILTER_CATEGORIES["顏色"] as string[]).map((color) => {
-              const active = selected.has(color);
-              return (
-                <button
-                  key={color}
-                  type="button"
-                  aria-label={color}
-                  onClick={() => {
-                    onToggle(color);
-                    onClose();
-                  }}
-                  className={`h-9 w-9 border transition-all md:h-[35px] md:w-[35px] ${
-                    active
-                      ? "border-black ring-1 ring-black ring-offset-2"
-                      : "border-[#ccc] hover:border-[#888]"
-                  }`}
-                  style={{ backgroundColor: guessColorHex(color) }}
-                />
-              );
-            })}
+          <div className="-mr-0.5 flex items-center justify-end gap-0">
+            <button
+              type="button"
+              aria-label="搜尋"
+              className="flex h-8 w-8 shrink-0 items-center justify-center text-black"
+              onClick={() => {
+                onClose();
+                openSearch();
+              }}
+            >
+              <HoverIcon name="search" size={28} alt="搜尋" />
+            </button>
+            <Link
+              href="/cart"
+              aria-label={
+                cartCount > 0 ? `購物車，${cartCount} 件商品` : "購物車"
+              }
+              className="relative flex h-8 w-8 shrink-0 items-center justify-center text-black"
+              onClick={onClose}
+            >
+              <CartIcon count={cartCount} size={30} />
+            </Link>
           </div>
         </div>
 
-        {/* 尺寸 — 同商品頁 */}
-        <div>
-          <div className="flex flex-wrap gap-3">
-            {(FILTER_CATEGORIES["尺寸"] as string[]).map((size) => {
-              const active = selected.has(size);
-              return (
-                <button
-                  key={size}
-                  type="button"
-                  onClick={() => {
-                    onToggle(size);
-                    onClose();
-                  }}
-                  className={`flex h-9 w-9 items-center justify-center border text-[13px] font-bold transition-all md:h-[35px] md:w-[35px] ${
-                    active
-                      ? "border-[#8b8b8b] bg-[#8b8b8b] text-white"
-                      : "border-[#ccc] bg-white text-black hover:border-[#888]"
-                  }`}
-                >
-                  {size}
-                </button>
-              );
-            })}
+        <div className="flex-1 px-6 pb-10 pt-6 md:pt-20  ">
+          <div className="mb-6 flex items-center justify-between">
+            <p className="text-[15px] font-medium tracking-[0.08em] text-black">
+              Filter
+            </p>
+            {/* 桌機關閉鈕 */}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="關閉篩選"
+              className="hidden items-center gap-1.5 text-[13px] text-black hover:opacity-60 md:flex"
+            >
+              <X size={16} strokeWidth={1.5} />
+            </button>
+          </div>
+
+          {/* 商品類型 */}
+          <div className="mb-8">
+            <p className="mb-3 text-[13px] font-semibold tracking-widest text-[#333]">
+              商品類型
+            </p>
+            {Object.entries(
+              FILTER_CATEGORIES["商品類型"] as Record<string, string[]>,
+            ).map(([group, items]) => (
+              <div key={group} className="mb-4">
+                <p className="mb-2 text-[12px] text-[#999]">{group}</p>
+                <div className="space-y-2.5">
+                  {items.map((item) => (
+                    <label
+                      key={item}
+                      className="flex cursor-pointer items-center gap-2.5"
+                    >
+                      <span
+                        className={`flex h-4 w-4 shrink-0 rounded-sm border-2 transition-colors ${
+                          selected.has(item)
+                            ? "border-[#2a514d] bg-[#2a514d]"
+                            : "border-[#ccc] bg-white"
+                        }`}
+                        onClick={() => {
+                          onToggle(item);
+                          onClose();
+                        }}
+                      />
+                      <span className="text-[13px] text-[#333]">{item}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* 顏色 */}
+          <div className="mb-8">
+            <p className="mb-3 text-[13px] font-semibold tracking-widest text-[#333]">
+              顏色
+            </p>
+            <div className="flex flex-wrap gap-x-6 gap-y-3">
+              {(FILTER_CATEGORIES["顏色"] as string[]).map((color) => {
+                const active = selected.has(color);
+                return (
+                  <button
+                    key={color}
+                    type="button"
+                    aria-label={color}
+                    onClick={() => {
+                      onToggle(color);
+                      onClose();
+                    }}
+                    className="flex items-center gap-2 hover:opacity-70"
+                  >
+                    <span
+                      className={`h-[22px] w-[22px] border transition-all ${
+                        active
+                          ? "border-black ring-1 ring-black ring-offset-1"
+                          : "border-[#ccc]"
+                      }`}
+                      style={{ backgroundColor: guessColorHex(color) }}
+                    />
+                    <span className="text-[12px] text-[#333]">{color}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* 尺寸 */}
+          <div>
+            <p className="mb-3 text-[13px] font-semibold tracking-widest text-[#333]">
+              尺寸
+            </p>
+            <div className="flex flex-wrap gap-2.5">
+              {(FILTER_CATEGORIES["尺寸"] as string[]).map((size) => {
+                const active = selected.has(size);
+                return (
+                  <button
+                    key={size}
+                    type="button"
+                    onClick={() => {
+                      onToggle(size);
+                      onClose();
+                    }}
+                    className={`flex h-[30px] min-w-[30px] items-center justify-center border px-2 text-[12px] font-bold transition-all ${
+                      active
+                        ? "border-[#8b8b8b] bg-[#8b8b8b] text-white"
+                        : "border-[#ccc] bg-white text-black hover:border-[#888]"
+                    }`}
+                  >
+                    {size}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
       </aside>
@@ -265,7 +330,7 @@ function WishlistHeart({ product }: { product: Product }) {
         isSaved ? "opacity-100" : "opacity-80"
       }`}
     >
-      <WishlistIcon active={isSaved} size={36} />
+      <WishlistIcon active={isSaved} size={20} />
     </button>
   );
 }
@@ -316,7 +381,7 @@ function ProductCard({ product }: { product: Product }) {
           </div>
         )}
 
-        <p className="text-[12px] text-black">NT {product.price}$</p>
+        <p className="text-[12px] text-black">NT {product.price}</p>
       </div>
     </Link>
   );
@@ -436,12 +501,8 @@ export default function Client({
         onToggle={toggleFilter}
       />
 
-      {/* Page content (shifts right when filter open on desktop) */}
-      <div
-        className={`transition-all duration-300 ${
-          filterOpen ? "md:pl-[300px]" : ""
-        }`}
-      >
+      {/* Page content */}
+      <div>
         {/* Page title */}
         <div className="py-10 text-center">
           <h1 className="text-[22px] font-semibold tracking-[0.3em] uppercase">
@@ -475,7 +536,10 @@ export default function Client({
 
         <div className="mx-auto max-w-[1200px] px-4 md:px-8">
           {/* Product grid */}
-          <div ref={gridRef} className="grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-3 md:grid-cols-4 md:gap-x-5 md:gap-y-10">
+          <div
+            ref={gridRef}
+            className="grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-3 md:grid-cols-4 md:gap-x-5 md:gap-y-10"
+          >
             {paginated.map((product) => (
               <ProductCard key={product.id} product={product} />
             ))}
