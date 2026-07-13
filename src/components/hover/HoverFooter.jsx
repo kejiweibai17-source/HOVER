@@ -203,7 +203,16 @@ function SocialLinks({ items, size = 32 }) {
   );
 }
 
-function ContactColumn({ contact, social }) {
+/** Split "© … Reserved. 公司 | 統編" into logo copyright + contact company line. */
+function splitFooterLegal(copyright = "", companyInfo = "") {
+  const match = copyright.match(/^(©\s*.*?All Rights Reserved\.?)\s*(.*)$/i);
+  const shortCopyright = (match?.[1] || copyright).trim();
+  const fromCopyright = (match?.[2] || "").trim();
+  const company = (companyInfo || fromCopyright).trim();
+  return { shortCopyright, company };
+}
+
+function ContactColumn({ contact, social, company }) {
   return (
     <div className="min-w-0">
       <h3 className="mb-4 text-[17px] font-normal tracking-[0.1em] md:mb-5">
@@ -237,7 +246,7 @@ function ContactColumn({ contact, social }) {
             )}
           </li>
         )}
-        {contact.companyInfo && <li>{contact.companyInfo}</li>}
+        {company && <li>{company}</li>}
       </ul>
 
       <div className="mt-5 flex items-center gap-4 md:mt-6">
@@ -269,6 +278,10 @@ export default function HoverFooter() {
   }, []);
 
   const { logo, backgroundColor, columns, contact, social, copyright } = footer;
+  const { shortCopyright, company } = splitFooterLegal(
+    copyright,
+    contact.companyInfo,
+  );
 
   return (
     <footer className="text-white" style={{ backgroundColor }}>
@@ -290,7 +303,11 @@ export default function HoverFooter() {
           ))}
 
           <div className="shrink-0">
-            <ContactColumn contact={contact} social={social} />
+            <ContactColumn
+              contact={contact}
+              social={social}
+              company={company}
+            />
           </div>
         </div>
 
@@ -336,7 +353,7 @@ export default function HoverFooter() {
                   )}
                 </li>
               )}
-              {contact.companyInfo && <li>{contact.companyInfo}</li>}
+              {company && <li>{company}</li>}
             </ul>
           </FooterAccordion>
 
@@ -344,17 +361,19 @@ export default function HoverFooter() {
             <SocialLinks items={social} size={44} />
           </div>
 
-          <div className="flex justify-center mt-10 sm:mt-0 px-6 pb-4 pt-4">
+          <div className="mt-10 flex justify-center px-6 pb-4 pt-4 sm:mt-0">
             <FooterLogo logo={logo} className="h-16 w-full max-w-[240px]" />
           </div>
 
-          <p className="mx-auto max-w-[200px] pb-8 text-center text-[12px] leading-relaxed tracking-[0.04em] text-white/70">
-            {copyright}
-          </p>
+          {shortCopyright && (
+            <p className="mx-auto max-w-[280px] pb-8 text-center text-[12px] leading-relaxed tracking-[0.04em] text-white/70">
+              {shortCopyright}
+            </p>
+          )}
         </div>
 
-        <div className="hidden pb-10 pt-16 text-center text-[12px] leading-relaxed tracking-[0.04em] text-white/70 lg:block md:text-[13px] lg:pb-12 lg:pt-10">
-          <p>{copyright}</p>
+        <div className="hidden pb-10 pt-16 mt-0 text-center text-[12px] leading-relaxed tracking-[0.04em] text-white/70 md:mt-10 md:text-[13px] lg:block lg:pb-12 lg:pt-10">
+          <p>{shortCopyright}</p>
         </div>
       </div>
     </footer>

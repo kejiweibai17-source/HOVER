@@ -31,7 +31,7 @@ function SubAccordionPanel({
       {subSections.map((sub, i) => {
         const open = openSubs.has(i);
         return (
-          <div key={sub.title} className="border-b border-[#ddd] last:border-b-0">
+          <div key={sub.title} className="border-b border-white last:border-b-0">
             <button
               type="button"
               onClick={() => toggleSub(i)}

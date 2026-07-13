@@ -879,7 +879,7 @@ function CartStep({
                         aria-label="收藏"
                         className="text-[#aaa] transition-colors hover:text-black"
                       >
-                        <WishlistIcon size={40} />
+                        <WishlistIcon size={20} />
                       </button>
                       <button
                         type="button"

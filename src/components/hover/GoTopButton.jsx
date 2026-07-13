@@ -32,7 +32,7 @@ export default function GoTopButton() {
       type="button"
       onClick={scrollToTop}
       aria-label="回到頂部"
-      className="fixed bottom-8 right-5 z-[900] p-0 transition-all duration-300 hover:-translate-y-0.5 hover:opacity-80 md:bottom-10 md:right-8"
+      className="fixed bottom-8 right-2 z-[900] p-0 transition-all duration-300 hover:-translate-y-0.5 hover:opacity-80 md:bottom-10 md:right-4"
     >
       <HoverIcon name="goTop" size={64} className="md:!h-20 md:!w-20" alt="" />
     </button>

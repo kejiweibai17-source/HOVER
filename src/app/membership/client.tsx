@@ -46,7 +46,7 @@ function BenefitList({ items }: { items: string[] }) {
           <span className="block px-1 py-3 text-center text-[12px] leading-[1.75] tracking-[0.04em] text-[#2a514d] sm:text-[12.5px] md:py-4 md:text-[13px] md:leading-[1.85]">
             {item}
           </span>
-          {i < items.length - 1 && (
+          {i > 0 && i < items.length - 1 && (
             <span className="block h-px w-full bg-[#e8d8b0]" aria-hidden />
           )}
         </div>
@@ -69,7 +69,7 @@ function TierCard({
   benefits: string[];
 }) {
   return (
-    <div className="relative flex flex-col rounded-xl border border-[#e8e8e8] bg-white px-4 pb-8 pt-12 md:rounded-2xl md:px-6 md:pb-10 md:pt-16">
+    <div className="relative flex flex-col rounded-xl border border-[#e8e8e8] bg-white px-10 pb-8 pt-12 md:rounded-2xl md:px-20 md:pb-10 md:pt-16 ">
       <div className="absolute left-1/2 top-0 -translate-x-1/2 -translate-y-1/2">
         <div className="flex h-[72px] w-[72px] items-center justify-center rounded-full bg-[#2a514d] md:h-[96px] md:w-[96px]">
           <Image
@@ -165,7 +165,7 @@ export default function MembershipClient() {
             </tbody>
           </table>
         </div>
-        <div className="rounded-lg border border-[#e8e8e8] bg-white px-5 py-7   md:rounded-xl md:px-10 md:py-10">
+        <div className="rounded-2xl border border-[#e8e8e8] bg-white px-5 py-7 md:px-10 md:py-10">
           <h2 className="mb-5 font-serif text-[16px] font-bold tracking-[0.06em] text-[#2a514d] md:mb-6 md:text-[18px]">
             購物金使用說明
           </h2>
