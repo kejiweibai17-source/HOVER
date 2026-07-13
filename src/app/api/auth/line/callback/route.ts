@@ -1,140 +1,260 @@
-// app/api/auth/line/callback/route.ts
 import { NextResponse } from "next/server";
+import { cookies } from "next/headers";
 import jwt from "jsonwebtoken";
+import {
+  LINE_STATE_COOKIE,
+  decodeLineState,
+  getLineCallbackUrl,
+  getLineChannelId,
+  getLineChannelSecret,
+  getSiteUrl,
+  lineAuthCookieOpts,
+  lineSyntheticEmail,
+  redirectWithLineError,
+  safeNextPath,
+  sessionCookieOpts,
+} from "@/lib/lineAuth";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
-// 環境變數
-const BASE = process.env.WC_API_BASE;
-const CK = process.env.WC_CONSUMER_KEY;
-const CS = process.env.WC_CONSUMER_SECRET;
-const JWT_SECRET = process.env.RESET_TOKEN_SECRET!; // 登入用的 JWT Secret
-const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+const BASE = process.env.WC_API_BASE || "";
+const CK = process.env.WC_CONSUMER_KEY || "";
+const CS = process.env.WC_CONSUMER_SECRET || "";
+const JWT_SECRET =
+  process.env.RESET_TOKEN_SECRET ||
+  process.env.NEXTAUTH_SECRET ||
+  process.env.JWT_SECRET ||
+  "";
 
-// WooCommerce 驗證
 function basicAuth() {
-    return "Basic " + Buffer.from(`${CK}:${CS}`).toString("base64");
+  if (!CK || !CS) return undefined;
+  return "Basic " + Buffer.from(`${CK}:${CS}`).toString("base64");
+}
+
+function authHeaders() {
+  const auth = basicAuth();
+  if (!auth) return null;
+  return {
+    Authorization: auth,
+    "Content-Type": "application/json",
+  };
+}
+
+type LineProfile = {
+  sub: string;
+  email?: string;
+  name?: string;
+  picture?: string;
+};
+
+async function exchangeLineToken(code: string) {
+  const channelId = getLineChannelId();
+  const channelSecret = getLineChannelSecret();
+  const callbackUrl = getLineCallbackUrl();
+
+  const tokenRes = await fetch("https://api.line.me/oauth2/v2.1/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "authorization_code",
+      code,
+      redirect_uri: callbackUrl,
+      client_id: channelId,
+      client_secret: channelSecret,
+    }),
+    cache: "no-store",
+  });
+
+  const tokenData = await tokenRes.json().catch(() => ({}));
+  if (!tokenRes.ok || !tokenData?.id_token) {
+    console.error("[line/callback] token error:", tokenData);
+    throw new Error("line_token_failed");
+  }
+
+  const verifyRes = await fetch("https://api.line.me/oauth2/v2.1/verify", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      id_token: String(tokenData.id_token),
+      client_id: channelId,
+    }),
+    cache: "no-store",
+  });
+
+  const profile = (await verifyRes.json().catch(() => ({}))) as LineProfile & {
+    error?: string;
+    error_description?: string;
+  };
+
+  if (!verifyRes.ok || !profile?.sub) {
+    console.error("[line/callback] verify error:", profile);
+    throw new Error("line_verify_failed");
+  }
+
+  return profile;
+}
+
+async function findCustomerByEmail(email: string) {
+  const headers = authHeaders();
+  if (!headers) return null;
+
+  const res = await fetch(
+    `${BASE}/wp-json/wc/v3/customers?email=${encodeURIComponent(email)}&role=all`,
+    { headers, cache: "no-store" },
+  );
+  if (!res.ok) return null;
+  const arr = (await res.json().catch(() => [])) as unknown[];
+  return Array.isArray(arr) && arr.length > 0 ? (arr[0] as Record<string, unknown>) : null;
+}
+
+async function upsertLineCustomer(profile: LineProfile) {
+  const headers = authHeaders();
+  if (!headers) throw new Error("woo_config_missing");
+
+  const lineUserId = String(profile.sub);
+  const email = String(profile.email || "").trim().toLowerCase() ||
+    lineSyntheticEmail(lineUserId);
+  const name = String(profile.name || "").trim();
+  const picture = String(profile.picture || "").trim();
+  const [first, ...rest] = name.split(/\s+/);
+  const last = rest.join(" ");
+
+  const metaBase = [
+    { key: "email_verified", value: "1" },
+    { key: "social_login_line_id", value: lineUserId },
+  ];
+  if (picture) metaBase.push({ key: "avatar_url", value: picture });
+  if (name) metaBase.push({ key: "oauth_display_name", value: name });
+
+  const existing = await findCustomerByEmail(email);
+  if (existing?.id) {
+    const patch: Record<string, unknown> = { meta_data: metaBase };
+    if (first && !String(existing.first_name || "").trim()) {
+      patch.first_name = first;
+      if (last) patch.last_name = last;
+    }
+    const upd = await fetch(`${BASE}/wp-json/wc/v3/customers/${existing.id}`, {
+      method: "PUT",
+      headers,
+      body: JSON.stringify(patch),
+      cache: "no-store",
+    });
+    if (upd.ok) return upd.json();
+    console.error("[line/callback] update failed:", await upd.text().catch(() => ""));
+    return existing;
+  }
+
+  const createRes = await fetch(`${BASE}/wp-json/wc/v3/customers`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      email,
+      username: email,
+      first_name: first || "",
+      last_name: last || "",
+      password:
+        Math.random().toString(36).slice(2, 12) +
+        Math.random().toString(36).slice(2, 12),
+      meta_data: metaBase,
+    }),
+    cache: "no-store",
+  });
+
+  if (createRes.ok) return createRes.json();
+
+  const errText = await createRes.text().catch(() => "");
+  if (errText.includes("registration-error-email-exists")) {
+    const again = await findCustomerByEmail(email);
+    if (again) return again;
+  }
+  console.error("[line/callback] create failed:", errText);
+  throw new Error("create_user_failed");
 }
 
 export async function GET(req: Request) {
-    const { searchParams } = new URL(req.url);
-    const code = searchParams.get("code");
-    const error = searchParams.get("error");
+  const { searchParams } = new URL(req.url);
+  const code = searchParams.get("code");
+  const error = searchParams.get("error");
+  const stateParam = searchParams.get("state");
 
-    // 1. 如果使用者取消授權或發生錯誤，導回登入頁
-    if (error || !code) {
-        return NextResponse.redirect(`${SITE_URL}/login?error=line_login_failed`);
+  const stateFromCookie = decodeLineState(
+    cookies().get(LINE_STATE_COOKIE)?.value || null,
+  );
+  const stateFromQuery = decodeLineState(stateParam);
+  const state = stateFromCookie || stateFromQuery;
+  const nextPath = safeNextPath(state?.next);
+  const from: "login" | "register" = state?.from === "register" ? "register" : "login";
+
+  if (error || !code) {
+    return redirectWithLineError(from, "line_login_failed", nextPath);
+  }
+
+  if (
+    !stateFromCookie ||
+    !stateFromQuery ||
+    stateFromCookie.csrf !== stateFromQuery.csrf
+  ) {
+    console.error("[line/callback] state mismatch");
+    return redirectWithLineError(from, "line_state_invalid", nextPath);
+  }
+
+  if (!getLineChannelId() || !getLineChannelSecret() || !getLineCallbackUrl()) {
+    return redirectWithLineError(from, "line_config", nextPath);
+  }
+
+  if (!JWT_SECRET) {
+    console.error("[line/callback] missing RESET_TOKEN_SECRET / NEXTAUTH_SECRET");
+    return redirectWithLineError(from, "line_config", nextPath);
+  }
+
+  if (!BASE || !CK || !CS) {
+    return redirectWithLineError(from, "line_config", nextPath);
+  }
+
+  try {
+    const profile = await exchangeLineToken(code);
+    const user = await upsertLineCustomer(profile);
+
+    const email = String(user?.email || profile.email || "").trim().toLowerCase();
+    const name =
+      String(user?.first_name || profile.name || "").trim() ||
+      email.split("@")[0] ||
+      "HOVER 會員";
+
+    if (!email) {
+      return redirectWithLineError(from, "no_email_permission", nextPath);
     }
 
-    try {
-        // 2. 用 code 向 LINE 換取 access_token 和 id_token
-        const tokenParams = new URLSearchParams({
-            grant_type: "authorization_code",
-            code,
-            redirect_uri: process.env.LINE_CALLBACK_URL!,
-            client_id: process.env.LINE_CHANNEL_ID!,
-            client_secret: process.env.LINE_CHANNEL_SECRET!,
-        });
+    const sessionToken = jwt.sign(
+      {
+        id: user.id,
+        email,
+        role: user.role || "customer",
+        name,
+        provider: "line",
+        lineUserId: profile.sub,
+      },
+      JWT_SECRET,
+      { expiresIn: "7d" },
+    );
 
-        const tokenRes = await fetch("https://api.line.me/oauth2/v2.1/token", {
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-            body: tokenParams,
-        });
+    const site = getSiteUrl();
+    const redirectTo = new URL(nextPath, site).toString();
+    const response = NextResponse.redirect(redirectTo);
+    const cookieOpts = sessionCookieOpts();
 
-        const tokenData = await tokenRes.json();
+    response.cookies.set("auth_token", sessionToken, cookieOpts);
+    response.cookies.set("user_email", email, cookieOpts);
+    response.cookies.set("user_name", name, cookieOpts);
+    response.cookies.set(LINE_STATE_COOKIE, "", {
+      ...lineAuthCookieOpts(0),
+      maxAge: 0,
+    });
 
-        if (!tokenData.id_token) {
-            console.error("LINE Token Error:", tokenData);
-            throw new Error("No id_token from LINE");
-        }
-
-        // 3. 解析 id_token (JWT) 取得使用者個資
-        // LINE 的 id_token 包含: name, picture, email
-        const idTokenPayload = JSON.parse(
-            Buffer.from(tokenData.id_token.split(".")[1], "base64").toString()
-        );
-
-        const email = idTokenPayload.email;
-        const name = idTokenPayload.name;
-        const lineUserId = idTokenPayload.sub;
-        const picture = idTokenPayload.picture;
-
-        if (!email) {
-            return NextResponse.redirect(`${SITE_URL}/login?error=no_email_permission`);
-        }
-
-        // 4. 檢查 WooCommerce 是否已有此 Email
-        const searchRes = await fetch(`${BASE}/wp-json/wc/v3/customers?email=${email}`, {
-            headers: { Authorization: basicAuth() },
-        });
-        const searchData = await searchRes.json();
-
-        let user;
-
-        if (searchData.length > 0) {
-            // 情況 A: 使用者已存在 -> 直接登入
-            user = searchData[0];
-
-            // (選擇性) 可以在這裡更新使用者的 meta_data 紀錄 LINE ID
-        } else {
-            // 情況 B: 新使用者 -> 註冊
-            // 隨機生成一組密碼，因為是用 LINE 登入，使用者不需要知道密碼
-            const randomPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8);
-
-            const createRes = await fetch(`${BASE}/wp-json/wc/v3/customers`, {
-                method: "POST",
-                headers: {
-                    Authorization: basicAuth(),
-                    "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                    email: email,
-                    username: email, // 用 email 當帳號
-                    first_name: name,
-                    password: randomPassword,
-                    meta_data: [
-                        { key: "email_verified", value: "1" }, // LINE 驗證過的 email 視為已驗證
-                        { key: "social_login_line_id", value: lineUserId },
-                        { key: "avatar_url", value: picture || "" }
-                    ],
-                }),
-            });
-
-            if (!createRes.ok) {
-                console.error("WC Create Error", await createRes.json());
-                throw new Error("Failed to create user");
-            }
-            user = await createRes.json();
-        }
-
-        // 5. 製作登入 Session Token (JWT)
-        const sessionToken = jwt.sign(
-            {
-                id: user.id,
-                email: user.email,
-                role: user.role,
-                name: user.first_name || user.username
-            },
-            JWT_SECRET,
-            { expiresIn: "7d" }
-        );
-
-        // 6. 設定 Cookie 並導回首頁
-        // 這裡我們把 Token 寫入 Cookie，讓前端可以讀取
-        const response = NextResponse.redirect(`${SITE_URL}/`);
-
-        response.cookies.set("auth_token", sessionToken, {
-            httpOnly: false, // 設為 false 方便前端 JS 讀取 (如果你是用 document.cookie 讀取)
-            secure: process.env.NODE_ENV === "production",
-            path: "/",
-            maxAge: 60 * 60 * 24 * 7, // 7天
-        });
-
-        return response;
-
-    } catch (err) {
-        console.error("LINE Callback Error:", err);
-        return NextResponse.redirect(`${SITE_URL}/login?error=server_error`);
-    }
+    return response;
+  } catch (err) {
+    console.error("[line/callback]", err);
+    return redirectWithLineError(from, "server_error", nextPath);
+  }
 }

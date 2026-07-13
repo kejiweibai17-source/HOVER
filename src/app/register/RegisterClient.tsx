@@ -27,6 +27,13 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
   undefined:
     "無法連線登入服務。請清除 localhost:3000 的 Cookie 與 Service Worker 後重試。",
   google: "正在準備 Google 登入，若未跳轉請再按一次。",
+  line_config:
+    "LINE 登入設定不完整，請確認 .env.local 的 LINE_CHANNEL_ID、LINE_CHANNEL_SECRET、LINE_CALLBACK_URL。",
+  line_login_failed: "您已取消 LINE 授權，或授權失敗，請再試一次。",
+  line_state_invalid: "LINE 登入驗證失效，請重新點擊 LINE 註冊。",
+  no_email_permission:
+    "無法取得 LINE 帳號信箱。請在 LINE Developers 開啟 email 權限後再試。",
+  server_error: "LINE 註冊處理失敗，請稍後再試。",
   Default: "第三方登入失敗，請稍後再試。",
 };
 
@@ -145,16 +152,15 @@ export default function RegisterPage() {
     setError("");
     try {
       if (ref) setRefCookie(ref);
-      const clientId = process.env.NEXT_PUBLIC_LINE_CHANNEL_ID;
-      if (!clientId) {
-        setError("系統設定錯誤：缺少 LINE Channel ID");
-        setLineLoading(false);
-        return;
-      }
-      const redirectUri = window.location.origin + "/api/auth/line/callback";
-      window.location.href = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=random_state_string&scope=profile openid email`;
+      const params = new URLSearchParams({
+        next,
+        from: "register",
+      });
+      if (ref) params.set("ref", ref);
+      window.location.href = `/api/auth/line/start?${params.toString()}`;
     } catch (e) {
       console.error(e);
+      setError(AUTH_ERROR_MESSAGES.Default);
       setLineLoading(false);
     }
   }
