@@ -146,28 +146,40 @@ function PolicyAccordionItem({
       >
         {hasBody && (
           <div className="bg-[#ececec]  py-4  md:py-5">
-            {section.paragraphs && section.paragraphs.length > 0 && (
-              <div className="mb-4 space-y-3 px-4 text-[12px] leading-[2] tracking-[0.04em] text-[#555] md:mb-5 md:px-5 md:text-[13px]">
-                {section.paragraphs.map((p, idx) => (
-                  <p key={`${section.num}-intro-${idx}`}>{p}</p>
-                ))}
-              </div>
-            )}
             {section.subSections ? (
-              <SubAccordionPanel subSections={section.subSections} />
-            ) : (
-              section.list && (
-                <div className="space-y-3 px-4 text-[12px] leading-[2] tracking-[0.04em] text-[#555] md:px-5 md:text-[13px]">
-                  <ul className="list-none space-y-2 pl-0">
-                    {section.list.map((item) => (
-                      <li key={item} className="flex gap-2">
-                        <span className="shrink-0 text-[#555]">・</span>
-                        <span>{item}</span>
-                      </li>
+              <>
+                {section.paragraphs && section.paragraphs.length > 0 && (
+                  <div className="mb-4 space-y-3 px-4 text-[12px] leading-[2] tracking-[0.04em] text-[#555] md:mb-5 md:px-5 md:text-[13px]">
+                    {section.paragraphs.map((p, idx) => (
+                      <p key={`${section.num}-intro-${idx}`}>{p}</p>
                     ))}
-                  </ul>
-                </div>
-              )
+                  </div>
+                )}
+                <SubAccordionPanel subSections={section.subSections} />
+              </>
+            ) : (
+              <div className="space-y-3 px-4 text-[12px] leading-[2] tracking-[0.04em] text-[#555] md:px-5 md:text-[13px]">
+                {section.list ? (
+                  <>
+                    {section.paragraphs?.[0] && <p>{section.paragraphs[0]}</p>}
+                    <ul className="list-none space-y-2 pl-0">
+                      {section.list.map((item) => (
+                        <li key={item} className="flex gap-2">
+                          <span className="shrink-0 text-[#555]">・</span>
+                          <span>{item}</span>
+                        </li>
+                      ))}
+                    </ul>
+                    {section.paragraphs?.slice(1).map((p, idx) => (
+                      <p key={`${section.num}-after-${idx}`}>{p}</p>
+                    ))}
+                  </>
+                ) : (
+                  section.paragraphs?.map((p, idx) => (
+                    <p key={`${section.num}-p-${idx}`}>{p}</p>
+                  ))
+                )}
+              </div>
             )}
           </div>
         )}
