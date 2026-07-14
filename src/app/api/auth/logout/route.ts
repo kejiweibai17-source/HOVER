@@ -32,7 +32,14 @@ export async function POST() {
 
   // 1) 你的自家 JWT cookies
   // ✅ 修改這裡：加上 "auth_token"
-  const customCookies = ["jwt", "user_email", "user_name", "auth_token"];
+  const customCookies = [
+    "jwt",
+    "user_email",
+    "user_name",
+    "auth_token",
+    "facebook_oauth_state",
+    "line_oauth_state",
+  ];
 
   // 2) NextAuth 相關 cookies
   const nextAuthCookies = [

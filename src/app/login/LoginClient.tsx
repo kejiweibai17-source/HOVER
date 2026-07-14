@@ -33,8 +33,13 @@ const AUTH_ERROR_MESSAGES: Record<string, string> = {
     "LINE 登入設定不完整，請確認 .env.local 的 LINE_CHANNEL_ID、LINE_CHANNEL_SECRET、LINE_CALLBACK_URL。",
   line_login_failed: "您已取消 LINE 授權，或授權失敗，請再試一次。",
   line_state_invalid: "LINE 登入驗證失效，請重新點擊 LINE 登入。",
+  facebook_config:
+    "Facebook 登入設定不完整，請確認 FACEBOOK_CLIENT_ID、FACEBOOK_CLIENT_SECRET、FACEBOOK_CALLBACK_URL。",
+  facebook_login_failed: "您已取消 Facebook 授權，或授權失敗，請再試一次。",
+  facebook_state_invalid: "Facebook 登入驗證失效，請重新點擊 Facebook 登入。",
+  facebook_server_error: "Facebook 登入處理失敗，請稍後再試。",
   no_email_permission:
-    "無法取得 LINE 帳號信箱。請在 LINE Developers 開啟 email 權限後再試。",
+    "無法取得社群帳號信箱。請確認授權 email 權限後再試。",
   server_error: "LINE 登入處理失敗，請稍後再試。",
   Default: "第三方登入失敗，請稍後再試。",
 };
@@ -116,14 +121,19 @@ export default function LoginClient() {
     }
   }
 
-  async function handleFacebook() {
+  function handleFacebook() {
     if (loading || googleLoading || fbLoading || lineLoading) return;
-    setError("");
     setFbLoading(true);
+    setError("");
     try {
-      await oauthSignIn("facebook", getCallbackUrl(next));
+      const params = new URLSearchParams({
+        next,
+        from: "login",
+      });
+      window.location.href = `/api/auth/facebook/start?${params.toString()}`;
     } catch (e) {
-      setError(e instanceof Error ? e.message : AUTH_ERROR_MESSAGES.Default);
+      console.error(e);
+      setError(AUTH_ERROR_MESSAGES.Default);
       setFbLoading(false);
     }
   }
