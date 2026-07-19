@@ -77,10 +77,8 @@ const GALLERY_IMAGE_COUNT = 8;
 
 function normalizeGalleryImages(images: string[]): string[] {
   const source = images.length > 0 ? images : MOCK_GALLERY;
-  return Array.from(
-    { length: GALLERY_IMAGE_COUNT },
-    (_, i) => source[i % source.length],
-  );
+  // 有幾張顯示幾張，不重複補滿；最多取 8 張
+  return source.slice(0, GALLERY_IMAGE_COUNT);
 }
 
 const DEFAULT_SIZES = ["S", "M", "L", "XL"];

@@ -27,6 +27,9 @@ export type Product = {
   isNew?: boolean;
   tag?: string;
   colors?: string[];
+  categories?: string[];
+  colorLabels?: string[];
+  sizes?: string[];
 };
 
 /* ─── Filter config ─────────────────────────────────────────────────────── */
@@ -45,16 +48,70 @@ const FILTER_CATEGORIES: Record<string, Record<string, string[]> | string[]> = {
 const SORT_OPTIONS = ["最新上架", "人氣排序", "價格: 低至高", "價格: 高至低"];
 const ITEMS_PER_PAGE = 16;
 
+/* ─── Filter matching ───────────────────────────────────────────────────── */
+
+const TYPE_FILTER_VALUES = new Set(
+  Object.values(FILTER_CATEGORIES["商品類型"] as Record<string, string[]>).flat(),
+);
+const COLOR_FILTER_VALUES = new Set(FILTER_CATEGORIES["顏色"] as string[]);
+const SIZE_FILTER_VALUES = new Set(FILTER_CATEGORIES["尺寸"] as string[]);
+
+/** 模糊比對：任一字串包含目標（如「黑色」符合「黑」）。 */
+function fuzzyIncludes(values: string[], target: string): boolean {
+  const t = target.trim().toLowerCase();
+  return values.some((v) => {
+    const s = String(v || "").trim().toLowerCase();
+    return s === t || s.includes(t) || t.includes(s);
+  });
+}
+
+function matchesFilters(product: Product, selected: Set<string>): boolean {
+  if (selected.size === 0) return true;
+
+  const types: string[] = [];
+  const colors: string[] = [];
+  const sizes: string[] = [];
+  selected.forEach((val) => {
+    if (TYPE_FILTER_VALUES.has(val)) types.push(val);
+    else if (COLOR_FILTER_VALUES.has(val)) colors.push(val);
+    else if (SIZE_FILTER_VALUES.has(val)) sizes.push(val);
+  });
+
+  // 各維度之間為 AND，同維度內為 OR
+  if (types.length > 0) {
+    const productTypes = [
+      ...(product.categories || []),
+      ...(product.category ? [product.category] : []),
+      product.name || "",
+    ];
+    if (!types.some((t) => fuzzyIncludes(productTypes, t))) return false;
+  }
+
+  if (colors.length > 0) {
+    const labels = product.colorLabels || [];
+    if (!colors.some((c) => fuzzyIncludes(labels, c))) return false;
+  }
+
+  if (sizes.length > 0) {
+    const productSizes = (product.sizes || []).map((s) => s.toUpperCase());
+    if (!sizes.some((s) => productSizes.includes(s.toUpperCase()))) return false;
+  }
+
+  return true;
+}
+
 /* ─── Sub-components ────────────────────────────────────────────────────── */
 
 function FilterSidebar({
   open,
   onClose,
+  onApply,
   selected,
   onToggle,
 }: {
   open: boolean;
   onClose: () => void;
+  onApply: () => void;
   selected: Set<string>;
   onToggle: (val: string) => void;
 }) {
@@ -161,10 +218,7 @@ function FilterSidebar({
                             ? "border-[#2a514d] bg-[#2a514d]"
                             : "border-[#ccc] bg-white"
                         }`}
-                        onClick={() => {
-                          onToggle(item);
-                          onClose();
-                        }}
+                        onClick={() => onToggle(item)}
                       />
                       <span className="text-[13px] text-[#333]">{item}</span>
                     </label>
@@ -187,10 +241,7 @@ function FilterSidebar({
                     key={color}
                     type="button"
                     aria-label={color}
-                    onClick={() => {
-                      onToggle(color);
-                      onClose();
-                    }}
+                    onClick={() => onToggle(color)}
                     className="flex items-center gap-2 hover:opacity-70"
                   >
                     <span
@@ -220,10 +271,7 @@ function FilterSidebar({
                   <button
                     key={size}
                     type="button"
-                    onClick={() => {
-                      onToggle(size);
-                      onClose();
-                    }}
+                    onClick={() => onToggle(size)}
                     className={`flex h-[30px] min-w-[30px] items-center justify-center border px-2 text-[12px] font-bold transition-all ${
                       active
                         ? "border-[#8b8b8b] bg-[#8b8b8b] text-white"
@@ -236,6 +284,17 @@ function FilterSidebar({
               })}
             </div>
           </div>
+        </div>
+
+        {/* 底部固定：套用篩選 */}
+        <div className="sticky bottom-0 shrink-0 border-t border-[#ececec] bg-white px-6 py-4">
+          <button
+            type="button"
+            onClick={onApply}
+            className="flex h-11 w-full items-center justify-center bg-[#2a514d] text-[14px] font-bold tracking-[0.12em] text-white transition-opacity hover:opacity-90"
+          >
+            篩選{selected.size > 0 ? `（${selected.size}）` : ""}
+          </button>
         </div>
       </aside>
     </>
@@ -456,32 +515,44 @@ export default function Client({
 
   const [filterOpen, setFilterOpen] = useState(false);
   const [sortBy, setSortBy] = useState("最新上架");
+  // 已套用的篩選條件（實際過濾列表用）
   const [selectedFilters, setSelectedFilters] = useState<Set<string>>(
     new Set(),
   );
+  // 側欄內暫存的勾選狀態（按下「篩選」才套用）
+  const [draftFilters, setDraftFilters] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
 
   const toggleFilter = useCallback((val: string) => {
-    setSelectedFilters((prev) => {
+    setDraftFilters((prev) => {
       const next = new Set(prev);
       next.has(val) ? next.delete(val) : next.add(val);
       return next;
     });
+  }, []);
+
+  const openFilter = useCallback(() => {
+    setDraftFilters(new Set(selectedFilters));
+    setFilterOpen(true);
+  }, [selectedFilters]);
+
+  const applyFilters = useCallback(() => {
+    setSelectedFilters(new Set(draftFilters));
     setCurrentPage(1);
-    // 立即捲到商品區
+    setFilterOpen(false);
     setTimeout(() => {
       gridRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 50);
-  }, []);
+  }, [draftFilters]);
 
   const sorted = useMemo(() => {
-    const list = [...products];
+    const list = products.filter((p) => matchesFilters(p, selectedFilters));
     if (sortBy === "價格: 低至高")
       list.sort((a, b) => Number(a.price) - Number(b.price));
     else if (sortBy === "價格: 高至低")
       list.sort((a, b) => Number(b.price) - Number(a.price));
     return list;
-  }, [products, sortBy]);
+  }, [products, sortBy, selectedFilters]);
 
   const totalPages = Math.ceil(sorted.length / ITEMS_PER_PAGE);
   const paginated = sorted.slice(
@@ -497,7 +568,8 @@ export default function Client({
       <FilterSidebar
         open={filterOpen}
         onClose={() => setFilterOpen(false)}
-        selected={selectedFilters}
+        onApply={applyFilters}
+        selected={draftFilters}
         onToggle={toggleFilter}
       />
 
@@ -524,7 +596,7 @@ export default function Client({
           <div className="flex w-full items-center justify-between px-4 pb-4 pt-3 md:px-12 lg:px-16">
             <button
               type="button"
-              onClick={() => setFilterOpen((o) => !o)}
+              onClick={() => (filterOpen ? setFilterOpen(false) : openFilter())}
               className="flex items-center gap-2 text-[13px] text-black hover:opacity-60"
             >
               <SlidersHorizontal size={15} strokeWidth={1.5} />
@@ -535,25 +607,51 @@ export default function Client({
         </div>
 
         <div className="mx-auto max-w-[1200px] px-4 md:px-8">
-          {/* Product grid */}
-          <div
-            ref={gridRef}
-            className="grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-3 md:grid-cols-4 md:gap-x-5 md:gap-y-10"
-          >
-            {paginated.map((product) => (
-              <ProductCard key={product.id} product={product} />
-            ))}
-          </div>
+          {/* Product grid / 查無結果 */}
+          {sorted.length === 0 ? (
+            <div
+              ref={gridRef}
+              className="flex flex-col items-center justify-center gap-3 py-24 text-center"
+            >
+              <p className="text-[15px] font-medium tracking-[0.08em] text-[#333]">
+                查無此結果
+              </p>
+              <p className="text-[13px] text-[#888]">
+                請調整或清除篩選條件後再試一次。
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedFilters(new Set());
+                  setDraftFilters(new Set());
+                }}
+                className="mt-2 border border-[#2a514d] px-6 py-2 text-[13px] font-bold tracking-[0.08em] text-[#2a514d] transition-colors hover:bg-[#2a514d] hover:text-white"
+              >
+                清除篩選條件
+              </button>
+            </div>
+          ) : (
+            <div
+              ref={gridRef}
+              className="grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-3 md:grid-cols-4 md:gap-x-5 md:gap-y-10"
+            >
+              {paginated.map((product) => (
+                <ProductCard key={product.id} product={product} />
+              ))}
+            </div>
+          )}
 
           {/* Pagination */}
-          <Pagination
-            current={currentPage}
-            total={totalPages}
-            onChange={(p) => {
-              setCurrentPage(p);
-              window.scrollTo({ top: 0, behavior: "smooth" });
-            }}
-          />
+          {totalPages > 1 && (
+            <Pagination
+              current={currentPage}
+              total={totalPages}
+              onChange={(p) => {
+                setCurrentPage(p);
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }}
+            />
+          )}
         </div>
       </div>
     </div>

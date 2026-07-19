@@ -1,6 +1,11 @@
 // src/app/api/account/coupons/available/route.ts
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
+import {
+  birthdayCouponCode,
+  couponKindFromCode,
+  welcomeCouponCode,
+} from "@/lib/membership";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -37,7 +42,59 @@ function isDepleted(coupon: any) {
   return false;
 }
 
-import { couponKindFromCode } from "@/lib/membership";
+function kindLabel(kind: string) {
+  switch (kind) {
+    case "welcome":
+    case "legacy":
+      return "入會禮";
+    case "birthday":
+      return "生日禮";
+    case "promo":
+      return "活動優惠";
+    case "vip":
+      return "臻享專屬";
+    case "ref_friend":
+      return "推薦禮";
+    case "ref_ambassador":
+      return "推薦回饋";
+    default:
+      return "專屬優惠";
+  }
+}
+
+function belongsToEmail(coupon: any, email: string) {
+  const emails: string[] = Array.isArray(coupon?.email_restrictions)
+    ? coupon.email_restrictions.map((e: any) => String(e).trim().toLowerCase())
+    : [];
+  if (!emails.length) return false;
+  return emails.includes(email);
+}
+
+function mapCoupon(coupon: any) {
+  const code = String(coupon.code || "").toUpperCase();
+  const kind = couponKindFromCode(code);
+  return {
+    kind,
+    kindLabel: kindLabel(kind),
+    code,
+    amount: Number(coupon.amount) || 0,
+    discountType: coupon.discount_type || "fixed_cart",
+    description: coupon.description || "",
+    minimumAmount: Number(coupon.minimum_amount || 0) || 0,
+    expires: coupon.date_expires || null,
+    coupon,
+  };
+}
+
+async function fetchCouponByCode(code: string, authHeader: HeadersInit) {
+  const res = await fetch(
+    `${BASE}/wp-json/wc/v3/coupons?code=${encodeURIComponent(code)}`,
+    { headers: authHeader, cache: "no-store" },
+  );
+  if (!res.ok) return null;
+  const arr = await res.json();
+  return Array.isArray(arr) && arr[0] ? arr[0] : null;
+}
 
 export async function GET() {
   try {
@@ -46,47 +103,54 @@ export async function GET() {
       return NextResponse.json({ ok: true, available: [] });
     }
 
-    const customerEmail = String(profile.customer.email || "").trim().toLowerCase();
+    const customerId = profile.customer.id;
+    const customerEmail = String(profile.customer.email || "")
+      .trim()
+      .toLowerCase();
     const authHeader = { Authorization: basicAuth() };
+    const month = new Date().getMonth() + 1;
 
-    // 只需要抓 Coupon 列表，不用再抓使用者 Meta 了，因為我們改用白名單機制！
-    const couponsRes = await fetch(`${BASE}/wp-json/wc/v3/coupons?per_page=100&orderby=date&order=desc`, {
-      headers: authHeader, cache: "no-store"
-    });
+    // 精確查詢：入會禮／當月生日禮／推薦註冊禮（避免 coupon 過多時掃不到）
+    const knownCodes = [
+      welcomeCouponCode(customerId),
+      birthdayCouponCode(customerId, month),
+      `UFFRD-${customerId}`,
+    ];
 
-    if (!couponsRes.ok) return NextResponse.json({ ok: true, available: [] });
-    const arr = await couponsRes.json();
+    const knownResults = await Promise.all(
+      knownCodes.map((code) => fetchCouponByCode(code, authHeader)),
+    );
 
-    // 💡 核心篩選：極度純淨的判斷邏輯
-    const mine = arr.filter((c: any) => {
-      if (!c) return false;
-      if (isExpired(c)) return false;
-      if (isDepleted(c)) return false;
+    // 再掃近期券，補抓其他 Email 綁定專屬碼（活動／客服補發等）
+    const couponsRes = await fetch(
+      `${BASE}/wp-json/wc/v3/coupons?per_page=100&orderby=date&order=desc`,
+      { headers: authHeader, cache: "no-store" },
+    );
+    const recent = couponsRes.ok ? await couponsRes.json() : [];
 
-      const emails: string[] = Array.isArray(c.email_restrictions)
-        ? c.email_restrictions.map((e: any) => String(e).trim().toLowerCase())
-        : [];
+    const byCode = new Map<string, any>();
+    for (const c of [...knownResults, ...(Array.isArray(recent) ? recent : [])]) {
+      if (!c) continue;
+      if (isExpired(c) || isDepleted(c)) continue;
+      if (!belongsToEmail(c, customerEmail)) continue;
+      const key = String(c.code || "").toUpperCase();
+      if (!key || byCode.has(key)) continue;
+      byCode.set(key, c);
+    }
 
-      // 因為你的所有禮金、推薦碼，現在都嚴格綁定了使用者的 Email，
-      // 所以只要白名單裡面有他的信箱，這張券就屬於他！
-      if (emails.length > 0) {
-        return emails.includes(customerEmail);
-      }
-
-      return false; // 不顯示共用券或其他不相干的券
-    });
-
-    const available = mine.map((coupon: any) => {
-      const code = String(coupon.code || "");
-      return {
-        kind: couponKindFromCode(code),
-        code,
-        amount: Number(coupon.amount) || 0,
-        description: coupon.description || "",
-        expires: coupon.date_expires || null,
-        coupon,
-      };
-    });
+    const available = Array.from(byCode.values())
+      .map(mapCoupon)
+      .sort((a, b) => {
+        const rank = (k: string) =>
+          k === "welcome" || k === "legacy"
+            ? 0
+            : k === "birthday"
+              ? 1
+              : k === "ref_friend"
+                ? 2
+                : 3;
+        return rank(a.kind) - rank(b.kind);
+      });
 
     return NextResponse.json({ ok: true, available });
   } catch (e) {

@@ -57,6 +57,12 @@ export type ListProduct = {
   isNew?: boolean;
   tag?: string;
   colors?: string[];
+  /** 所有分類名稱（供列表頁篩選用） */
+  categories?: string[];
+  /** 顏色名稱（如 黑色、灰色，供列表頁篩選用） */
+  colorLabels?: string[];
+  /** 尺寸選項（供列表頁篩選用） */
+  sizes?: string[];
 };
 
 const getEnv = () => {
@@ -159,6 +165,9 @@ export function mapWooToListProduct(product: WooProduct): ListProduct {
     })),
     category: primary?.name || undefined,
     colors: product.colors.map((color) => color.hex).filter(Boolean),
+    categories: product.categories.map((c) => c.name).filter(Boolean),
+    colorLabels: product.colors.map((color) => color.label).filter(Boolean),
+    sizes: product.sizes,
   };
 }
 

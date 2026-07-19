@@ -1022,6 +1022,8 @@ function CheckoutStep({
   const [discountCode, setDiscountCode] = useState("");
   const [couponError, setCouponError] = useState("");
   const [couponApplying, setCouponApplying] = useState(false);
+  const [availableCoupons, setAvailableCoupons] = useState([]);
+  const [availableLoading, setAvailableLoading] = useState(false);
 
   const displayName = [addr.lastName, addr.firstName]
     .filter(Boolean)
@@ -1036,8 +1038,36 @@ function CheckoutStep({
     [pricing, shipMethod, appliedCoupon],
   );
 
-  const handleApplyCoupon = async () => {
-    const code = discountCode.trim();
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setAvailableCoupons([]);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      setAvailableLoading(true);
+      try {
+        const res = await fetch("/api/account/coupons/available", {
+          cache: "no-store",
+          credentials: "include",
+        });
+        const data = await res.json();
+        if (!cancelled && res.ok && Array.isArray(data?.available)) {
+          setAvailableCoupons(data.available);
+        }
+      } catch {
+        if (!cancelled) setAvailableCoupons([]);
+      } finally {
+        if (!cancelled) setAvailableLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn]);
+
+  const handleApplyCoupon = async (codeOverride) => {
+    const code = String(codeOverride ?? discountCode).trim();
     if (!code) {
       setCouponError("請輸入折扣碼");
       setAppliedCoupon(null);
@@ -1049,6 +1079,7 @@ function CheckoutStep({
       pricing.subtotal - (pricing.memberDiscountAmount || 0),
     );
 
+    setDiscountCode(code.toUpperCase());
     setCouponApplying(true);
     setCouponError("");
     try {
@@ -1296,7 +1327,7 @@ function CheckoutStep({
                     storeAddr: "",
                   });
                 }}
-                label="7-11超商取貨"
+                label="7-11超商僅取貨"
               />
               <HoverRadio
                 name="ship"
@@ -1310,7 +1341,7 @@ function CheckoutStep({
                     storeAddr: "",
                   });
                 }}
-                label="全家超商取貨"
+                label="全家超商僅取貨"
               />
             </div>
             <p className="mt-3 text-[11px] leading-[1.7] text-[#888]">
@@ -1598,13 +1629,80 @@ function CheckoutStep({
               </div>
               <button
                 type="button"
-                onClick={handleApplyCoupon}
+                onClick={() => handleApplyCoupon()}
                 disabled={couponApplying}
                 className="shrink-0 bg-[#2a514d] px-6 py-2.5 text-[13px] font-medium text-white transition-colors hover:bg-[#1e3d3a] disabled:opacity-60 md:px-8"
               >
                 {couponApplying ? "驗證中..." : "套用"}
               </button>
             </div>
+
+            {isLoggedIn && (
+              <div className="mt-4">
+                <p className="text-[12px] font-medium text-[#555]">
+                  您的可用優惠碼
+                </p>
+                {availableLoading ? (
+                  <p className="mt-2 text-[11px] text-[#888]">讀取中...</p>
+                ) : availableCoupons.length === 0 ? (
+                  <p className="mt-2 text-[11px] text-[#888]">
+                    目前沒有可用的入會禮／生日禮或其他專屬折扣碼。
+                  </p>
+                ) : (
+                  <div className="mt-2 flex flex-col gap-2">
+                    {availableCoupons.map((c) => {
+                      const code = String(c.code || "").toUpperCase();
+                      const active =
+                        appliedCoupon?.code?.toUpperCase() === code;
+                      const kindText =
+                        c.kindLabel ||
+                        (c.kind === "welcome" || c.kind === "legacy"
+                          ? "入會禮"
+                          : c.kind === "birthday"
+                            ? "生日禮"
+                            : "專屬優惠");
+                      return (
+                        <button
+                          key={code}
+                          type="button"
+                          disabled={couponApplying}
+                          onClick={() => handleApplyCoupon(code)}
+                          className={`flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2.5 text-left transition-colors ${
+                            active
+                              ? "border-[#2a514d] bg-[#edf4f3]"
+                              : "border-[#e5e5e5] bg-[#fafafa] hover:border-[#2a514d]/50"
+                          }`}
+                        >
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-[10px] font-bold text-[#2a514d]">
+                                {kindText}
+                              </span>
+                              <span className="text-[12px] font-semibold text-black">
+                                折抵 NT${Number(c.amount || 0).toLocaleString()}
+                              </span>
+                            </div>
+                            <p className="mt-1 font-mono text-[12px] font-bold tracking-wide text-[#202223]">
+                              {code}
+                            </p>
+                            {Number(c.minimumAmount || 0) > 0 && (
+                              <p className="mt-0.5 text-[10px] text-[#888]">
+                                滿 NT$
+                                {Number(c.minimumAmount).toLocaleString()}{" "}
+                                可用 · 點此套用
+                              </p>
+                            )}
+                          </div>
+                          <span className="shrink-0 text-[11px] font-medium text-[#2a514d]">
+                            {active ? "已套用" : "套用"}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="mt-8 space-y-2.5 text-[14px] text-black">
               <div className="flex justify-between">

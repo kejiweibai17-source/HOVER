@@ -1405,7 +1405,7 @@ export default function AccountPage() {
                   <ShellCard title="獎勵與優惠券">
                       <div className="flex flex-col gap-4">
                         <div className="flex items-center justify-between border-b border-[#ebebeb] pb-3">
-                          <div>
+                          <div className="min-w-0 pr-3">
                             <p className="text-sm font-medium text-[#202223]">
                               入會禮（購物金）
                             </p>
@@ -1413,51 +1413,75 @@ export default function AccountPage() {
                               NT$ {membership?.welcomeGift ?? membership?.upgradeGift ?? 0}
                             </p>
                             <p className="text-[10px] text-[#6d7175] mt-0.5">
-                              單筆滿 NT$1,000 可使用
+                              單筆滿 NT$1,000 可使用 · 註冊後自動發放
                             </p>
+                            {(() => {
+                              const welcome = availableCoupons.find(
+                                (c) =>
+                                  c.kind === "welcome" || c.kind === "legacy",
+                              );
+                              return welcome ? (
+                                <p className="mt-1.5 font-mono text-[12px] font-bold text-[#202223] break-all">
+                                  {String(welcome.code).toUpperCase()}
+                                </p>
+                              ) : null;
+                            })()}
                           </div>
                           {(membership?.welcomeGift ?? membership?.upgradeGift) ? (
-                            <button
-                              onClick={() => handleClaim("welcome")}
-                              disabled={claimLoading.welcome || claimed.welcome}
-                              className={cn(
-                                "px-3 py-1.5 rounded-md text-xs font-bold transition-all border shadow-sm",
-                                claimed.welcome
-                                  ? "bg-gray-100 text-gray-400 border-gray-200"
-                                  : "bg-white text-[#202223] border-[#c9cccf] hover:bg-[#f6f6f7]",
-                              )}
-                            >
-                              {claimed.welcome ? "已領取" : "領取入會禮"}
-                            </button>
+                            claimed.welcome ||
+                            availableCoupons.some(
+                              (c) =>
+                                c.kind === "welcome" || c.kind === "legacy",
+                            ) ? (
+                              <span className="px-3 py-1.5 rounded-md text-xs font-bold bg-gray-100 text-gray-400 border border-gray-200 shrink-0">
+                                已發放
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => handleClaim("welcome")}
+                                disabled={claimLoading.welcome}
+                                className="px-3 py-1.5 rounded-md text-xs font-bold transition-all border shadow-sm bg-white text-[#202223] border-[#c9cccf] hover:bg-[#f6f6f7] shrink-0"
+                              >
+                                {claimLoading.welcome ? "處理中..." : "領取入會禮"}
+                              </button>
+                            )
                           ) : (
                             <span className="text-xs text-[#6d7175]">—</span>
                           )}
                         </div>
 
                         <div className="flex items-center justify-between border-b border-[#ebebeb] pb-3">
-                          <div>
+                          <div className="min-w-0 pr-3">
                             <p className="text-sm font-medium text-[#202223]">
                               生日禮
                             </p>
                             <p className="text-xs font-bold text-rose-600 mt-0.5">
                               {membership?.birthdayCredit ?? 0} 元
                             </p>
+                            {(() => {
+                              const bday = availableCoupons.find(
+                                (c) => c.kind === "birthday",
+                              );
+                              return bday ? (
+                                <p className="mt-1.5 font-mono text-[12px] font-bold text-[#202223] break-all">
+                                  {String(bday.code).toUpperCase()}
+                                </p>
+                              ) : null;
+                            })()}
                           </div>
                           {customer?.birthday && membership?.birthdayCredit ? (
-                            isCurrentMonthBirthday ? (
+                            claimed.birthday ||
+                            availableCoupons.some((c) => c.kind === "birthday") ? (
+                              <span className="px-3 py-1.5 rounded-md text-xs font-bold bg-gray-100 text-gray-400 border border-gray-200 shrink-0">
+                                已發放
+                              </span>
+                            ) : isCurrentMonthBirthday ? (
                               <button
                                 onClick={() => handleClaim("birthday")}
-                                disabled={
-                                  claimLoading.birthday || claimed.birthday
-                                }
-                                className={cn(
-                                  "px-3 py-1.5 rounded-md text-xs font-bold transition-all border shadow-sm",
-                                  claimed.birthday
-                                    ? "bg-gray-100 text-gray-400 border-gray-200"
-                                    : "bg-white text-[#202223] border-[#c9cccf] hover:bg-[#f6f6f7]",
-                                )}
+                                disabled={claimLoading.birthday}
+                                className="px-3 py-1.5 rounded-md text-xs font-bold transition-all border shadow-sm bg-white text-[#202223] border-[#c9cccf] hover:bg-[#f6f6f7] shrink-0"
                               >
-                                {claimed.birthday ? "已領取" : "領取好禮"}
+                                {claimLoading.birthday ? "處理中..." : "領取好禮"}
                               </button>
                             ) : (
                               <span className="text-[10px] bg-[#f9fafb] border border-[#e1e3e5] text-[#6d7175] px-2 py-1 rounded text-center whitespace-nowrap">
@@ -1488,7 +1512,7 @@ export default function AccountPage() {
                         <div className="mt-1">
                           <div className="flex justify-between items-center mb-3">
                             <span className="text-sm font-bold text-[#202223]">
-                              折扣碼錢包 (已領取)
+                              可用優惠碼
                             </span>
                             <button
                               onClick={loadAvailableCoupons}
@@ -1497,49 +1521,93 @@ export default function AccountPage() {
                               刷新清單
                             </button>
                           </div>
+                          <p className="text-[11px] text-[#6d7175] mb-3 leading-relaxed">
+                            入會禮、生日禮會自動發放至此。結帳時請手動輸入或複製折扣碼。
+                          </p>
                           {availableLoading ? (
                             <p className="text-xs text-[#6d7175] py-2">
                               讀取中...
                             </p>
                           ) : filteredCoupons.length === 0 ? (
                             <p className="text-xs text-[#6d7175] bg-[#f9fafb] p-3 rounded-md border border-[#e1e3e5] text-center leading-relaxed">
-                              錢包內目前沒有折扣碼。
+                              目前沒有可用優惠碼。
                               <br />
-                              請先至上方領取，或參加活動獲取！
+                              新會員入會禮註冊後自動入帳；生日禮於生日月發放。
                             </p>
                           ) : (
                             <div className="flex flex-col gap-2.5 w-full">
-                              {filteredCoupons.map((c) => (
-                                <div
-                                  key={c.code}
-                                  className="border border-[#c9cccf] rounded-md p-3 flex justify-between items-center bg-[#f9fafb] hover:shadow-sm w-full"
-                                >
-                                  <div className="min-w-0 pr-2">
-                                    <span className="font-bold text-rose-600 text-sm block truncate w-full">
-                                      {formatMoneyNT(c.amount)}
-                                    </span>
-                                    <p className="text-[11px] text-[#6d7175] mt-1 font-medium truncate w-full">
-                                      {c.kind === "welcome" || c.kind === "legacy"
-                                        ? "入會禮金"
-                                        : c.kind === "birthday"
-                                          ? "生日禮金"
-                                          : c.kind === "promo"
-                                            ? "活動優惠"
-                                            : c.kind === "ref_friend"
-                                              ? "推薦禮金"
-                                              : "折扣券"}
-                                    </p>
-                                  </div>
-                                  <button
-                                    onClick={() =>
-                                      navigator.clipboard.writeText(c.code)
-                                    }
-                                    className="text-[#5c5f62] hover:text-[#008060] bg-white border border-[#c9cccf] p-2 rounded shadow-sm shrink-0"
+                              {filteredCoupons.map((c) => {
+                                const kindText =
+                                  c.kindLabel ||
+                                  (c.kind === "welcome" || c.kind === "legacy"
+                                    ? "入會禮"
+                                    : c.kind === "birthday"
+                                      ? "生日禮"
+                                      : c.kind === "promo"
+                                        ? "活動優惠"
+                                        : c.kind === "ref_friend"
+                                          ? "推薦禮"
+                                          : "折扣券");
+                                const expiresLabel = c.expires
+                                  ? new Date(c.expires).toLocaleDateString(
+                                      "zh-TW",
+                                      {
+                                        year: "numeric",
+                                        month: "2-digit",
+                                        day: "2-digit",
+                                      },
+                                    )
+                                  : null;
+                                const minAmt =
+                                  Number(c.minimumAmount || 0) || 0;
+                                return (
+                                  <div
+                                    key={c.code}
+                                    className="border border-[#c9cccf] rounded-md p-3 bg-[#f9fafb] hover:shadow-sm w-full"
                                   >
-                                    <Copy size={16} />
-                                  </button>
-                                </div>
-                              ))}
+                                    <div className="flex justify-between items-start gap-2">
+                                      <div className="min-w-0">
+                                        <div className="flex flex-wrap items-center gap-2">
+                                          <span className="inline-flex items-center rounded-full bg-white border border-[#e1e3e5] px-2 py-0.5 text-[10px] font-bold text-[#2a514d]">
+                                            {kindText}
+                                          </span>
+                                          <span className="font-bold text-rose-600 text-sm">
+                                            {formatMoneyNT(c.amount)}
+                                          </span>
+                                        </div>
+                                        <p className="mt-2 font-mono text-[13px] font-bold tracking-wide text-[#202223] break-all">
+                                          {String(c.code || "").toUpperCase()}
+                                        </p>
+                                        <p className="mt-1 text-[11px] text-[#6d7175] leading-relaxed">
+                                          {minAmt > 0
+                                            ? `滿 NT$${minAmt.toLocaleString()} 可用`
+                                            : "無最低消費"}
+                                          {expiresLabel
+                                            ? ` · 效期至 ${expiresLabel}`
+                                            : ""}
+                                        </p>
+                                      </div>
+                                      <button
+                                        type="button"
+                                        title="複製折扣碼"
+                                        onClick={() => {
+                                          navigator.clipboard.writeText(
+                                            String(c.code || "").toUpperCase(),
+                                          );
+                                          setClaimMessage("已複製折扣碼");
+                                          setClaimStatus("success");
+                                          setClaimedCode(
+                                            String(c.code || "").toUpperCase(),
+                                          );
+                                        }}
+                                        className="text-[#5c5f62] hover:text-[#008060] bg-white border border-[#c9cccf] p-2 rounded shadow-sm shrink-0"
+                                      >
+                                        <Copy size={16} />
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
                           )}
                         </div>

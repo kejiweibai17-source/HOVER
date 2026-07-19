@@ -2,6 +2,9 @@
 import Client from "./home";
 import { fetchAllProducts } from "@/lib/woo";
 import { fetchHeroSettings } from "@/lib/heroDefaults";
+import { fetchBrandStorySlides } from "@/lib/brandStoryDefaults";
+import { fetchCategoryTiles } from "@/lib/categoryGridDefaults";
+import { fetchPeopleSlides } from "@/lib/peopleDefaults";
 
 // 🌟 1. 動態獲取網址，解決本地端與正式機網址判定問題
 const getSiteUrl = () => {
@@ -171,6 +174,9 @@ export default async function Page() {
   }
 
   const initialHero = await fetchHeroSettings();
+  const initialBrandStory = await fetchBrandStorySlides();
+  const initialCategoryGrid = await fetchCategoryTiles();
+  const initialPeople = await fetchPeopleSlides();
 
   return (
     <>
@@ -201,7 +207,12 @@ export default async function Page() {
       />
 
       {/* 🚀 把 faqs 和 items 一起傳遞給前端畫面 */}
-      <Client initialHero={initialHero} />
+      <Client
+        initialHero={initialHero}
+        initialBrandStory={initialBrandStory}
+        initialCategoryGrid={initialCategoryGrid}
+        initialPeople={initialPeople}
+      />
     </>
   );
 }

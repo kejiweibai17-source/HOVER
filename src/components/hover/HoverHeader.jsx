@@ -418,19 +418,11 @@ export default function HoverHeader({
               >
                 {loggedIn && authUser ? (
                   <>
-                    {authUser.avatarUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={authUser.avatarUrl}
-                        alt=""
-                        className="h-8 w-8 rounded-full object-cover ring-1 ring-black/10"
-                        referrerPolicy="no-referrer"
-                      />
-                    ) : (
-                      <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[#2a514d] text-[11px] font-bold text-white">
-                        {authUser.name.charAt(0).toUpperCase()}
-                      </span>
-                    )}
+                    <HoverIcon
+                      name="member"
+                      size={HEADER_ICON.desktop.member}
+                      alt="會員"
+                    />
                     <span className="hidden max-w-[88px] truncate text-[12px] font-medium tracking-wide lg:inline">
                       Hi {authUser.name}
                     </span>

@@ -212,7 +212,7 @@ function splitFooterLegal(copyright = "", companyInfo = "") {
   return { shortCopyright, company };
 }
 
-function ContactColumn({ contact, social, company }) {
+function ContactColumn({ contact, social }) {
   return (
     <div className="min-w-0">
       <h3 className="mb-4 text-[17px] font-normal tracking-[0.1em] md:mb-5">
@@ -246,7 +246,6 @@ function ContactColumn({ contact, social, company }) {
             )}
           </li>
         )}
-        {company && <li>{company}</li>}
       </ul>
 
       <div className="mt-5 flex items-center gap-4 md:mt-6">
@@ -286,7 +285,7 @@ export default function HoverFooter() {
   return (
     <footer className="text-white" style={{ backgroundColor }}>
       <div className="mx-auto w-full max-w-[1680px] px-6 pt-12 md:px-12 md:pt-16 lg:px-16 lg:pt-[72px] xl:px-12">
-        <div className="hidden lg:flex   lg:w-full lg:items-stretch lg:justify-between  ">
+        <div className="hidden lg:flex lg:w-full lg:items-stretch lg:justify-evenly">
           <div className="flex shrink-0 items-center">
             <FooterLogo
               logo={logo}
@@ -303,11 +302,7 @@ export default function HoverFooter() {
           ))}
 
           <div className="shrink-0">
-            <ContactColumn
-              contact={contact}
-              social={social}
-              company={company}
-            />
+            <ContactColumn contact={contact} social={social} />
           </div>
         </div>
 
@@ -373,6 +368,7 @@ export default function HoverFooter() {
         </div>
 
         <div className="hidden pb-10 pt-16 mt-0 text-center text-[12px] leading-relaxed tracking-[0.04em] text-white/70 md:mt-10 md:text-[13px] lg:block lg:pb-12 lg:pt-10">
+          {company && <p className="mb-1">{company}</p>}
           <p>{shortCopyright}</p>
         </div>
       </div>

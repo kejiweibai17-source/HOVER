@@ -10,6 +10,9 @@ import { useAuthStore } from "@/lib/authStore";
 import InfiniteCarousel from "@/components/hover/InfiniteCarousel";
 import HoverPopup from "@/components/hover/HoverPopup";
 import HoverHero from "@/components/hover/HoverHero";
+import { FALLBACK_BRAND_STORY_SLIDES } from "@/lib/brandStoryDefaults";
+import { FALLBACK_CATEGORY_TILES } from "@/lib/categoryGridDefaults";
+import { FALLBACK_PEOPLE_SLIDES } from "@/lib/peopleDefaults";
 
 /* ─── Data ──────────────────────────────────────────────────────────── */
 
@@ -94,15 +97,6 @@ const PRODUCTS = [
   },
 ];
 
-const PEOPLE = [
-  "/images/hover/people-1.jpg",
-  "/images/hover/people-2.jpg",
-  "/images/hover/people-3.jpg",
-  "/images/hover/people-4.jpg",
-  "/images/hover/people-1.jpg",
-  "/images/hover/people-2.jpg",
-];
-
 // 輪播用假資料（重複一組，之後可換 API）
 const CAROUSEL_PRODUCTS = [
   ...PRODUCTS,
@@ -112,57 +106,14 @@ const CAROUSEL_PRODUCTS = [
   })),
 ];
 
-const PEOPLE_ITEMS = PEOPLE.map((src, i) => ({
-  id: `people-${i}`,
-  src,
-}));
+// 預設 HOVER PEOPLE 圖（後台「HOVER PEOPLE」未設定時使用）
+const PEOPLE_ITEMS = FALLBACK_PEOPLE_SLIDES;
 
-const BRAND_STORY_SLIDES = [
-  {
-    id: "brand-story-1",
-    src: "https://united-arrows-global.com/cdn/shop/files/bnr_global_1600_900_w.jpg?v=1782724871&width=2400",
-    alt: "HOVER brand story 1",
-  },
-  {
-    id: "brand-story-2",
-    src: "https://united-arrows-global.com/cdn/shop/files/collection_top_1600_900.jpg?v=1782727109&width=2000",
-    alt: "HOVER brand story 2",
-  },
-  {
-    id: "brand-story-3",
-    src: "https://united-arrows-global.com/cdn/shop/files/WOMEN_PC_b0601636-c7ee-401e-a411-8cb83323cbef.jpg?v=1779843749&width=2000",
-    alt: "HOVER brand story 3",
-  },
-  {
-    id: "brand-story-4",
-    src: "https://united-arrows-global.com/cdn/shop/files/MEN_PC_7c49d7ce-4819-48ea-a1ba-1b91031081d1.jpg?v=1779843749&width=2000",
-    alt: "HOVER brand story 4",
-  },
-];
+// 預設品牌故事圖（後台「HOVER 品牌輪播」未設定時使用）
+const BRAND_STORY_SLIDES = FALLBACK_BRAND_STORY_SLIDES;
 
-const CATEGORIES = [
-  {
-    label: "TOPS",
-    heroText: "ALL BLACK\nCOLLECTION",
-    href: "/products?category=tops",
-    image: "/images/hover/category-1.jpg",
-  },
-  {
-    label: "HEADWEARS",
-    href: "/products?category=headwear",
-    image: "/images/hover/category-2.jpg",
-  },
-  {
-    label: "SOCKS",
-    href: "/products?category=socks",
-    image: "/images/hover/category-3.jpg",
-  },
-  {
-    label: "BAGS",
-    href: "/products?category=bags",
-    image: "/images/hover/category-2.jpg",
-  },
-];
+// 預設分類格（後台「HOVER 分類格」未設定時使用）
+const CATEGORIES = FALLBACK_CATEGORY_TILES;
 
 /* ─── Section 3 & 6 · Product Grid (NEW ARRIVALS / BEST SELLER) ─────── */
 
@@ -260,9 +211,6 @@ function ProductCard({ product }) {
             className="inline-block h-3 w-3 shrink-0 rounded-full border border-[#ccc]"
             style={{ background: product.colorHex }}
           />
-          <span className="truncate text-[10px] text-[#888] md:text-[11px]">
-            {product.colorLabel}
-          </span>
         </div>
 
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 pt-0.5">
@@ -296,11 +244,12 @@ function ProductSection({ title, products }) {
 
 /* ─── Section 4 · Brand Story ────────────────────────────────────────── */
 
-function BrandStorySection() {
+function BrandStorySection({ slides }) {
+  const items = slides && slides.length ? slides : BRAND_STORY_SLIDES;
   return (
     <section className="bg-hover-bg">
       <InfiniteCarousel
-        items={BRAND_STORY_SLIDES}
+        items={items}
         visibleMd={2}
         visibleSm={1}
         className="bg-hover-bg pb-0"
@@ -309,17 +258,27 @@ function BrandStorySection() {
         autoplayInterval={5000}
         mobileDraggable
         imageAspectRatio="16/9"
-        renderItem={(slide) => (
-          <div className="relative aspect-[16/9] max-h-[100vh] w-full overflow-hidden">
-            <Image
-              src={slide.src}
-              alt={slide.alt || "HOVER brand story"}
-              fill
-              className="object-cover"
-              sizes="(max-width: 768px) 100vw, 50vw"
-            />
-          </div>
-        )}
+        renderItem={(slide) => {
+          const image = (
+            <div className="relative aspect-[16/9] max-h-[100vh] w-full overflow-hidden">
+              <Image
+                src={slide.src}
+                alt={slide.alt || "HOVER brand story"}
+                fill
+                className="object-cover"
+                sizes="(max-width: 768px) 100vw, 50vw"
+              />
+            </div>
+          );
+
+          return slide.href ? (
+            <Link href={slide.href} className="block">
+              {image}
+            </Link>
+          ) : (
+            image
+          );
+        }}
       />
     </section>
   );
@@ -327,10 +286,11 @@ function BrandStorySection() {
 
 /* ─── Section 5 · Category Grid ──────────────────────────────────────── */
 
-function CategoryGrid() {
+function CategoryGrid({ tiles }) {
+  const items = tiles && tiles.length ? tiles : CATEGORIES;
   return (
     <section className="grid grid-cols-2 md:grid-cols-4">
-      {CATEGORIES.map((cat) => (
+      {items.map((cat) => (
         <Link
           key={cat.label}
           href={cat.href}
@@ -339,7 +299,7 @@ function CategoryGrid() {
         >
           <Image
             src={cat.image}
-            alt={cat.label}
+            alt={cat.alt || cat.label}
             fill
             className="object-cover transition-transform duration-700 group-hover:scale-105"
             sizes="(max-width: 768px) 50vw, 25vw"
@@ -370,12 +330,13 @@ function CategoryGrid() {
 
 /* ─── Section 7 · HOVER PEOPLE ───────────────────────────────────────── */
 
-function HoverPeopleSection() {
+function HoverPeopleSection({ slides }) {
+  const items = slides && slides.length ? slides : PEOPLE_ITEMS;
   return (
     <InfiniteCarousel
       title="HOVER PEOPLE"
       headerClassName="pb-2"
-      items={PEOPLE_ITEMS}
+      items={items}
       visibleMd={4}
       visibleSm={3}
       className="pb-0"
@@ -384,17 +345,27 @@ function HoverPeopleSection() {
       mobileAutoplayInterval={4500}
       mobileDraggable
       imageAspectRatio="481/550"
-      renderItem={(person, i) => (
-        <div className="relative aspect-[481/550] overflow-hidden">
-          <Image
-            src={person.src}
-            alt={`HOVER PEOPLE ${(i % PEOPLE.length) + 1}`}
-            fill
-            className="object-cover"
-            sizes="(max-width: 768px) 50vw, 25vw"
-          />
-        </div>
-      )}
+      renderItem={(person, i) => {
+        const image = (
+          <div className="relative aspect-[481/550] overflow-hidden">
+            <Image
+              src={person.src}
+              alt={person.alt || `HOVER PEOPLE ${(i % items.length) + 1}`}
+              fill
+              className="object-cover"
+              sizes="(max-width: 768px) 50vw, 25vw"
+            />
+          </div>
+        );
+
+        return person.href ? (
+          <Link href={person.href} className="block">
+            {image}
+          </Link>
+        ) : (
+          image
+        );
+      }}
     />
   );
 }
@@ -402,16 +373,21 @@ function HoverPeopleSection() {
 /* ─── Page ───────────────────────────────────────────────────────────── */
 /* HoverHeader & HoverFooter are rendered globally by ClientLayout */
 
-export default function Home({ initialHero = null }) {
+export default function Home({
+  initialHero = null,
+  initialBrandStory = null,
+  initialCategoryGrid = null,
+  initialPeople = null,
+}) {
   return (
     <div className="bg-white">
       <HoverPopup />
       <HoverHero initialHero={initialHero} />
       <ProductSection title="NEW ARRIVALS" products={CAROUSEL_PRODUCTS} />
-      <BrandStorySection />
-      <CategoryGrid />
+      <BrandStorySection slides={initialBrandStory} />
+      <CategoryGrid tiles={initialCategoryGrid} />
       <ProductSection title="BEST SELLER" products={CAROUSEL_PRODUCTS} />
-      <HoverPeopleSection />
+      <HoverPeopleSection slides={initialPeople} />
     </div>
   );
 }

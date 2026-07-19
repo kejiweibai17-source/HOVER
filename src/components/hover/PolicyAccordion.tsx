@@ -47,7 +47,7 @@ function SubAccordionPanel({
               aria-expanded={open}
               className="flex w-full items-center justify-between gap-4 border-b border-[#ffffff] mb-4  px-4 py-3.5 text-left md:px-5 md:py-4"
             >
-              <span className="text-[13px] font-bold tracking-[0.04em] text-black md:text-[14px]">
+              <span className="text-[13px] font-bold tracking-[0.04em] text-[#0F172A] md:text-[14px]">
                 {sub.title}
               </span>
               <span
