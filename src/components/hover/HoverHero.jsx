@@ -57,6 +57,83 @@ function HeroCta({ label, href, visible }) {
   );
 }
 
+function HeroMedia({ slide, isActive, dragging }) {
+  const videoRef = useRef(null);
+  const isVideo = slide.mediaType === "video" && Boolean(slide.video?.url);
+
+  useEffect(() => {
+    const el = videoRef.current;
+    if (!el || !isVideo) return undefined;
+
+    el.muted = true;
+    el.defaultMuted = true;
+    el.setAttribute("muted", "");
+    el.playsInline = true;
+
+    if (isActive && !dragging) {
+      const play = () => {
+        const p = el.play();
+        if (p && typeof p.catch === "function") p.catch(() => {});
+      };
+      play();
+      // 部分瀏覽器需等 canplay 再播
+      el.addEventListener("canplay", play);
+      return () => el.removeEventListener("canplay", play);
+    }
+
+    el.pause();
+    return undefined;
+  }, [isActive, dragging, isVideo, slide.video?.url]);
+
+  if (isVideo) {
+    return (
+      <div className="absolute inset-0 overflow-hidden">
+        <video
+          ref={videoRef}
+          className="absolute inset-0 h-full w-full object-cover object-center"
+          src={slide.video.url}
+          poster={slide.image?.url || undefined}
+          muted
+          loop
+          playsInline
+          autoPlay={isActive}
+          preload="auto"
+          controls={false}
+          disablePictureInPicture
+          draggable={false}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <motion.div
+      className="absolute inset-0"
+      animate={{
+        scale: isActive && !dragging ? 1.06 : 1,
+      }}
+      transition={
+        isActive && !dragging
+          ? {
+              duration: 6,
+              ease: "linear",
+            }
+          : { duration: 0.8, ease: EASE }
+      }
+    >
+      <Image
+        src={slide.image.url}
+        alt={slide.image.alt || "HOVER"}
+        fill
+        priority={isActive}
+        sizes="100vw"
+        className="object-cover object-top"
+        draggable={false}
+      />
+    </motion.div>
+  );
+}
+
 function HeroSkeleton() {
   return (
     <section className="relative w-full overflow-hidden bg-[#111]">
@@ -294,30 +371,11 @@ export default function HoverHero({ initialHero = null }) {
                 className="relative h-full shrink-0 overflow-hidden"
                 style={{ width: `${100 / count}%` }}
               >
-                <motion.div
-                  className="absolute inset-0"
-                  animate={{
-                    scale: isActive && !dragging ? 1.06 : 1,
-                  }}
-                  transition={
-                    isActive && !dragging
-                      ? {
-                          duration: (hero?.autoplayMs ?? 5000) / 1000 + 0.8,
-                          ease: "linear",
-                        }
-                      : { duration: 0.8, ease: EASE }
-                  }
-                >
-                  <Image
-                    src={slide.image.url}
-                    alt={slide.image.alt || "HOVER"}
-                    fill
-                    priority={slideIndex === 0}
-                    sizes="100vw"
-                    className="object-cover object-top"
-                    draggable={false}
-                  />
-                </motion.div>
+                <HeroMedia
+                  slide={slide}
+                  isActive={isActive}
+                  dragging={dragging}
+                />
 
                 <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-black/10" />
 

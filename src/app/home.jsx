@@ -10,6 +10,7 @@ import { useAuthStore } from "@/lib/authStore";
 import InfiniteCarousel from "@/components/hover/InfiniteCarousel";
 import HoverPopup from "@/components/hover/HoverPopup";
 import HoverHero from "@/components/hover/HoverHero";
+import HoverMidVideo from "@/components/hover/HoverMidVideo";
 import { FALLBACK_BRAND_STORY_SLIDES } from "@/lib/brandStoryDefaults";
 import { FALLBACK_CATEGORY_TILES } from "@/lib/categoryGridDefaults";
 import { FALLBACK_PEOPLE_SLIDES } from "@/lib/peopleDefaults";
@@ -255,6 +256,7 @@ function BrandStorySection({ slides }) {
         className="bg-hover-bg pb-0"
         contentClassName="px-0"
         trackContentClassName="!py-0 px-0"
+        slideClassName="pr-0"
         autoplayInterval={5000}
         mobileDraggable
         imageAspectRatio="16/9"
@@ -376,6 +378,7 @@ function HoverPeopleSection({ slides }) {
 export default function Home({
   initialHero = null,
   initialBrandStory = null,
+  initialMidVideo = null,
   initialCategoryGrid = null,
   initialPeople = null,
 }) {
@@ -385,6 +388,7 @@ export default function Home({
       <HoverHero initialHero={initialHero} />
       <ProductSection title="NEW ARRIVALS" products={CAROUSEL_PRODUCTS} />
       <BrandStorySection slides={initialBrandStory} />
+      <HoverMidVideo initialSettings={initialMidVideo} />
       <CategoryGrid tiles={initialCategoryGrid} />
       <ProductSection title="BEST SELLER" products={CAROUSEL_PRODUCTS} />
       <HoverPeopleSection slides={initialPeople} />

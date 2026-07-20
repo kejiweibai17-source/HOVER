@@ -1,8 +1,14 @@
 import { HOVER_PLACEHOLDER_IMAGE } from "@/lib/hoverPlaceholder";
 
+export type HeroMediaType = "image" | "video";
+
 export type HeroSlideImage = {
   url: string;
   alt: string;
+};
+
+export type HeroSlideVideo = {
+  url: string;
 };
 
 export type HeroSlideLink = {
@@ -17,7 +23,9 @@ export type HeroSlideCta = {
 export type HeroSlide = {
   id: string;
   enabled: boolean;
+  mediaType: HeroMediaType;
   image: HeroSlideImage;
+  video: HeroSlideVideo;
   link: HeroSlideLink;
   cta: HeroSlideCta;
 };
@@ -43,10 +51,12 @@ export const FALLBACK_HERO: HeroSettings = {
   slides: [1, 2, 3].map((n) => ({
     id: `hero-fallback-${n}`,
     enabled: true,
+    mediaType: "image" as const,
     image: {
       url: HOVER_PLACEHOLDER_IMAGE,
       alt: "HOVER",
     },
+    video: { url: "" },
     link: { href: "/products" },
     cta: { label: "SHOP NOW", show: true },
   })),
@@ -59,6 +69,11 @@ function parseBool(value: unknown, fallback = false): boolean {
   return fallback;
 }
 
+function slideHasMedia(slide: HeroSlide): boolean {
+  if (slide.mediaType === "video") return Boolean(slide.video.url.trim());
+  return Boolean(slide.image.url.trim());
+}
+
 function normalizeSlide(raw: unknown, index: number): HeroSlide {
   const d = FALLBACK_HERO.slides[0];
   if (!raw || typeof raw !== "object") {
@@ -67,15 +82,22 @@ function normalizeSlide(raw: unknown, index: number): HeroSlide {
 
   const o = raw as Record<string, unknown>;
   const imageRaw = (o.image as Record<string, unknown>) || {};
+  const videoRaw = (o.video as Record<string, unknown>) || {};
   const linkRaw = (o.link as Record<string, unknown>) || {};
   const ctaRaw = (o.cta as Record<string, unknown>) || {};
+  const typeRaw = String(o.mediaType || o.media_type || "image");
+  const mediaType: HeroMediaType = typeRaw === "video" ? "video" : "image";
 
   return {
     id: String(o.id || `hero-${index + 1}`).trim() || `hero-${index + 1}`,
     enabled: parseBool(o.enabled, true),
+    mediaType,
     image: {
-      url: String(imageRaw.url || "").trim() || d.image.url || HOVER_PLACEHOLDER_IMAGE,
+      url: String(imageRaw.url || "").trim(),
       alt: String(imageRaw.alt || d.image.alt).trim() || d.image.alt,
+    },
+    video: {
+      url: String(videoRaw.url || "").trim(),
     },
     link: {
       href: String(linkRaw.href || d.link.href).trim() || d.link.href,
@@ -89,7 +111,7 @@ function normalizeSlide(raw: unknown, index: number): HeroSlide {
 
 export function getActiveHeroSlides(hero: HeroSettings): HeroSlide[] {
   if (!hero.enabled) return [];
-  return hero.slides.filter((s) => s.enabled && s.image.url.trim());
+  return hero.slides.filter((s) => s.enabled && slideHasMedia(s));
 }
 
 export function normalizeHeroSettings(raw: unknown): HeroSettings {
@@ -105,7 +127,7 @@ export function normalizeHeroSettings(raw: unknown): HeroSettings {
 
   const slides = slidesRaw
     .map((slide, i) => normalizeSlide(slide, i))
-    .filter((slide) => slide.image.url.trim());
+    .filter((slide) => slideHasMedia(slide));
 
   return {
     enabled: parseBool(o.enabled, d.enabled),

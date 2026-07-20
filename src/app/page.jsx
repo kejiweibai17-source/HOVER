@@ -3,6 +3,7 @@ import Client from "./home";
 import { fetchAllProducts } from "@/lib/woo";
 import { fetchHeroSettings } from "@/lib/heroDefaults";
 import { fetchBrandStorySlides } from "@/lib/brandStoryDefaults";
+import { fetchMidVideoSettings } from "@/lib/midVideoDefaults";
 import { fetchCategoryTiles } from "@/lib/categoryGridDefaults";
 import { fetchPeopleSlides } from "@/lib/peopleDefaults";
 
@@ -175,6 +176,7 @@ export default async function Page() {
 
   const initialHero = await fetchHeroSettings();
   const initialBrandStory = await fetchBrandStorySlides();
+  const initialMidVideo = await fetchMidVideoSettings();
   const initialCategoryGrid = await fetchCategoryTiles();
   const initialPeople = await fetchPeopleSlides();
 
@@ -210,6 +212,7 @@ export default async function Page() {
       <Client
         initialHero={initialHero}
         initialBrandStory={initialBrandStory}
+        initialMidVideo={initialMidVideo}
         initialCategoryGrid={initialCategoryGrid}
         initialPeople={initialPeople}
       />

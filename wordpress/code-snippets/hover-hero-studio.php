@@ -7,6 +7,8 @@
  * 2. Run snippet：Everywhere → 啟用
  * 3. 左側選單「HOVER 首頁主圖」
  *
+ * 每張 slide 可選「圖片」或「影片」呈現。
+ *
  * REST API（給 Next.js）：
  * GET /wp-json/hover/v1/hero
  */
@@ -57,11 +59,15 @@ add_action('rest_api_init', function () {
 function hhs_default_slide(string $id = 'hero-1'): array
 {
     return [
-        'id'      => $id,
-        'enabled' => true,
-        'image'   => [
+        'id'        => $id,
+        'enabled'   => true,
+        'mediaType' => 'image', // image | video
+        'image'     => [
             'url' => '',
             'alt' => 'HOVER',
+        ],
+        'video' => [
+            'url' => '',
         ],
         'link' => [
             'href' => '/products',
@@ -95,20 +101,38 @@ function hhs_sanitize_url(string $url): string
     return esc_url_raw($url);
 }
 
+function hhs_slide_has_media(array $slide): bool
+{
+    $type = $slide['mediaType'] ?? 'image';
+    if ($type === 'video') {
+        return !empty($slide['video']['url']);
+    }
+    return !empty($slide['image']['url']);
+}
+
 function hhs_normalize_slide(array $slide, int $index): array
 {
     $d = hhs_default_slide('hero-' . ($index + 1));
 
     $image = $slide['image'] ?? [];
+    $video = $slide['video'] ?? [];
     $link  = $slide['link'] ?? [];
     $cta   = $slide['cta'] ?? [];
+    $type  = sanitize_text_field($slide['mediaType'] ?? $d['mediaType']);
+    if (!in_array($type, ['image', 'video'], true)) {
+        $type = 'image';
+    }
 
     return [
-        'id'      => sanitize_text_field($slide['id'] ?? $d['id']) ?: $d['id'],
-        'enabled' => !isset($slide['enabled']) || !empty($slide['enabled']),
-        'image'   => [
+        'id'        => sanitize_text_field($slide['id'] ?? $d['id']) ?: $d['id'],
+        'enabled'   => !isset($slide['enabled']) || !empty($slide['enabled']),
+        'mediaType' => $type,
+        'image'     => [
             'url' => esc_url_raw($image['url'] ?? ''),
             'alt' => sanitize_text_field($image['alt'] ?? $d['image']['alt']),
+        ],
+        'video' => [
+            'url' => esc_url_raw($video['url'] ?? ''),
         ],
         'link' => [
             'href' => hhs_sanitize_url($link['href'] ?? $d['link']['href']) ?: $d['link']['href'],
@@ -135,7 +159,7 @@ function hhs_normalize(array $data): array
                 continue;
             }
             $normalized = hhs_normalize_slide($slide, $i);
-            if ($normalized['image']['url'] !== '') {
+            if (hhs_slide_has_media($normalized)) {
                 $slides[] = $normalized;
             }
         }
@@ -200,7 +224,7 @@ function hhs_active_count(array $s): int
 {
     $n = 0;
     foreach ($s['slides'] as $slide) {
-        if (!empty($slide['enabled']) && !empty($slide['image']['url'])) {
+        if (!empty($slide['enabled']) && hhs_slide_has_media($slide)) {
             $n++;
         }
     }
@@ -223,7 +247,7 @@ function hhs_render_page(): void
             <div class="hhs-topbar">
                 <div>
                     <h1>HOVER 首頁主圖</h1>
-                    <p class="description">管理首頁 Hero 輪播：上傳圖片、設定連結與 CTA。前台支援自動輪播與拖曳切換。儲存後約 1 分鐘內同步至 Next.js。</p>
+                    <p class="description">管理首頁 Hero 輪播：每張可選圖片或影片、設定連結與 CTA。前台支援自動輪播與拖曳切換。儲存後約 1 分鐘內同步至 Next.js。</p>
                 </div>
                 <div class="hhs-topbar-actions">
                     <span class="hhs-status <?php echo !empty($s['enabled']) && $active_n ? 'is-live' : ''; ?>">
@@ -275,12 +299,12 @@ function hhs_render_page(): void
 
                         <div class="hhs-card">
                             <div class="hhs-card-head">
-                                <h2>輪播圖片</h2>
+                                <h2>輪播內容</h2>
                                 <button type="button" class="button button-secondary" id="hhs-add-slide">＋ 新增一張</button>
                             </div>
                             <div class="hhs-card-body">
                                 <div id="hhs-slides-list" class="hhs-slides"></div>
-                                <p class="description hhs-empty-hint" id="hhs-empty-hint">至少需一張有圖片的 slide 才會在前台顯示。</p>
+                                <p class="description hhs-empty-hint" id="hhs-empty-hint">至少需一張有圖片或影片的 slide 才會在前台顯示。</p>
                             </div>
                         </div>
                     </div>
@@ -389,17 +413,36 @@ function hhs_print_admin_styles(): void
         .hover-hero-admin .hhs-slide-title { font-size: 13px; font-weight: 700; color: #202223; }
         .hover-hero-admin .hhs-slide-actions { display: flex; gap: 4px; flex-wrap: wrap; }
         .hover-hero-admin .hhs-slide-body {
-            display: grid; grid-template-columns: 140px 1fr; gap: 14px; padding: 14px;
+            display: grid; grid-template-columns: 200px 1fr; gap: 14px; padding: 14px;
         }
         .hover-hero-admin .hhs-thumb {
-            aspect-ratio: 3/4; border-radius: 6px; border: 1px dashed #c3c4c7;
+            position: relative; aspect-ratio: 4/3; border-radius: 6px; border: 1px dashed #c3c4c7;
             background: #f6f7f7; overflow: hidden; display: flex; align-items: center; justify-content: center;
         }
-        .hover-hero-admin .hhs-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .hover-hero-admin .hhs-thumb img,
+        .hover-hero-admin .hhs-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; background: #111; }
         .hover-hero-admin .hhs-thumb-empty { font-size: 11px; color: #646970; text-align: center; padding: 8px; }
+        .hover-hero-admin .hhs-thumb-badge {
+            position: absolute; left: 6px; bottom: 6px; z-index: 1;
+            background: rgba(0,0,0,.72); color: #fff; font-size: 10px; font-weight: 700;
+            letter-spacing: .06em; padding: 3px 6px; border-radius: 3px; pointer-events: none;
+        }
+        .hover-hero-admin .hhs-media-meta {
+            margin-top: 6px; font-size: 11px; color: #646970; word-break: break-all; line-height: 1.35;
+        }
         .hover-hero-admin .hhs-slide-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; }
         .hover-hero-admin .hhs-slide-fields .hhs-field.full { grid-column: 1 / -1; }
         .hover-hero-admin .hhs-media-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+        .hover-hero-admin .hhs-media-type {
+            display: inline-flex; gap: 4px; background: #eef2f6; border-radius: 6px; padding: 3px;
+        }
+        .hover-hero-admin .hhs-media-type button {
+            border: 0; background: transparent; border-radius: 4px; padding: 5px 10px;
+            font-size: 12px; font-weight: 600; color: #646970; cursor: pointer;
+        }
+        .hover-hero-admin .hhs-media-type button.is-on {
+            background: #fff; color: #1d2327; box-shadow: 0 1px 2px rgba(0,0,0,.08);
+        }
         .hover-hero-admin .hhs-preview { position: sticky; top: 32px; }
         .hover-hero-admin .hhs-preview-body {
             padding: 16px; background: #eef2f6;
@@ -408,7 +451,8 @@ function hhs_print_admin_styles(): void
             position: relative; width: 100%; aspect-ratio: 16/10; border-radius: 6px;
             overflow: hidden; background: #ddd;
         }
-        .hover-hero-admin .hhs-mock-hero img {
+        .hover-hero-admin .hhs-mock-hero img,
+        .hover-hero-admin .hhs-mock-hero video {
             width: 100%; height: 100%; object-fit: cover; object-position: top;
         }
         .hover-hero-admin .hhs-mock-cta {
@@ -456,21 +500,87 @@ function hhs_admin_footer_script(): void
 
         function esc(s){ return $('<div/>').text(s || '').html(); }
 
+        function slideIndex($el){
+            var i = parseInt($el.attr('data-index'), 10);
+            return Number.isFinite(i) ? i : 0;
+        }
+
+        function ensureSlide(i){
+            if (!state.slides[i]) return null;
+            if (!state.slides[i].mediaType) state.slides[i].mediaType = 'image';
+            if (!state.slides[i].video) state.slides[i].video = { url: '' };
+            if (!state.slides[i].image) state.slides[i].image = { url: '', alt: 'HOVER' };
+            if (typeof state.slides[i].image.url !== 'string') state.slides[i].image.url = '';
+            if (typeof state.slides[i].video.url !== 'string') state.slides[i].video.url = '';
+            return state.slides[i];
+        }
+
+        (state.slides || []).forEach(function(_, i){ ensureSlide(i); });
+
+        function fileLabel(url){
+            if (!url) return '';
+            try {
+                var path = String(url).split('?')[0];
+                var name = path.substring(path.lastIndexOf('/') + 1);
+                return decodeURIComponent(name || url);
+            } catch (e) {
+                return url;
+            }
+        }
+
+        function mediaUrl(att){
+            if (!att) return '';
+            return att.url || att.link || (att.sizes && att.sizes.full && att.sizes.full.url) || '';
+        }
+
         function newSlide(){
             return {
                 id: 'slide-' + Date.now(),
                 enabled: true,
+                mediaType: 'image',
                 image: { url: '', alt: 'HOVER' },
+                video: { url: '' },
                 link: { href: '/products' },
                 cta: { label: 'SHOP NOW', show: true }
             };
         }
 
+        function slideHasMedia(s){
+            if (!s) return false;
+            if (s.mediaType === 'video') return !!(s.video && s.video.url);
+            return !!(s.image && s.image.url);
+        }
+
         function activeSlides(){
             if (!state.enabled) return [];
             return (state.slides || []).filter(function(s){
-                return s.enabled && s.image && s.image.url;
+                return s.enabled && slideHasMedia(s);
             });
+        }
+
+        function thumbHtml(slide){
+            var isVideo = slide.mediaType === 'video';
+            var poster = slide.image && slide.image.url ? slide.image.url : '';
+            var videoUrl = slide.video && slide.video.url ? slide.video.url : '';
+            var html = '';
+
+            if (isVideo) {
+                // 優先顯示海報圖；沒有海報才用影片第一幀（#t=0.1）
+                if (poster) {
+                    html = '<img src="'+esc(poster)+'" alt="">';
+                } else if (videoUrl) {
+                    html = '<video src="'+esc(videoUrl)+'#t=0.1" muted playsinline preload="auto"></video>';
+                } else {
+                    return '<div class="hhs-thumb-empty">尚未選影片</div>';
+                }
+                html += '<span class="hhs-thumb-badge">VIDEO</span>';
+                return html;
+            }
+
+            if (poster) {
+                return '<img src="'+esc(poster)+'" alt="">';
+            }
+            return '<div class="hhs-thumb-empty">尚未選圖</div>';
         }
 
         function renderSlides(){
@@ -480,28 +590,47 @@ function hhs_admin_footer_script(): void
             }
 
             state.slides.forEach(function(slide, i){
-                var thumb = slide.image && slide.image.url
-                    ? '<img src="'+esc(slide.image.url)+'" alt="">'
-                    : '<div class="hhs-thumb-empty">尚未選圖</div>';
+                ensureSlide(i);
+                slide = state.slides[i];
+                var isVideo = slide.mediaType === 'video';
+                var meta = '';
+                if (isVideo && slide.video.url) {
+                    meta = '<div class="hhs-media-meta">影片：'+esc(fileLabel(slide.video.url))+'</div>';
+                    if (slide.image.url) meta += '<div class="hhs-media-meta">海報：'+esc(fileLabel(slide.image.url))+'</div>';
+                } else if (!isVideo && slide.image.url) {
+                    meta = '<div class="hhs-media-meta">'+esc(fileLabel(slide.image.url))+'</div>';
+                }
 
                 var html = '<div class="hhs-slide" data-index="'+i+'">';
                 html += '<div class="hhs-slide-head">';
-                html += '<span class="hhs-slide-title">Slide '+(i+1)+'</span>';
+                html += '<span class="hhs-slide-title">Slide '+(i+1)+' · '+(isVideo ? '影片' : '圖片')+'</span>';
                 html += '<div class="hhs-slide-actions">';
                 html += '<button type="button" class="button button-small hhs-move" data-dir="-1"'+(i===0?' disabled':'')+'>↑</button>';
                 html += '<button type="button" class="button button-small hhs-move" data-dir="1"'+(i===state.slides.length-1?' disabled':'')+'>↓</button>';
                 html += '<button type="button" class="button button-small hhs-remove"'+(state.slides.length<=1?' disabled':'')+'>刪除</button>';
                 html += '</div></div>';
                 html += '<div class="hhs-slide-body">';
-                html += '<div><div class="hhs-thumb" data-thumb="'+i+'">'+thumb+'</div>';
+                html += '<div><div class="hhs-thumb" data-thumb="'+i+'">'+thumbHtml(slide)+'</div>';
+                html += meta;
                 html += '<div class="hhs-media-actions">';
-                html += '<button type="button" class="button button-primary button-small hhs-pick" data-index="'+i+'">選圖</button>';
+                if (isVideo) {
+                    html += '<button type="button" class="button button-primary button-small hhs-pick-video" data-index="'+i+'">選影片</button>';
+                    html += '<button type="button" class="button button-small hhs-pick-poster" data-index="'+i+'">海報圖（選填）</button>';
+                } else {
+                    html += '<button type="button" class="button button-primary button-small hhs-pick" data-index="'+i+'">選圖</button>';
+                }
                 html += '<button type="button" class="button button-small hhs-clear" data-index="'+i+'">清除</button>';
                 html += '</div></div>';
                 html += '<div class="hhs-slide-fields">';
                 html += '<label class="hhs-switch hhs-span-2"><input type="checkbox" class="hhs-enabled" data-index="'+i+'"'+(slide.enabled?' checked':'')+'>';
                 html += '<span class="hhs-switch-ui"></span><span class="hhs-switch-label">啟用此張</span></label>';
-                html += '<div class="hhs-field full"><label class="hhs-label">圖片替代文字</label>';
+                html += '<div class="hhs-field full"><label class="hhs-label">呈現方式</label>';
+                html += '<div class="hhs-media-type">';
+                html += '<button type="button" class="hhs-set-type'+(isVideo?'':' is-on')+'" data-index="'+i+'" data-type="image">圖片</button>';
+                html += '<button type="button" class="hhs-set-type'+(isVideo?' is-on':'')+'" data-index="'+i+'" data-type="video">影片</button>';
+                html += '</div>';
+                html += '<p class="description" style="margin:6px 0 0">'+(isVideo ? '建議上傳 MP4；海報圖會顯示在左側指示圖。' : '建議使用高解析橫式圖片。')+'</p></div>';
+                html += '<div class="hhs-field full"><label class="hhs-label">'+(isVideo ? '影片／海報替代文字' : '圖片替代文字')+'</label>';
                 html += '<input type="text" class="regular-text hhs-alt" data-index="'+i+'" value="'+esc(slide.image.alt)+'"></div>';
                 html += '<div class="hhs-field full"><label class="hhs-label">點擊連結</label>';
                 html += '<input type="text" class="regular-text hhs-href" data-index="'+i+'" value="'+esc(slide.link.href)+'" placeholder="/products"></div>';
@@ -527,14 +656,19 @@ function hhs_admin_footer_script(): void
 
             var slides = activeSlides();
             if (!slides.length) {
-                $('#hhs-live-preview').html('<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#646970;font-size:12px">尚無啟用中的主圖</div>');
+                $('#hhs-live-preview').html('<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#646970;font-size:12px">尚無啟用中的主圖／影片</div>');
                 $('#hhs-preview-dots').empty();
                 return;
             }
 
             if (previewIndex >= slides.length) previewIndex = 0;
             var slide = slides[previewIndex];
-            var html = '<img src="'+esc(slide.image.url)+'" alt="'+esc(slide.image.alt)+'">';
+            var html = '';
+            if (slide.mediaType === 'video' && slide.video && slide.video.url) {
+                html = '<video src="'+esc(slide.video.url)+'"'+(slide.image && slide.image.url ? ' poster="'+esc(slide.image.url)+'"' : '')+' muted autoplay loop playsinline></video>';
+            } else {
+                html = '<img src="'+esc(slide.image.url)+'" alt="'+esc(slide.image.alt)+'">';
+            }
             if (slide.cta && slide.cta.show && slide.cta.label) {
                 html += '<div class="hhs-mock-cta">'+esc(slide.cta.label)+'</div>';
             }
@@ -553,15 +687,15 @@ function hhs_admin_footer_script(): void
         });
 
         $(document).on('click', '.hhs-remove', function(){
-            var i = $(this).closest('.hhs-slide').data('index');
+            var i = slideIndex($(this).closest('.hhs-slide'));
             if (state.slides.length <= 1) return;
             state.slides.splice(i, 1);
             renderSlides();
         });
 
         $(document).on('click', '.hhs-move', function(){
-            var i = $(this).closest('.hhs-slide').data('index');
-            var dir = parseInt($(this).data('dir'), 10);
+            var i = slideIndex($(this).closest('.hhs-slide'));
+            var dir = parseInt($(this).attr('data-dir'), 10);
             var j = i + dir;
             if (j < 0 || j >= state.slides.length) return;
             var tmp = state.slides[i];
@@ -570,44 +704,125 @@ function hhs_admin_footer_script(): void
             renderSlides();
         });
 
+        $(document).on('click', '.hhs-set-type', function(){
+            var i = slideIndex($(this));
+            var type = $(this).attr('data-type');
+            var slide = ensureSlide(i);
+            if (!slide) return;
+            slide.mediaType = type === 'video' ? 'video' : 'image';
+            renderSlides();
+        });
+
         $(document).on('click', '.hhs-pick', function(){
             if (typeof wp === 'undefined' || !wp.media) {
                 alert('媒體庫尚未載入，請重新整理頁面後再試。');
                 return;
             }
-            var i = $(this).data('index');
+            var i = slideIndex($(this));
             var frame = wp.media({ title: '選擇主圖', button: { text: '使用這張圖' }, multiple: false, library: { type: 'image' } });
             frame.on('select', function(){
-                var url = frame.state().get('selection').first().toJSON().url;
-                state.slides[i].image.url = url;
+                var url = mediaUrl(frame.state().get('selection').first().toJSON());
+                var slide = ensureSlide(i);
+                if (!slide || !url) {
+                    alert('無法取得圖片網址，請改選其他檔案。');
+                    return;
+                }
+                slide.mediaType = 'image';
+                slide.image.url = url;
+                renderSlides();
+            });
+            frame.open();
+        });
+
+        $(document).on('click', '.hhs-pick-video', function(){
+            if (typeof wp === 'undefined' || !wp.media) {
+                alert('媒體庫尚未載入，請重新整理頁面後再試。');
+                return;
+            }
+            var i = slideIndex($(this));
+            var frame = wp.media({
+                title: '選擇主視覺影片',
+                button: { text: '使用這支影片' },
+                multiple: false,
+                library: { type: 'video' }
+            });
+            frame.on('select', function(){
+                var att = frame.state().get('selection').first().toJSON();
+                var url = mediaUrl(att);
+                var slide = ensureSlide(i);
+                if (!slide || !url) {
+                    alert('無法取得影片網址，請確認檔案已上傳完成後再選一次。');
+                    return;
+                }
+                slide.mediaType = 'video';
+                slide.video.url = url;
+                // WP 影片常附帶 icon／預覽圖，可當暫時海報
+                if (!slide.image.url) {
+                    var poster = (att.image && (att.image.src || att.image.url))
+                        || (att.thumb && (att.thumb.src || att.thumb.url))
+                        || '';
+                    // 略過 WP 預設的 video.png icon（通常不含實際幀）
+                    if (poster && poster.indexOf('/images/media/video') === -1) {
+                        slide.image.url = poster;
+                    }
+                }
+                renderSlides();
+            });
+            frame.open();
+        });
+
+        $(document).on('click', '.hhs-pick-poster', function(){
+            if (typeof wp === 'undefined' || !wp.media) {
+                alert('媒體庫尚未載入，請重新整理頁面後再試。');
+                return;
+            }
+            var i = slideIndex($(this));
+            var frame = wp.media({ title: '選擇影片海報圖', button: { text: '使用這張圖' }, multiple: false, library: { type: 'image' } });
+            frame.on('select', function(){
+                var url = mediaUrl(frame.state().get('selection').first().toJSON());
+                var slide = ensureSlide(i);
+                if (!slide || !url) {
+                    alert('無法取得圖片網址，請改選其他檔案。');
+                    return;
+                }
+                slide.mediaType = 'video';
+                slide.image.url = url;
                 renderSlides();
             });
             frame.open();
         });
 
         $(document).on('click', '.hhs-clear', function(){
-            var i = $(this).data('index');
-            state.slides[i].image.url = '';
+            var i = slideIndex($(this));
+            var slide = ensureSlide(i);
+            if (!slide) return;
+            slide.image.url = '';
+            slide.video.url = '';
             renderSlides();
         });
 
         $(document).on('input change', '.hhs-alt', function(){
-            state.slides[$(this).data('index')].image.alt = $(this).val();
+            var slide = ensureSlide(slideIndex($(this)));
+            if (slide) slide.image.alt = $(this).val();
             renderPreview();
         });
         $(document).on('input change', '.hhs-href', function(){
-            state.slides[$(this).data('index')].link.href = $(this).val();
+            var slide = ensureSlide(slideIndex($(this)));
+            if (slide) slide.link.href = $(this).val();
         });
         $(document).on('input change', '.hhs-cta-label', function(){
-            state.slides[$(this).data('index')].cta.label = $(this).val();
+            var slide = ensureSlide(slideIndex($(this)));
+            if (slide) slide.cta.label = $(this).val();
             renderPreview();
         });
         $(document).on('change', '.hhs-enabled', function(){
-            state.slides[$(this).data('index')].enabled = $(this).is(':checked');
+            var slide = ensureSlide(slideIndex($(this)));
+            if (slide) slide.enabled = $(this).is(':checked');
             renderPreview();
         });
         $(document).on('change', '.hhs-cta-show', function(){
-            state.slides[$(this).data('index')].cta.show = $(this).is(':checked');
+            var slide = ensureSlide(slideIndex($(this)));
+            if (slide) slide.cta.show = $(this).is(':checked');
             renderPreview();
         });
         $(document).on('input change', '[data-field]', renderPreview);
