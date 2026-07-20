@@ -43,7 +43,7 @@ export default function ProductCard({
 
         <div className="flex items-center gap-4 pt-1">
           {soldOut ? (
-            <span className="text-[14px] font-extrabold text-[#252525]">SOLD OUT</span>
+            <span className="text-[14px] font-extrabold text-[#252525] line-through">SOLD OUT</span>
           ) : (
             <>
               {originalPrice && (

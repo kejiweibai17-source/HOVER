@@ -62,7 +62,7 @@ function SubAccordionPanel({
                 open ? "max-h-[800px] opacity-100" : "max-h-0 opacity-0"
               }`}
             >
-              <div className="space-y-3 px-4 pb-4 pt-1 text-[12px] leading-[2] tracking-[0.04em] text-[#555] md:px-5 md:pb-5 md:text-[13px]">
+              <div className="space-y-3 px-4 pb-4 pt-1 text-[12px] leading-[2] tracking-[0.04em] text-[#374151] md:px-5 md:pb-5 md:text-[13px]">
                 {sub.paragraphs.map((p, idx) => (
                   <p key={`${sub.title}-p-${idx}`}>{p}</p>
                 ))}
@@ -70,7 +70,7 @@ function SubAccordionPanel({
                   <ul className="list-none space-y-2 pl-0">
                     {sub.list.map((item) => (
                       <li key={item} className="flex gap-2">
-                        <span className="shrink-0 text-[#555]">·</span>
+                        <span className="shrink-0 text-[#374151]">·</span>
                         <span>{item}</span>
                       </li>
                     ))}
@@ -80,12 +80,12 @@ function SubAccordionPanel({
                   <ul className="list-none space-y-2 pl-0">
                     {sub.links.map((link) => (
                       <li key={link.href} className="flex gap-2">
-                        <span className="shrink-0 text-[#555]">・</span>
+                        <span className="shrink-0 text-[#374151]">・</span>
                         <a
                           href={link.href}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="text-black underline underline-offset-2 transition-opacity hover:opacity-70"
+                          className="text-[#374151] underline underline-offset-2 transition-opacity hover:opacity-70"
                         >
                           {link.label}
                         </a>
@@ -149,7 +149,7 @@ function PolicyAccordionItem({
             {section.subSections ? (
               <>
                 {section.paragraphs && section.paragraphs.length > 0 && (
-                  <div className="mb-4 space-y-3 px-4 text-[12px] leading-[2] tracking-[0.04em] text-[#555] md:mb-5 md:px-5 md:text-[13px]">
+                  <div className="mb-4 space-y-3 px-4 text-[12px] leading-[2] tracking-[0.04em] text-[#374151] md:mb-5 md:px-5 md:text-[13px]">
                     {section.paragraphs.map((p, idx) => (
                       <p key={`${section.num}-intro-${idx}`}>{p}</p>
                     ))}
@@ -158,14 +158,14 @@ function PolicyAccordionItem({
                 <SubAccordionPanel subSections={section.subSections} />
               </>
             ) : (
-              <div className="space-y-3 px-4 text-[12px] leading-[2] tracking-[0.04em] text-[#555] md:px-5 md:text-[13px]">
+              <div className="space-y-3 px-4 text-[12px] leading-[2] tracking-[0.04em] text-[#374151] md:px-5 md:text-[13px]">
                 {section.list ? (
                   <>
                     {section.paragraphs?.[0] && <p>{section.paragraphs[0]}</p>}
                     <ul className="list-none space-y-2 pl-0">
                       {section.list.map((item) => (
                         <li key={item} className="flex gap-2">
-                          <span className="shrink-0 text-[#555]">・</span>
+                          <span className="shrink-0 text-[#374151]">・</span>
                           <span>{item}</span>
                         </li>
                       ))}

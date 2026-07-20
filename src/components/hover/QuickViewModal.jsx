@@ -285,7 +285,7 @@ export default function QuickViewModal({ product, onClose }) {
                   {/* Price */}
                   <div className="mb-5 flex items-center gap-3">
                     {product.soldOut ? (
-                      <span className="text-[18px] font-bold text-[#222]">
+                      <span className="text-[18px] font-bold text-[#222] line-through">
                         SOLD OUT
                       </span>
                     ) : (

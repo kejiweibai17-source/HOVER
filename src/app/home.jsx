@@ -218,7 +218,7 @@ function ProductCard({ product }) {
             NT {product.originalPrice}
           </span>
           {product.soldOut && (
-            <span className="text-[12px] font-bold text-[#222] md:text-[13px]">
+            <span className="text-[12px] font-bold text-[#222] line-through md:text-[13px]">
               SOLD OUT
             </span>
           )}

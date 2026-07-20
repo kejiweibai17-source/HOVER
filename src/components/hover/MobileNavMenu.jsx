@@ -37,7 +37,7 @@ export default function MobileNavMenu({
   };
 
   const linkClass =
-    "block border-b border-[#e8e8e8] py-4 text-[14px] font-bold tracking-[0.18em] text-black transition-colors hover:bg-[#fafafa]";
+    "block border-b border-[#e8e8e8] py-4 text-[14px] font-semibold tracking-[0.18em] text-black transition-colors hover:bg-[#fafafa]";
 
   return (
     <AnimatePresence>

@@ -8,7 +8,6 @@ import HoverIcon from "@/components/hover/HoverIcon";
 import CartIcon from "@/components/hover/CartIcon";
 import WishlistIcon from "@/components/hover/WishlistIcon";
 import { useCartStore } from "@/lib/cartStore";
-import { useWishlistStore } from "@/lib/wishlistStore";
 import { useAuthStore } from "@/lib/authStore";
 import { useSearchStore, selectSearchOpen } from "@/lib/searchStore";
 import HoverLogo from "@/components/hover/HoverLogo";
@@ -70,7 +69,7 @@ function CategoryNavItem({ category }) {
     <div className="group relative">
       <Link
         href={category.href}
-        className="inline-flex items-center text-[15px] xl:text-[16px] font-bold tracking-wide text-black transition-opacity hover:opacity-50"
+        className="inline-flex items-center text-[15px] xl:text-[16px] font-semibold tracking-wide text-black transition-opacity hover:opacity-50"
       >
         {category.label}
       </Link>
@@ -107,8 +106,6 @@ export default function HoverHeader({
   const pathname = usePathname();
   const cartItems = useCartStore((state) => state.items) || [];
   const cartCount = cartItems.reduce((t, i) => t + (i.qty || 0), 0);
-  const wishlistItems = useWishlistStore((state) => state.items);
-  const wishlistCount = wishlistItems.length;
   const loggedIn = useAuthStore((state) => state.loggedIn);
   const authUser = useAuthStore((state) => state.user);
   const refreshAuth = useAuthStore((state) => state.refreshAuth);
@@ -338,7 +335,7 @@ export default function HoverHeader({
             <nav className="hidden flex-wrap items-center justify-center gap-x-4 gap-y-2 md:flex lg:gap-x-5">
               <Link
                 href="/products"
-                className="text-[15px] xl:text-[16px] font-bold tracking-wide text-black transition-opacity hover:opacity-50"
+                className="text-[15px] xl:text-[16px] font-semibold tracking-wide text-black transition-opacity hover:opacity-50"
               >
                 ALL ITEMS
               </Link>
@@ -382,11 +379,6 @@ export default function HoverHeader({
                 }}
               >
                 <WishlistIcon size={HEADER_ICON.desktop.wishlist} />
-                {wishlistCount > 0 && (
-                  <span className="absolute right-0 top-0 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#2a514d] px-0.5 text-[9px] font-bold text-white">
-                    {wishlistCount > 99 ? "99+" : wishlistCount}
-                  </span>
-                )}
               </HeaderIconButton>
               <Link
                 href="/cart"

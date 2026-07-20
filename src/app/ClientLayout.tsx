@@ -14,6 +14,7 @@ import "aos/dist/aos.css";
 import GoTopButton from "@/components/hover/GoTopButton";
 import HoverToast from "@/components/hover/HoverToast";
 import SearchPanel from "@/components/hover/SearchPanel";
+import CookieConsentBanner from "@/components/hover/CookieConsentBanner";
 import { usePathname } from "next/navigation";
 
 function ScrollToTopOnNav() {
@@ -52,6 +53,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
         <SearchPanel />
         <HoverToast />
         <GoTopButton />
+        <CookieConsentBanner />
 
         {/* Global HOVER footer */}
         <HoverFooter />

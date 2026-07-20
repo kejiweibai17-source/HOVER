@@ -1,20 +1,37 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import { Link } from "next-view-transitions";
 import { AnimatePresence, motion } from "framer-motion";
-import { X } from "lucide-react";
+import { Gift, X } from "lucide-react";
+import { useAuthStore } from "@/lib/authStore";
 import {
   DEFAULT_POPUP,
-  getPopupDismissKey,
+  isPopupDismissed,
   isPopupVisible,
+  markPopupDismissed,
   normalizePopupSettings,
 } from "@/lib/popupDefaults";
 
-function PopupButton({ label, href }) {
-  const className =
-    "inline-flex min-w-[160px] items-center justify-center bg-[#2a514d] px-8 py-3.5 text-[12px] tracking-[0.16em] text-white transition-opacity hover:opacity-85 md:text-[13px]";
+function useIsMobile(breakpoint = 768) {
+  const [mobile, setMobile] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${breakpoint - 1}px)`);
+    const apply = () => setMobile(mq.matches);
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, [breakpoint]);
+  return mobile;
+}
+
+function CtaButton({ label, href, light = false, onNavigate }) {
+  const className = light
+    ? "inline-flex min-w-[148px] items-center justify-center bg-white px-8 py-3.5 text-[12px] font-semibold tracking-[0.14em] text-[#222] transition-opacity hover:opacity-85 md:text-[13px]"
+    : "inline-flex min-w-[148px] items-center justify-center bg-[#2a514d] px-8 py-3.5 text-[12px] font-semibold tracking-[0.14em] text-white transition-opacity hover:opacity-85 md:text-[13px]";
+
+  const onClick = () => onNavigate?.();
 
   if (href.startsWith("http")) {
     return (
@@ -23,6 +40,7 @@ function PopupButton({ label, href }) {
         target="_blank"
         rel="noopener noreferrer"
         className={className}
+        onClick={onClick}
       >
         {label}
       </a>
@@ -30,9 +48,20 @@ function PopupButton({ label, href }) {
   }
 
   return (
-    <Link href={href} className={className}>
+    <Link href={href} className={className} onClick={onClick}>
       {label}
     </Link>
+  );
+}
+
+function GiftIcon({ color = "#2a514d" }) {
+  return (
+    <div
+      className="mx-auto flex h-8 w-8 shrink-0 items-center justify-center md:h-9 md:w-9"
+      style={{ color }}
+    >
+      <Gift size={24} strokeWidth={1.35} aria-hidden />
+    </div>
   );
 }
 
@@ -40,64 +69,299 @@ export default function HoverPopup() {
   const [popup, setPopup] = useState(DEFAULT_POPUP);
   const [open, setOpen] = useState(false);
   const [ready, setReady] = useState(false);
+  const isMobile = useIsMobile();
+  const loggedIn = useAuthStore((s) => s.loggedIn);
+  const checkAuth = useAuthStore((s) => s.checkAuth);
 
   useEffect(() => {
     let cancelled = false;
+    let delayTimer;
+    let scrollHandler;
 
-    fetch("/api/popup")
-      .then((res) => res.json())
-      .then((data) => {
+    const cleanupListeners = () => {
+      if (delayTimer) window.clearTimeout(delayTimer);
+      if (scrollHandler) {
+        window.removeEventListener("scroll", scrollHandler);
+        scrollHandler = undefined;
+      }
+    };
+
+    const armTrigger = (next) => {
+      const { delaySec, scrollPercent } = next.trigger;
+      let opened = false;
+
+      const show = () => {
+        if (opened || cancelled) return;
+        opened = true;
+        cleanupListeners();
+        setOpen(true);
+      };
+
+      const useDelay = delaySec > 0;
+      const useScroll = scrollPercent > 0;
+
+      if (!useDelay && !useScroll) {
+        show();
+        return;
+      }
+
+      if (useDelay) {
+        delayTimer = window.setTimeout(show, delaySec * 1000);
+      }
+
+      if (useScroll) {
+        scrollHandler = () => {
+          const doc = document.documentElement;
+          const max = doc.scrollHeight - window.innerHeight;
+          const pct = max <= 0 ? 100 : (window.scrollY / max) * 100;
+          if (pct >= scrollPercent) show();
+        };
+        window.addEventListener("scroll", scrollHandler, { passive: true });
+        scrollHandler();
+      }
+    };
+
+    (async () => {
+      await checkAuth().catch(() => false);
+      if (cancelled) return;
+
+      try {
+        const res = await fetch("/api/popup");
+        const data = await res.json();
         if (cancelled) return;
+
         const next = normalizePopupSettings(data?.popup);
         setPopup(next);
         setReady(true);
 
         if (!isPopupVisible(next)) return;
+        if (next.hideForMembers && useAuthStore.getState().loggedIn) return;
+        if (isPopupDismissed(next.version, next.frequency)) return;
 
-        const dismissKey = getPopupDismissKey(next.version);
-        if (typeof window !== "undefined" && sessionStorage.getItem(dismissKey)) {
-          return;
-        }
-
-        setOpen(true);
-      })
-      .catch(() => {
+        armTrigger(next);
+      } catch {
         if (!cancelled) setReady(true);
-      });
+      }
+    })();
 
     return () => {
       cancelled = true;
+      cleanupListeners();
     };
-  }, []);
+  }, [checkAuth]);
 
   const handleClose = useCallback(() => {
     setOpen(false);
-    if (typeof window !== "undefined") {
-      sessionStorage.setItem(getPopupDismissKey(popup.version), "1");
-    }
-  }, [popup.version]);
+    markPopupDismissed(popup.version, popup.frequency);
+  }, [popup.version, popup.frequency]);
 
   useEffect(() => {
     if (!open) return undefined;
-
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-
     const onKey = (e) => {
       if (e.key === "Escape") handleClose();
     };
     window.addEventListener("keydown", onKey);
-
     return () => {
       document.body.style.overflow = prev;
       window.removeEventListener("keydown", onKey);
     };
   }, [open, handleClose]);
 
-  if (!ready || !isPopupVisible(popup)) return null;
+  const desktopUrl = popup.imageDesktop.url || popup.image.url;
+  const mobileUrl = popup.imageMobile.url || desktopUrl;
+  const imageUrl = isMobile ? mobileUrl : desktopUrl;
+  const imageAlt = popup.imageDesktop.alt || popup.title || "公告圖片";
+  const showButton = popup.button.show && popup.button.label;
 
-  const { title, body, image, button } = popup;
-  const showButton = button.show && button.label;
+  const suppress =
+    !ready ||
+    !isPopupVisible(popup) ||
+    (popup.hideForMembers && loggedIn);
+
+  const colors = popup.colors || DEFAULT_POPUP.colors;
+
+  const content = useMemo(() => {
+    if (popup.layout === "full") {
+      return (
+        <div className="relative aspect-[9/16] w-full overflow-hidden md:aspect-[16/9]">
+          {imageUrl ? (
+            <Image
+              src={imageUrl}
+              alt={imageAlt}
+              fill
+              className="object-cover"
+              sizes="(max-width: 768px) 100vw, 920px"
+              priority
+            />
+          ) : (
+            <div className="absolute inset-0 bg-[#2a514d]" />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/25 to-black/10" />
+          <button
+            type="button"
+            onClick={handleClose}
+            className="absolute right-3 top-3 z-20 flex h-9 w-9 items-center justify-center text-white transition-opacity hover:opacity-70 md:right-4 md:top-4"
+            aria-label="關閉"
+          >
+            <X size={22} strokeWidth={1.5} />
+          </button>
+          <div className="absolute inset-x-0 bottom-0 z-10 flex flex-col items-center gap-4 px-6 pb-10 pt-16 text-center md:items-start md:gap-5 md:px-12 md:pb-12 md:text-left">
+            {popup.title && (
+              <h2
+                id="hover-popup-title"
+                className="max-w-[520px] text-[22px] font-semibold leading-[1.4] tracking-[0.02em] md:text-[28px]"
+                style={{ color: colors.title === "#222222" ? "#ffffff" : colors.title }}
+              >
+                {popup.title}
+              </h2>
+            )}
+            {popup.body && (
+              <p
+                className="mx-auto max-w-[420px] whitespace-pre-line text-[13px] leading-[1.8] tracking-[0.02em] md:mx-0 md:text-[15px]"
+                style={{
+                  color:
+                    colors.body === "#444444" ? "rgba(255,255,255,0.9)" : colors.body,
+                }}
+              >
+                {popup.body}
+              </p>
+            )}
+            {showButton && (
+              <CtaButton
+                label={popup.button.label}
+                href={popup.button.href || "/"}
+                light
+                onNavigate={handleClose}
+              />
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // split layout — desktop 55/45；手機圖 40% / 文 60%
+    const imageFirst = isMobile || popup.imagePosition !== "right";
+
+    const imageBlock = (
+      <div
+        className={`relative w-full overflow-hidden bg-[#eee] ${
+          isMobile ? "h-[38%] min-h-[140px] max-h-[220px] shrink-0" : "h-full min-h-[360px]"
+        }`}
+      >
+        {imageUrl ? (
+          <Image
+            src={imageUrl}
+            alt={imageAlt}
+            fill
+            className="object-cover"
+            sizes="(max-width: 768px) 100vw, 520px"
+            priority
+          />
+        ) : null}
+        {isMobile && (
+          <button
+            type="button"
+            onClick={handleClose}
+            className="absolute right-3 top-3 z-20 flex h-9 w-9 items-center justify-center text-white drop-shadow transition-opacity hover:opacity-70"
+            aria-label="關閉"
+          >
+            <X size={20} strokeWidth={1.5} />
+          </button>
+        )}
+      </div>
+    );
+
+    const textBlock = (
+      <div
+        className={`relative flex flex-col items-center justify-center gap-3 bg-white px-6 text-center md:gap-3.5 md:px-9 md:py-11 ${
+          isMobile ? "min-h-0 flex-1 overflow-y-auto py-6" : "py-9"
+        }`}
+      >
+        {!isMobile && (
+          <button
+            type="button"
+            onClick={handleClose}
+            className="absolute right-3 top-3 z-20 flex h-9 w-9 items-center justify-center text-[#222] transition-opacity hover:opacity-70 md:right-4 md:top-4"
+            aria-label="關閉"
+          >
+            <X size={20} strokeWidth={1.5} />
+          </button>
+        )}
+
+        {popup.title && (
+          <h2
+            id="hover-popup-title"
+            className="max-w-[280px] font-serif text-[22px] font-medium leading-[1.35] tracking-[0.04em] md:max-w-[300px] md:text-[28px]"
+            style={{ color: colors.title }}
+          >
+            {popup.title}
+          </h2>
+        )}
+        {popup.subtitle && (
+          <p
+            className="text-[13px] leading-snug tracking-[0.06em] md:text-[14px]"
+            style={{ color: colors.subtitle }}
+          >
+            {popup.subtitle}
+          </p>
+        )}
+        {popup.showGiftIcon && <GiftIcon color={colors.title} />}
+        {popup.body && (
+          <p
+            className="max-w-[280px] whitespace-pre-line text-[12px] leading-[1.75] tracking-[0.02em] md:text-[13px]"
+            style={{ color: colors.body }}
+          >
+            {popup.body}
+          </p>
+        )}
+        {showButton && (
+          <div className="pt-1">
+            <CtaButton
+              label={popup.button.label}
+              href={popup.button.href || "/"}
+              onNavigate={handleClose}
+            />
+          </div>
+        )}
+        {popup.footnote && (
+          <p
+            className="max-w-[260px] text-[10px] leading-relaxed tracking-[0.02em] md:text-[11px]"
+            style={{ color: colors.footnote }}
+          >
+            {popup.footnote}
+          </p>
+        )}
+      </div>
+    );
+
+    return (
+      <div
+        className={`overflow-hidden bg-white ${
+          isMobile
+            ? "flex h-[min(78vh,640px)] flex-col"
+            : popup.imagePosition === "right"
+              ? "grid md:grid-cols-[45%_55%] md:items-stretch"
+              : "grid md:grid-cols-[55%_45%] md:items-stretch"
+        }`}
+      >
+        {imageFirst ? (
+          <>
+            {imageBlock}
+            {textBlock}
+          </>
+        ) : (
+          <>
+            {textBlock}
+            {imageBlock}
+          </>
+        )}
+      </div>
+    );
+  }, [popup, colors, imageUrl, imageAlt, isMobile, showButton, handleClose]);
+
+  if (suppress) return null;
 
   return (
     <AnimatePresence>
@@ -120,55 +384,18 @@ export default function HoverPopup() {
           />
 
           <motion.div
-            className="relative z-10 w-full max-w-[420px] overflow-hidden bg-white shadow-[0_24px_80px_rgba(0,0,0,0.28)] md:max-w-[480px]"
+            className={`relative z-10 w-full overflow-hidden shadow-[0_24px_80px_rgba(0,0,0,0.28)] ${
+              popup.layout === "full"
+                ? "max-w-[360px] md:max-w-[920px]"
+                : "max-w-[420px] md:max-w-[880px]"
+            }`}
             initial={{ opacity: 0, y: 24, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 16, scale: 0.98 }}
             transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              type="button"
-              onClick={handleClose}
-              className="absolute right-3 top-3 z-20 flex h-9 w-9 items-center justify-center rounded-full bg-white/95 text-[#222] shadow-sm transition-opacity hover:opacity-70 md:right-4 md:top-4"
-              aria-label="關閉"
-            >
-              <X size={18} strokeWidth={1.5} />
-            </button>
-
-            {image.url && (
-              <div className="relative aspect-[16/10] w-full bg-[#f5f5f5]">
-                <Image
-                  src={image.url}
-                  alt={image.alt || title || "公告圖片"}
-                  fill
-                  className="object-cover"
-                  sizes="(max-width: 768px) 90vw, 480px"
-                  priority
-                />
-              </div>
-            )}
-
-            <div className="px-6 py-7 text-center md:px-8 md:py-8">
-              {title && (
-                <h2
-                  id="hover-popup-title"
-                  className="mb-3 text-[18px] font-normal tracking-[0.1em] text-[#222] md:text-[20px]"
-                >
-                  {title}
-                </h2>
-              )}
-
-              {body && (
-                <p className="mb-6 whitespace-pre-line text-[13px] leading-[1.8] tracking-[0.04em] text-[#666] md:text-[14px]">
-                  {body}
-                </p>
-              )}
-
-              {showButton && (
-                <PopupButton label={button.label} href={button.href || "/"} />
-              )}
-            </div>
+            {content}
           </motion.div>
         </motion.div>
       )}

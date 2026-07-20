@@ -1136,11 +1136,6 @@ export default function AccountPage() {
               onClick={() => switchTab("favorites")}
             >
               收藏
-              {wishlistItems.length > 0 && (
-                <span className="ml-1.5 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-[#2a514d] px-1 text-[9px] font-bold text-white">
-                  {wishlistItems.length}
-                </span>
-              )}
             </AccountTabButton>
             {isAdmin && (
               <AccountTabButton
@@ -1332,76 +1327,8 @@ export default function AccountPage() {
                   </div>
                 </div>
 
-                {/* 狀態與優惠券 — 左右排版 */}
-                <div className="grid grid-cols-1 gap-6 lg:grid-cols-2 lg:gap-8">
-                  <ShellCard title="狀態與詳情">
-                    <div className="flex flex-col gap-3">
-                      <div className="flex justify-between items-center border-b border-[#ebebeb] pb-3">
-                        <span className="text-[#6d7175] text-sm">
-                          帳戶狀態
-                        </span>
-                        <StatusPill status="正常運作" type="account" />
-                      </div>
-                      <div className="flex justify-between items-center border-b border-[#ebebeb] pb-3">
-                        <span className="text-[#6d7175] text-sm">
-                          折扣優惠
-                        </span>
-                        <span className="font-bold text-emerald-600 text-sm">
-                          {membership?.discountLabel || "—"}
-                        </span>
-                      </div>
-                      <div className="pt-1">
-                        <span className="text-[#6d7175] text-sm block mb-2">
-                          生日
-                        </span>
-                        {!customer?.birthday ? (
-                          !isSettingBirthday ? (
-                            <button
-                              onClick={() => setIsSettingBirthday(true)}
-                              className="w-full border border-dashed border-[#c9cccf] bg-[#f9fafb] hover:bg-white text-[#202223] py-2 rounded-md text-sm font-medium transition-colors"
-                            >
-                              設定生日
-                            </button>
-                          ) : (
-                            <div className="flex flex-col gap-2">
-                              <input
-                                type="date"
-                                value={birthdayInput}
-                                onChange={(e) =>
-                                  setBirthdayInput(e.target.value)
-                                }
-                                className="w-full border border-[#c9cccf] rounded-md px-3 py-2 text-sm outline-none"
-                              />
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={handleUpdateBirthday}
-                                  disabled={birthdayLoading}
-                                  className="flex-1 bg-[#008060] text-white text-sm py-2 rounded-md hover:bg-[#006e52]"
-                                >
-                                  {birthdayLoading ? "..." : "儲存"}
-                                </button>
-                                <button
-                                  onClick={() => setIsSettingBirthday(false)}
-                                  className="flex-1 bg-white border border-[#c9cccf] text-[#202223] text-sm py-2 rounded-md hover:bg-[#f6f6f7]"
-                                >
-                                  取消
-                                </button>
-                              </div>
-                              <p className="text-[10px] text-rose-500 italic mt-1">
-                                * 生日填寫後將無法修改
-                              </p>
-                            </div>
-                          )
-                        ) : (
-                          <div className="font-bold text-[#202223] text-sm bg-gray-50 px-3 py-2 rounded border border-gray-100 flex items-center gap-2">
-                            <span className="text-rose-400">🎂</span>{" "}
-                            {customer.birthday}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </ShellCard>
-
+                {/* 獎勵與優惠券 */}
+                <div>
                   <ShellCard title="獎勵與優惠券">
                       <div className="flex flex-col gap-4">
                         <div className="flex items-center justify-between border-b border-[#ebebeb] pb-3">
@@ -2296,10 +2223,10 @@ export default function AccountPage() {
                               e.preventDefault();
                               removeFromWishlist(item.id);
                             }}
-                            className="absolute right-2 top-2 rounded-full bg-white/80 p-1.5 text-rose-500 backdrop-blur-sm transition-colors hover:bg-white"
+                            className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-rose-500 shadow-sm backdrop-blur-sm transition-colors hover:bg-white"
                             aria-label="移除收藏"
                           >
-                            <WishlistIcon active size={40} />
+                            <WishlistIcon active size={18} />
                           </button>
                         </Link>
                         <Link

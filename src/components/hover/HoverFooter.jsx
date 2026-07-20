@@ -368,8 +368,15 @@ export default function HoverFooter() {
         </div>
 
         <div className="hidden pb-10 pt-16 mt-0 text-center text-[12px] leading-relaxed tracking-[0.04em] text-white/70 md:mt-10 md:text-[13px] lg:block lg:pb-12 lg:pt-10">
-          {company && <p className="mb-1">{company}</p>}
-          <p>{shortCopyright}</p>
+          <p className="inline-flex flex-wrap items-center justify-center gap-x-2">
+            {company && <span>{company}</span>}
+            {company && shortCopyright && (
+              <span className="text-white/40" aria-hidden>
+                ·
+              </span>
+            )}
+            {shortCopyright && <span>{shortCopyright}</span>}
+          </p>
         </div>
       </div>
     </footer>

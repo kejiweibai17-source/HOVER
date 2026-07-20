@@ -3,13 +3,15 @@
  * HOVER — 首頁彈出公告（Popup Studio）
  *
  * 使用方式（WordPress 後台）：
- * 1. 安裝並啟用插件「Code Snippets」
- * 2. Snippets → Add New → 貼上本檔內容
- * 3. Run snippet：Everywhere
- * 4. 左側選單會出現「HOVER 首頁公告」
+ * 1. Code Snippets → Add New → 貼上本檔
+ * 2. Run snippet：Everywhere → 啟用
+ * 3. 左側選單「HOVER 首頁公告」
  *
- * REST API（給 Next.js）：
- * GET /wp-json/hover/v1/popup
+ * 版型：
+ * - split：左右分欄（可選圖片置左／置右；手機改上下）
+ * - full：滿版形象（圖片滿版＋疊加文字）
+ *
+ * REST API：GET /wp-json/hover/v1/popup
  */
 
 if (!defined('ABSPATH')) {
@@ -58,20 +60,46 @@ add_action('rest_api_init', function () {
 function hps_defaults(): array
 {
     return [
-        'enabled' => false,
-        'version' => '1',
-        'title'   => '全館滿 NT$2,000 享免運',
-        'body'    => '歡迎來到 HOVER 官方網站，探索最新系列與會員專屬優惠。',
-        'image'   => [
+        'enabled'        => false,
+        'version'        => '1',
+        'layout'         => 'split', // split | full
+        'imagePosition'  => 'left',  // left | right（僅 split）
+        'hideForMembers' => true,
+        'title'          => 'Join HOVER',
+        'subtitle'       => '加入會員',
+        'body'           => '立即獲得 NT$100 入會購物金',
+        'footnote'       => '詳情請參閱隱私權保護政策',
+        'showGiftIcon'   => true,
+        'colors'         => [
+            'title'    => '#222222',
+            'subtitle' => '#555555',
+            'body'     => '#444444',
+            'footnote' => '#999999',
+        ],
+        'imageDesktop'   => [
+            'url' => '',
+            'alt' => 'HOVER 公告',
+        ],
+        'imageMobile' => [
+            'url' => '',
+            'alt' => 'HOVER 公告',
+        ],
+        // 相容舊欄位 image → 對應桌機圖
+        'image' => [
             'url' => '',
             'alt' => 'HOVER 公告',
         ],
         'button' => [
-            'label' => '立即選購',
-            'href'  => '/products',
+            'label' => '立即加入',
+            'href'  => '/register',
             'show'  => true,
         ],
-        'schedule' => [
+        'trigger' => [
+            'delaySec'      => 0,  // 0=不延遲；與 scroll 同時設定時以先達成者觸發
+            'scrollPercent' => 0,  // 0=不依捲動；1–100
+        ],
+        'frequency' => 'weekly', // always | daily | weekly | once
+        'schedule'  => [
             'startAt' => '',
             'endAt'   => '',
         ],
@@ -106,14 +134,17 @@ function hps_is_active(array $data): bool
         return false;
     }
 
-    $has_content = !empty($data['image']['url'])
+    $desktop = $data['imageDesktop']['url'] ?? '';
+    $mobile  = $data['imageMobile']['url'] ?? '';
+    $legacy  = $data['image']['url'] ?? '';
+    $has_content = ($desktop !== '' || $mobile !== '' || $legacy !== '')
         || !empty($data['title'])
         || !empty($data['body']);
     if (!$has_content) {
         return false;
     }
 
-    $now = current_time('timestamp');
+    $now   = current_time('timestamp');
     $start = hps_parse_datetime($data['schedule']['startAt'] ?? '');
     $end   = hps_parse_datetime($data['schedule']['endAt'] ?? '');
 
@@ -127,20 +158,57 @@ function hps_is_active(array $data): bool
     return true;
 }
 
+function hps_normalize_image($raw, array $fallback): array
+{
+    if (!is_array($raw)) {
+        $raw = [];
+    }
+    return [
+        'url' => esc_url_raw($raw['url'] ?? $fallback['url'] ?? ''),
+        'alt' => sanitize_text_field($raw['alt'] ?? $fallback['alt'] ?? ''),
+    ];
+}
+
 function hps_normalize(array $data): array
 {
     $d = hps_defaults();
 
-    $data['enabled'] = !empty($data['enabled']);
-    $data['version'] = sanitize_text_field($data['version'] ?? $d['version']) ?: $d['version'];
-    $data['title']   = sanitize_text_field($data['title'] ?? $d['title']);
-    $data['body']    = sanitize_textarea_field($data['body'] ?? $d['body']);
+    $data['enabled']        = !empty($data['enabled']);
+    $data['version']        = sanitize_text_field($data['version'] ?? $d['version']) ?: $d['version'];
+    $layout                 = sanitize_text_field($data['layout'] ?? $d['layout']);
+    $data['layout']         = in_array($layout, ['split', 'full'], true) ? $layout : 'split';
+    $pos                    = sanitize_text_field($data['imagePosition'] ?? $d['imagePosition']);
+    $data['imagePosition']  = in_array($pos, ['left', 'right'], true) ? $pos : 'left';
+    $data['hideForMembers'] = array_key_exists('hideForMembers', $data)
+        ? !empty($data['hideForMembers'])
+        : ($data['layout'] === 'split');
+    $data['title']          = sanitize_text_field($data['title'] ?? $d['title']);
+    $data['subtitle']       = sanitize_text_field($data['subtitle'] ?? $d['subtitle']);
+    $data['body']           = sanitize_textarea_field($data['body'] ?? $d['body']);
+    $data['footnote']       = sanitize_text_field($data['footnote'] ?? $d['footnote']);
+    $data['showGiftIcon']   = !empty($data['showGiftIcon']);
 
-    $image = $data['image'] ?? [];
-    $data['image'] = [
-        'url' => esc_url_raw($image['url'] ?? ''),
-        'alt' => sanitize_text_field($image['alt'] ?? $d['image']['alt']),
+    $colors = is_array($data['colors'] ?? null) ? $data['colors'] : [];
+    $data['colors'] = [
+        'title'    => sanitize_hex_color($colors['title'] ?? '') ?: $d['colors']['title'],
+        'subtitle' => sanitize_hex_color($colors['subtitle'] ?? '') ?: $d['colors']['subtitle'],
+        'body'     => sanitize_hex_color($colors['body'] ?? '') ?: $d['colors']['body'],
+        'footnote' => sanitize_hex_color($colors['footnote'] ?? '') ?: $d['colors']['footnote'],
     ];
+
+    // 相容舊版單一 image
+    $legacy = hps_normalize_image($data['image'] ?? [], $d['image']);
+    $desktop = hps_normalize_image($data['imageDesktop'] ?? [], $d['imageDesktop']);
+    $mobile  = hps_normalize_image($data['imageMobile'] ?? [], $d['imageMobile']);
+    if ($desktop['url'] === '' && $legacy['url'] !== '') {
+        $desktop = $legacy;
+    }
+    if ($mobile['url'] === '' && $desktop['url'] !== '') {
+        $mobile = $desktop;
+    }
+    $data['imageDesktop'] = $desktop;
+    $data['imageMobile']  = $mobile;
+    $data['image']        = $desktop; // 舊前端相容
 
     $button = $data['button'] ?? [];
     $data['button'] = [
@@ -148,6 +216,22 @@ function hps_normalize(array $data): array
         'href'  => hps_sanitize_url($button['href'] ?? $d['button']['href']),
         'show'  => !empty($button['show']),
     ];
+
+    $trigger = $data['trigger'] ?? [];
+    $delay   = absint($trigger['delaySec'] ?? $trigger['delay'] ?? 0);
+    $scroll  = absint($trigger['scrollPercent'] ?? $trigger['scroll'] ?? 0);
+    if ($scroll > 100) {
+        $scroll = 100;
+    }
+    $data['trigger'] = [
+        'delaySec'      => $delay,
+        'scrollPercent' => $scroll,
+    ];
+
+    $freq = sanitize_text_field($data['frequency'] ?? $d['frequency']);
+    $data['frequency'] = in_array($freq, ['always', 'daily', 'weekly', 'once'], true)
+        ? $freq
+        : 'weekly';
 
     $schedule = $data['schedule'] ?? [];
     $data['schedule'] = [
@@ -204,10 +288,9 @@ function hps_save_from_post(): ?array
 
 function hps_rest_popup(): WP_REST_Response
 {
-    $popup = hps_get_settings();
     return new WP_REST_Response([
-        'ok'   => true,
-        'popup' => $popup,
+        'ok'    => true,
+        'popup' => hps_get_settings(),
     ], 200);
 }
 
@@ -219,7 +302,7 @@ function hps_status_label(array $s): string
     if (!empty($s['active'])) {
         return '上線中';
     }
-    $now = current_time('timestamp');
+    $now   = current_time('timestamp');
     $start = hps_parse_datetime($s['schedule']['startAt'] ?? '');
     if ($start && $now < $start) {
         return '排程中';
@@ -233,18 +316,18 @@ function hps_render_page(): void
         wp_die('權限不足');
     }
 
-    $flash = hps_save_from_post();
-    $s = hps_get_settings();
+    $flash   = hps_save_from_post();
+    $s       = hps_get_settings();
     $payload = wp_json_encode($s, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     $api_url = rest_url('hover/v1/popup');
-    $status = hps_status_label($s);
+    $status  = hps_status_label($s);
     ?>
     <div class="wrap hover-popup-admin">
         <div class="hps-shell">
             <div class="hps-topbar">
                 <div>
                     <h1>HOVER 首頁彈出公告</h1>
-                    <p class="description">設定首頁彈窗圖片、文字、按鈕連結、上線期間與開關。儲存後約 1 分鐘內同步至 Next.js 前台。</p>
+                    <p class="description">支援左右分欄／滿版形象兩種版型；可強制裁切桌機／手機圖、設定文字顏色、觸發條件與顯示頻率。</p>
                 </div>
                 <div class="hps-topbar-actions">
                     <span class="hps-status <?php echo !empty($s['active']) ? 'is-live' : ''; ?>"><?php echo esc_html($status); ?></span>
@@ -273,17 +356,43 @@ function hps_render_page(): void
                     <div class="hps-main">
                         <div class="hps-card">
                             <div class="hps-card-head"><h2>公告開關</h2></div>
-                            <div class="hps-card-body">
+                            <div class="hps-card-body hps-stack">
                                 <label class="hps-switch">
                                     <input type="checkbox" data-field="enabled" <?php checked(!empty($s['enabled'])); ?>>
                                     <span class="hps-switch-ui"></span>
                                     <span class="hps-switch-label">啟用首頁彈出公告</span>
                                 </label>
-                                <div class="hps-field hps-mt">
+                                <div class="hps-field">
                                     <label class="hps-label">版本代號</label>
-                                    <input type="text" class="regular-text" data-field="version" value="<?php echo esc_attr($s['version']); ?>" placeholder="1">
-                                    <p class="description">變更代號可區分不同公告內容。訪客關閉後，本次瀏覽器工作階段內不再顯示；關閉分頁或瀏覽器後再進首頁會再次出現。</p>
+                                    <input type="text" class="regular-text" data-field="version" value="<?php echo esc_attr($s['version']); ?>">
+                                    <p class="description">變更代號後，曾關閉的訪客會依頻率設定再次看到。</p>
                                 </div>
+                            </div>
+                        </div>
+
+                        <div class="hps-card">
+                            <div class="hps-card-head"><h2>版型選擇</h2></div>
+                            <div class="hps-card-body hps-stack">
+                                <div class="hps-field">
+                                    <label class="hps-label">公告版型</label>
+                                    <select data-field="layout" class="regular-text">
+                                        <option value="split" <?php selected($s['layout'], 'split'); ?>>左右分欄（會員招募／圖文分區）</option>
+                                        <option value="full" <?php selected($s['layout'], 'full'); ?>>滿版形象（活動公告）</option>
+                                    </select>
+                                </div>
+                                <div class="hps-field hps-only-split">
+                                    <label class="hps-label">圖片位置（桌機）</label>
+                                    <select data-field="imagePosition" class="regular-text">
+                                        <option value="left" <?php selected($s['imagePosition'], 'left'); ?>>圖片置左、文字置右</option>
+                                        <option value="right" <?php selected($s['imagePosition'], 'right'); ?>>圖片置右、文字置左</option>
+                                    </select>
+                                    <p class="description">手機版一律改為上圖下文。</p>
+                                </div>
+                                <label class="hps-switch">
+                                    <input type="checkbox" data-field="hideForMembers" <?php checked(!empty($s['hideForMembers'])); ?>>
+                                    <span class="hps-switch-ui"></span>
+                                    <span class="hps-switch-label">已登入會員不顯示（建議會員招募版型開啟）</span>
+                                </label>
                             </div>
                         </div>
 
@@ -291,34 +400,79 @@ function hps_render_page(): void
                             <div class="hps-card-head"><h2>公告內容</h2></div>
                             <div class="hps-card-body hps-stack">
                                 <div class="hps-field">
-                                    <label class="hps-label">標題</label>
-                                    <input type="text" class="large-text" data-field="title" value="<?php echo esc_attr($s['title']); ?>" placeholder="例：全館滿 NT$2,000 享免運">
+                                    <label class="hps-label">主標題</label>
+                                    <input type="text" class="large-text" data-field="title" value="<?php echo esc_attr($s['title']); ?>" placeholder="例：Join HOVER">
+                                </div>
+                                <div class="hps-field hps-only-split">
+                                    <label class="hps-label">副標題</label>
+                                    <input type="text" class="large-text" data-field="subtitle" value="<?php echo esc_attr($s['subtitle']); ?>" placeholder="例：加入會員">
                                 </div>
                                 <div class="hps-field">
                                     <label class="hps-label">內文</label>
-                                    <textarea rows="4" class="large-text" data-field="body" placeholder="公告說明文字"><?php echo esc_textarea($s['body']); ?></textarea>
+                                    <textarea rows="3" class="large-text" data-field="body" placeholder="公告說明"><?php echo esc_textarea($s['body']); ?></textarea>
                                 </div>
+                                <div class="hps-field hps-only-split">
+                                    <label class="hps-label">底部細字（選填）</label>
+                                    <input type="text" class="large-text" data-field="footnote" value="<?php echo esc_attr($s['footnote']); ?>" placeholder="例：詳情請參閱隱私權保護政策">
+                                </div>
+
+                                <div class="hps-colors">
+                                    <p class="hps-label" style="margin:0 0 8px">文字顏色</p>
+                                    <div class="hps-grid-2">
+                                        <label class="hps-color-field">主標題顏色
+                                            <input type="color" data-field="colors.title" value="<?php echo esc_attr($s['colors']['title']); ?>">
+                                        </label>
+                                        <label class="hps-color-field hps-only-split">副標題顏色
+                                            <input type="color" data-field="colors.subtitle" value="<?php echo esc_attr($s['colors']['subtitle']); ?>">
+                                        </label>
+                                        <label class="hps-color-field">內文顏色
+                                            <input type="color" data-field="colors.body" value="<?php echo esc_attr($s['colors']['body']); ?>">
+                                        </label>
+                                        <label class="hps-color-field hps-only-split">細字顏色
+                                            <input type="color" data-field="colors.footnote" value="<?php echo esc_attr($s['colors']['footnote']); ?>">
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <label class="hps-switch hps-only-split">
+                                    <input type="checkbox" data-field="showGiftIcon" <?php checked(!empty($s['showGiftIcon'])); ?>>
+                                    <span class="hps-switch-ui"></span>
+                                    <span class="hps-switch-label">顯示禮物圖示</span>
+                                </label>
+
                                 <div class="hps-field">
-                                    <label class="hps-label">彈窗圖片</label>
-                                    <div class="hps-image-preview" id="hps-image-preview">
-                                        <?php if (!empty($s['image']['url'])) : ?>
-                                            <img src="<?php echo esc_url($s['image']['url']); ?>" alt="">
+                                    <label class="hps-label">桌機圖片 <span class="hps-crop-hint" id="hps-desktop-hint">（強制裁切 16:9｜建議 1920×1080）</span></label>
+                                    <div class="hps-image-preview" id="hps-preview-desktop">
+                                        <?php if (!empty($s['imageDesktop']['url'])) : ?>
+                                            <img src="<?php echo esc_url($s['imageDesktop']['url']); ?>" alt="">
                                         <?php else : ?>
-                                            <div class="hps-image-placeholder">
-                                                <span class="dashicons dashicons-format-image"></span>
-                                                <span>尚未上傳圖片（可留空，僅顯示文字）</span>
-                                            </div>
+                                            <div class="hps-image-placeholder"><span class="dashicons dashicons-format-image"></span><span>尚未上傳桌機圖片</span></div>
                                         <?php endif; ?>
                                     </div>
-                                    <input type="hidden" data-field="image.url" value="<?php echo esc_attr($s['image']['url']); ?>">
+                                    <input type="hidden" data-field="imageDesktop.url" value="<?php echo esc_attr($s['imageDesktop']['url']); ?>">
                                     <div class="hps-actions">
-                                        <button type="button" class="button button-primary hps-pick-media" data-target="image.url" data-preview="hps-image-preview">選擇圖片</button>
-                                        <button type="button" class="button hps-clear-media">清除</button>
+                                        <button type="button" class="button button-primary hps-pick-crop" data-target="desktop" data-field-url="imageDesktop.url" data-preview="hps-preview-desktop">選圖並裁切</button>
+                                        <button type="button" class="button hps-clear-media" data-field-url="imageDesktop.url" data-preview="hps-preview-desktop">清除</button>
+                                    </div>
+                                </div>
+                                <div class="hps-field">
+                                    <label class="hps-label">手機圖片 <span class="hps-crop-hint">（強制裁切 9:16｜建議 1080×1920）</span></label>
+                                    <div class="hps-image-preview hps-preview-portrait" id="hps-preview-mobile">
+                                        <?php if (!empty($s['imageMobile']['url'])) : ?>
+                                            <img src="<?php echo esc_url($s['imageMobile']['url']); ?>" alt="">
+                                        <?php else : ?>
+                                            <div class="hps-image-placeholder"><span class="dashicons dashicons-smartphone"></span><span>尚未上傳手機圖片（可留空，沿用桌機圖）</span></div>
+                                        <?php endif; ?>
+                                    </div>
+                                    <input type="hidden" data-field="imageMobile.url" value="<?php echo esc_attr($s['imageMobile']['url']); ?>">
+                                    <div class="hps-actions">
+                                        <button type="button" class="button button-primary hps-pick-crop" data-target="mobile" data-field-url="imageMobile.url" data-preview="hps-preview-mobile">選圖並裁切</button>
+                                        <button type="button" class="button hps-clear-media" data-field-url="imageMobile.url" data-preview="hps-preview-mobile">清除</button>
                                     </div>
                                 </div>
                                 <div class="hps-field">
                                     <label class="hps-label">圖片替代文字</label>
-                                    <input type="text" class="regular-text" data-field="image.alt" value="<?php echo esc_attr($s['image']['alt']); ?>">
+                                    <input type="text" class="regular-text" data-field="imageDesktop.alt" value="<?php echo esc_attr($s['imageDesktop']['alt']); ?>">
                                 </div>
                             </div>
                         </div>
@@ -326,7 +480,7 @@ function hps_render_page(): void
                         <div class="hps-card">
                             <div class="hps-card-head"><h2>按鈕連結</h2></div>
                             <div class="hps-card-body hps-grid-2">
-                                <label class="hps-switch hps-switch-inline">
+                                <label class="hps-switch hps-span-2">
                                     <input type="checkbox" data-field="button.show" <?php checked(!empty($s['button']['show'])); ?>>
                                     <span class="hps-switch-ui"></span>
                                     <span class="hps-switch-label">顯示按鈕</span>
@@ -335,15 +489,47 @@ function hps_render_page(): void
                                     <label class="hps-label">按鈕文字</label>
                                     <input type="text" class="regular-text" data-field="button.label" value="<?php echo esc_attr($s['button']['label']); ?>">
                                 </div>
-                                <div class="hps-field hps-span-2">
+                                <div class="hps-field">
                                     <label class="hps-label">按鈕連結</label>
-                                    <input type="text" class="regular-text" data-field="button.href" value="<?php echo esc_attr($s['button']['href']); ?>" placeholder="/products 或 https://...">
+                                    <input type="text" class="regular-text" data-field="button.href" value="<?php echo esc_attr($s['button']['href']); ?>" placeholder="/register 或 /products">
                                 </div>
                             </div>
                         </div>
 
                         <div class="hps-card">
-                            <div class="hps-card-head"><h2>上線期間</h2></div>
+                            <div class="hps-card-head"><h2>觸發方式</h2></div>
+                            <div class="hps-card-body hps-grid-2">
+                                <div class="hps-field">
+                                    <label class="hps-label">延遲秒數</label>
+                                    <input type="number" min="0" max="120" class="small-text" data-field="trigger.delaySec" value="<?php echo esc_attr((string) $s['trigger']['delaySec']); ?>">
+                                    <p class="description">0 = 不使用延遲。進站後等待 X 秒再顯示。</p>
+                                </div>
+                                <div class="hps-field">
+                                    <label class="hps-label">捲動比例 %</label>
+                                    <input type="number" min="0" max="100" class="small-text" data-field="trigger.scrollPercent" value="<?php echo esc_attr((string) $s['trigger']['scrollPercent']); ?>">
+                                    <p class="description">0 = 不使用捲動。頁面捲動達 X% 時顯示。</p>
+                                </div>
+                                <p class="description hps-span-2">兩者皆為 0 → 立即顯示。若同時設定，以先達成者觸發。</p>
+                            </div>
+                        </div>
+
+                        <div class="hps-card">
+                            <div class="hps-card-head"><h2>顯示頻率</h2></div>
+                            <div class="hps-card-body">
+                                <div class="hps-field">
+                                    <label class="hps-label">關閉後多久可再顯示</label>
+                                    <select data-field="frequency" class="regular-text">
+                                        <option value="always" <?php selected($s['frequency'], 'always'); ?>>每次進站</option>
+                                        <option value="daily" <?php selected($s['frequency'], 'daily'); ?>>每天一次</option>
+                                        <option value="weekly" <?php selected($s['frequency'], 'weekly'); ?>>每 7 天一次（預設）</option>
+                                        <option value="once" <?php selected($s['frequency'], 'once'); ?>>關閉後不再顯示（直到變更版本代號）</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="hps-card">
+                            <div class="hps-card-head"><h2>活動期間</h2></div>
                             <div class="hps-card-body hps-grid-2">
                                 <div class="hps-field">
                                     <label class="hps-label">開始時間</label>
@@ -364,11 +550,11 @@ function hps_render_page(): void
                             <div class="hps-card-head">
                                 <div>
                                     <h2>即時預覽</h2>
-                                    <p class="description" style="margin:4px 0 0">模擬前台 RWD 彈窗</p>
+                                    <p class="description" style="margin:4px 0 0">同時顯示電腦版與手機版</p>
                                 </div>
                             </div>
                             <div class="hps-card-body hps-preview-body">
-                                <div id="hps-live-preview"></div>
+                                <div id="hps-live-preview" class="hps-dual-preview"></div>
                             </div>
                         </div>
                     </aside>
@@ -396,7 +582,7 @@ function hps_print_admin_styles(): void
 {
     ?>
     <style>
-        .hover-popup-admin { max-width: 1180px; }
+        .hover-popup-admin { max-width: 1480px; }
         .hover-popup-admin .hps-shell { margin-top: 8px; }
         .hover-popup-admin .hps-topbar {
             display: flex; align-items: flex-start; justify-content: space-between;
@@ -411,9 +597,7 @@ function hps_print_admin_styles(): void
             padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 600;
             background: #f0f0f1; color: #646970;
         }
-        .hover-popup-admin .hps-status.is-live {
-            background: #edf7f1; color: #1a6847;
-        }
+        .hover-popup-admin .hps-status.is-live { background: #edf7f1; color: #1a6847; }
         .hover-popup-admin .hps-status.is-live::before {
             content: ""; width: 8px; height: 8px; border-radius: 50%; background: #2a514d;
         }
@@ -426,14 +610,13 @@ function hps_print_admin_styles(): void
             font-size: 11px; background: #f6f7f7; padding: 2px 8px; border-radius: 999px;
         }
         .hover-popup-admin .hps-layout {
-            display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 16px; align-items: start;
+            display: grid; grid-template-columns: minmax(0, 1fr) minmax(480px, 520px); gap: 18px; align-items: start;
         }
         .hover-popup-admin .hps-card {
             background: #fff; border: 1px solid #dcdcde; border-radius: 8px;
             box-shadow: 0 1px 2px rgba(0,0,0,.04); overflow: hidden; margin-bottom: 16px;
         }
         .hover-popup-admin .hps-card-head {
-            display: flex; align-items: center; justify-content: space-between; gap: 10px;
             padding: 14px 18px; border-bottom: 1px solid #f0f0f1;
         }
         .hover-popup-admin .hps-card-head h2 { margin: 0; font-size: 14px; font-weight: 700; }
@@ -445,21 +628,18 @@ function hps_print_admin_styles(): void
         .hover-popup-admin .hps-field { display: flex; flex-direction: column; gap: 6px; }
         .hover-popup-admin .hps-label { font-weight: 600; font-size: 13px; }
         .hover-popup-admin .hps-stack { display: flex; flex-direction: column; gap: 16px; }
-        .hover-popup-admin .hps-mt { margin-top: 4px; }
         .hover-popup-admin .hps-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
-        .hover-popup-admin .hps-foot { display: flex; gap: 8px; margin-top: 4px; }
+        .hover-popup-admin .hps-foot { margin-top: 4px; }
         .hover-popup-admin .hps-reset-form { margin-top: 8px; }
         .hover-popup-admin .hps-image-preview,
         .hover-popup-admin .hps-image-placeholder {
-            width: 100%; max-width: 360px; aspect-ratio: 4/3; border: 1px dashed #c3c4c7; border-radius: 8px;
+            width: 100%; max-width: 280px; aspect-ratio: 16/9; border: 1px dashed #c3c4c7; border-radius: 8px;
             background: #f6f7f7; display: flex; flex-direction: column;
             align-items: center; justify-content: center; text-align: center;
             padding: 12px; color: #646970; font-size: 12px; gap: 6px; overflow: hidden;
         }
+        .hover-popup-admin .hps-preview-portrait { max-width: 120px; aspect-ratio: 9/16; }
         .hover-popup-admin .hps-image-preview img { width: 100%; height: 100%; object-fit: cover; }
-        .hover-popup-admin .hps-image-placeholder .dashicons {
-            font-size: 28px; width: 28px; height: 28px; color: #a7aaad;
-        }
         .hover-popup-admin .hps-switch {
             display: inline-flex; align-items: center; gap: 12px; cursor: pointer; user-select: none;
         }
@@ -474,43 +654,147 @@ function hps_print_admin_styles(): void
         .hover-popup-admin .hps-switch input:checked + .hps-switch-ui { background: #2a514d; }
         .hover-popup-admin .hps-switch input:checked + .hps-switch-ui::after { transform: translateX(20px); }
         .hover-popup-admin .hps-switch-label { font-weight: 600; font-size: 13px; }
-        .hover-popup-admin .hps-switch-inline { margin-bottom: 4px; }
+        .hover-popup-admin .hps-color-field {
+            display: flex; align-items: center; justify-content: space-between; gap: 10px;
+            font-size: 12px; font-weight: 600; background: #f6f7f7; border-radius: 6px; padding: 8px 10px;
+        }
+        .hover-popup-admin .hps-color-field input[type="color"] {
+            width: 42px; height: 28px; padding: 0; border: 1px solid #c3c4c7; background: #fff; cursor: pointer;
+        }
+        .hover-popup-admin .hps-crop-hint { font-weight: 500; color: #646970; }
         .hover-popup-admin .hps-preview { position: sticky; top: 32px; }
         .hover-popup-admin .hps-preview-body {
-            padding: 16px; background: #eef2f6; min-height: 420px;
+            padding: 14px; background: #e8ecef; min-height: 520px;
+        }
+        .hover-popup-admin .hps-dual-preview {
+            display: flex; flex-direction: column; gap: 18px;
+        }
+        .hover-popup-admin .hps-device {
+            display: flex; flex-direction: column; gap: 8px;
+        }
+        .hover-popup-admin .hps-device-label {
+            font-size: 11px; font-weight: 700; letter-spacing: .08em; color: #646970; text-transform: uppercase;
+        }
+        .hover-popup-admin .hps-device-stage {
+            background: rgba(0,0,0,.42); border-radius: 10px; padding: 16px 12px;
             display: flex; align-items: center; justify-content: center;
         }
-        .hover-popup-admin .hps-mock-overlay {
-            position: relative; width: 100%; max-width: 280px;
-            background: rgba(0,0,0,.45); border-radius: 12px; padding: 24px 12px;
-        }
+        .hover-popup-admin .hps-device.is-mobile .hps-device-stage { padding: 18px 36px; }
         .hover-popup-admin .hps-mock-modal {
             position: relative; background: #fff; border-radius: 4px; overflow: hidden;
-            box-shadow: 0 20px 50px rgba(0,0,0,.25);
+            box-shadow: 0 16px 40px rgba(0,0,0,.28); width: 100%;
+        }
+        .hover-popup-admin .hps-device.is-desktop .hps-mock-modal.is-split {
+            display: grid; grid-template-columns: 55% 45%; width: 100%; max-width: 460px;
+            min-height: 240px; align-items: stretch;
+        }
+        .hover-popup-admin .hps-device.is-desktop .hps-mock-modal.is-split.is-right { grid-template-columns: 45% 55%; }
+        .hover-popup-admin .hps-device.is-desktop .hps-mock-modal.is-split.is-right .hps-mock-image { order: 2; }
+        .hover-popup-admin .hps-device.is-desktop .hps-mock-modal.is-split.is-right .hps-mock-body { order: 1; }
+        .hover-popup-admin .hps-device.is-desktop .hps-mock-modal.is-full {
+            width: 100%; max-width: 460px; min-height: 0; aspect-ratio: 16/9;
+        }
+        .hover-popup-admin .hps-device.is-mobile .hps-mock-modal {
+            max-width: 180px; width: 100%;
+        }
+        .hover-popup-admin .hps-device.is-mobile .hps-mock-modal.is-split {
+            display: flex; flex-direction: column; height: auto; min-height: 340px;
+        }
+        .hover-popup-admin .hps-device.is-mobile .hps-mock-modal.is-full {
+            min-height: 0; aspect-ratio: 9/16;
         }
         .hover-popup-admin .hps-mock-close {
-            position: absolute; top: 8px; right: 8px; width: 28px; height: 28px;
-            border: 0; border-radius: 50%; background: rgba(255,255,255,.92);
-            color: #222; font-size: 18px; line-height: 1; cursor: default;
+            position: absolute; top: 6px; right: 6px; z-index: 3; width: 22px; height: 22px;
+            border: 0; border-radius: 50%; background: transparent;
+            color: #222; font-size: 16px; line-height: 1; cursor: default;
         }
+        .hover-popup-admin .hps-mock-modal.is-full .hps-mock-close { color: #fff; }
         .hover-popup-admin .hps-mock-image {
-            width: 100%; aspect-ratio: 16/10; object-fit: cover; display: block; background: #f3f3f3;
+            width: 100%; height: 100%; object-fit: cover; display: block; background: #d8d8d8;
         }
-        .hover-popup-admin .hps-mock-body { padding: 16px 14px 18px; text-align: center; }
+        .hover-popup-admin .hps-device.is-desktop .hps-mock-modal.is-split .hps-mock-image {
+            min-height: 240px; height: 100%;
+        }
+        .hover-popup-admin .hps-device.is-mobile .hps-mock-modal.is-split .hps-mock-image {
+            width: 100%; flex: 0 0 auto; height: auto; aspect-ratio: 16/10; max-height: 132px;
+            object-fit: cover;
+        }
+        .hover-popup-admin .hps-mock-modal.is-full .hps-mock-image {
+            position: absolute; inset: 0; min-height: 100%;
+        }
+        .hover-popup-admin .hps-mock-body {
+            position: relative; z-index: 1; padding: 16px 14px 18px; text-align: center;
+            display: flex; flex-direction: column; justify-content: center; align-items: center;
+            gap: 8px; background: #fff; box-sizing: border-box; min-width: 0;
+        }
+        .hover-popup-admin .hps-device.is-mobile .hps-mock-modal.is-split .hps-mock-body {
+            flex: 1 1 auto; height: auto; min-height: 200px; padding: 12px 12px 16px;
+            gap: 7px; justify-content: center; overflow: visible;
+        }
+        .hover-popup-admin .hps-mock-modal.is-full .hps-mock-body {
+            position: absolute; inset: 0; min-height: 100%;
+            background: linear-gradient(to top, rgba(0,0,0,.58), rgba(0,0,0,.12) 55%, transparent);
+            color: #fff; gap: 10px; justify-content: flex-end; padding: 18px 16px 20px;
+            text-align: left; align-items: flex-start;
+        }
+        .hover-popup-admin .hps-device.is-mobile .hps-mock-modal.is-full .hps-mock-body {
+            text-align: center; align-items: center; justify-content: flex-end;
+            padding: 16px 14px 22px;
+        }
         .hover-popup-admin .hps-mock-title {
-            font-size: 15px; font-weight: 600; letter-spacing: .08em; color: #222; margin: 0 0 8px;
+            font-family: Georgia, "Times New Roman", "Noto Serif TC", serif;
+            font-size: 14px; font-weight: 500; letter-spacing: .03em; margin: 0;
+            line-height: 1.4; max-width: 100%; word-break: break-word;
         }
+        .hover-popup-admin .hps-device.is-desktop .hps-mock-modal.is-split .hps-mock-title {
+            font-size: 13px; line-height: 1.45;
+        }
+        .hover-popup-admin .hps-device.is-mobile .hps-mock-title { font-size: 12px; line-height: 1.4; }
+        .hover-popup-admin .hps-mock-modal.is-full .hps-mock-title {
+            font-family: inherit; font-size: 13px; font-weight: 700; letter-spacing: .02em; line-height: 1.45;
+        }
+        .hover-popup-admin .hps-device.is-mobile .hps-mock-modal.is-full .hps-mock-title { font-size: 12px; }
+        .hover-popup-admin .hps-mock-sub { font-size: 11px; margin: 0; line-height: 1.4; }
         .hover-popup-admin .hps-mock-text {
-            font-size: 12px; line-height: 1.7; color: #666; margin: 0 0 14px; white-space: pre-line;
+            font-size: 10px; line-height: 1.55; margin: 0; white-space: pre-line; max-width: 100%;
+            overflow-wrap: anywhere;
         }
+        .hover-popup-admin .hps-device.is-mobile .hps-mock-text { font-size: 9px; line-height: 1.5; }
+        .hover-popup-admin .hps-mock-modal.is-full .hps-mock-text { font-size: 9px; opacity: .92; }
+        .hover-popup-admin .hps-mock-foot { font-size: 8px; margin: 0; line-height: 1.45; opacity: .75; max-width: 92%; }
         .hover-popup-admin .hps-mock-btn {
-            display: inline-block; min-width: 120px; padding: 10px 18px;
-            background: #2a514d; color: #fff; font-size: 11px; letter-spacing: .14em;
-            border-radius: 2px; text-decoration: none;
+            display: inline-flex; align-items: center; justify-content: center;
+            flex-shrink: 0; margin-top: 4px; min-width: 88px; max-width: 100%;
+            padding: 8px 12px; box-sizing: border-box;
+            background: #2a514d; color: #fff; font-size: 10px; letter-spacing: .1em; font-weight: 600;
+            white-space: nowrap;
         }
-        @media (max-width: 960px) {
+        .hover-popup-admin .hps-device.is-mobile .hps-mock-btn {
+            min-width: 0; width: 100%; max-width: 132px; padding: 8px 10px; font-size: 9px;
+        }
+        .hover-popup-admin .hps-mock-modal.is-full .hps-mock-btn {
+            background: #fff; color: #222;
+        }
+        .hover-popup-admin .hps-mock-gift {
+            width: 20px; height: 20px; margin: 0 auto; color: #2a514d; flex-shrink: 0;
+        }
+        .hover-popup-admin .hps-mock-gift svg { width: 100%; height: 100%; display: block; }
+        @media (max-width: 1280px) {
+            .hover-popup-admin .hps-layout { grid-template-columns: minmax(0, 1fr) minmax(420px, 460px); }
+            .hover-popup-admin .hps-device.is-desktop .hps-mock-modal.is-split,
+            .hover-popup-admin .hps-device.is-desktop .hps-mock-modal.is-full { max-width: 400px; }
+        }
+        @media (max-width: 1100px) {
             .hover-popup-admin .hps-layout { grid-template-columns: 1fr; }
             .hover-popup-admin .hps-preview { position: static; }
+            .hover-popup-admin .hps-dual-preview {
+                display: grid; grid-template-columns: 1.35fr .75fr; gap: 16px; align-items: start;
+            }
+            .hover-popup-admin .hps-device.is-desktop .hps-mock-modal.is-split,
+            .hover-popup-admin .hps-device.is-desktop .hps-mock-modal.is-full { max-width: 520px; }
+        }
+        @media (max-width: 720px) {
+            .hover-popup-admin .hps-dual-preview { grid-template-columns: 1fr; }
             .hover-popup-admin .hps-grid-2 { grid-template-columns: 1fr; }
         }
     </style>
@@ -527,64 +811,192 @@ function hps_admin_footer_script(): void
     <script>
     jQuery(function($){
         var state = window.HPS_DATA || {};
+        if (!state.colors) {
+            state.colors = { title:'#222222', subtitle:'#555555', body:'#444444', footnote:'#999999' };
+        }
 
         function esc(s){ return $('<div/>').text(s || '').html(); }
+
+        function setByPath(obj, path, val){
+            var parts = path.split('.');
+            var cur = obj;
+            for (var i = 0; i < parts.length - 1; i++) {
+                if (!cur[parts[i]] || typeof cur[parts[i]] !== 'object') cur[parts[i]] = {};
+                cur = cur[parts[i]];
+            }
+            cur[parts[parts.length - 1]] = val;
+        }
 
         function readFields(){
             $('[data-field]').each(function(){
                 var el = $(this);
-                var path = el.data('field').split('.');
+                var path = String(el.data('field'));
                 var val = el.is(':checkbox') ? el.is(':checked') : el.val();
-                if (path.length === 1) {
-                    state[path[0]] = val;
-                } else if (path.length === 2) {
-                    if (!state[path[0]]) state[path[0]] = {};
-                    state[path[0]][path[1]] = val;
-                }
+                if (path.indexOf('trigger.') === 0) val = parseInt(val, 10) || 0;
+                setByPath(state, path, val);
             });
+            if (state.imageDesktop) {
+                state.image = state.imageDesktop;
+                if (state.imageMobile && !state.imageMobile.alt) {
+                    state.imageMobile.alt = state.imageDesktop.alt || '';
+                }
+            }
+        }
+
+        function syncLayoutFields(){
+            var layout = $('[data-field="layout"]').val() || 'split';
+            var isSplit = layout === 'split';
+            $('.hps-only-split').toggle(isSplit);
+            $('#hps-desktop-hint').text('（強制裁切 16:9｜建議 1920×1080）');
+            $('#hps-preview-desktop').css('aspect-ratio', '16/9');
         }
 
         function renderPreview(){
             readFields();
-            var html = '<div class="hps-mock-overlay"><div class="hps-mock-modal">';
-            html += '<button type="button" class="hps-mock-close" aria-hidden="true">×</button>';
-            if (state.image && state.image.url) {
-                html += '<img class="hps-mock-image" src="'+esc(state.image.url)+'" alt="'+esc(state.image.alt)+'">';
+            syncLayoutFields();
+            var layout = state.layout || 'split';
+            var colors = state.colors || {};
+            var deskImg = (state.imageDesktop && state.imageDesktop.url) || (state.image && state.image.url) || '';
+            var mobImg = (state.imageMobile && state.imageMobile.url) || deskImg;
+            var isFull = layout === 'full';
+            var titleColor = isFull
+                ? ((colors.title && colors.title !== '#222222') ? colors.title : '#ffffff')
+                : (colors.title || '#222');
+            var bodyColor = isFull
+                ? ((colors.body && colors.body !== '#444444') ? colors.body : 'rgba(255,255,255,0.92)')
+                : (colors.body || '#444');
+            var subColor = colors.subtitle || '#555';
+            var footColor = colors.footnote || '#999';
+
+            function giftHtml(){
+                return '<div class="hps-mock-gift" style="color:'+esc(colors.title||'#2a514d')+'" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 12v10H4V12"/><path d="M2 7h20v5H2z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 1 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg></div>';
             }
-            html += '<div class="hps-mock-body">';
-            if (state.title) html += '<h3 class="hps-mock-title">'+esc(state.title)+'</h3>';
-            if (state.body) html += '<p class="hps-mock-text">'+esc(state.body)+'</p>';
-            if (state.button && state.button.show && state.button.label) {
-                html += '<span class="hps-mock-btn">'+esc(state.button.label)+'</span>';
+
+            function buildModal(device, img){
+                var html = '<div class="hps-mock-modal is-'+esc(layout);
+                if (layout === 'split' && state.imagePosition === 'right' && device === 'desktop') html += ' is-right';
+                html += '">';
+                html += '<button type="button" class="hps-mock-close" aria-hidden="true">×</button>';
+                if (img) html += '<img class="hps-mock-image" src="'+esc(img)+'" alt="">';
+                html += '<div class="hps-mock-body">';
+                if (state.title) html += '<h3 class="hps-mock-title" style="color:'+esc(titleColor)+'">'+esc(state.title)+'</h3>';
+                if (layout === 'split' && state.subtitle) html += '<p class="hps-mock-sub" style="color:'+esc(subColor)+'">'+esc(state.subtitle)+'</p>';
+                if (layout === 'split' && state.showGiftIcon) html += giftHtml();
+                if (state.body) html += '<p class="hps-mock-text" style="color:'+esc(bodyColor)+'">'+esc(state.body)+'</p>';
+                if (state.button && state.button.show && state.button.label) {
+                    html += '<span class="hps-mock-btn">'+esc(state.button.label)+'</span>';
+                }
+                if (layout === 'split' && state.footnote) html += '<p class="hps-mock-foot" style="color:'+esc(footColor)+'">'+esc(state.footnote)+'</p>';
+                html += '</div></div>';
+                return html;
             }
-            html += '</div></div></div>';
-            $('#hps-live-preview').html(html);
+
+            var out = '';
+            out += '<div class="hps-device is-desktop">';
+            out += '<div class="hps-device-label">電腦版</div>';
+            out += '<div class="hps-device-stage">'+buildModal('desktop', deskImg)+'</div>';
+            out += '</div>';
+            out += '<div class="hps-device is-mobile">';
+            out += '<div class="hps-device-label">手機版</div>';
+            out += '<div class="hps-device-stage">'+buildModal('mobile', mobImg)+'</div>';
+            out += '</div>';
+            $('#hps-live-preview').html(out);
         }
 
-        $(document).on('input change','input,select,textarea', renderPreview);
+        /* ─── 強制裁切 ─────────────────────────────────────── */
+        function cropConfig(target){
+            if (target === 'mobile') {
+                return { ratio: 9/16, label: '9:16', w: 1080, h: 1920, maxW: 1080 };
+            }
+            return { ratio: 16/9, label: '16:9', w: 1920, h: 1080, maxW: 1920 };
+        }
 
-        $(document).on('click','.hps-pick-media',function(){
+        function openCropFrame(field, preview, target){
             if (typeof wp === 'undefined' || !wp.media) {
                 alert('媒體庫尚未載入，請重新整理頁面後再試。');
                 return;
             }
-            var frame = wp.media({ title: '選擇公告圖片', button: { text: '使用這張圖' }, multiple: false, library: { type: 'image' } });
-            frame.on('select', function(){
-                var url = frame.state().get('selection').first().toJSON().url;
-                if (!state.image) state.image = {};
-                state.image.url = url;
-                $('[data-field="image.url"]').val(url);
-                $('#hps-image-preview').html('<img src="'+url+'" alt="">');
-                renderPreview();
+            var cfg = cropConfig(target);
+            var ratio = cfg.ratio;
+
+            function imgSelectOptions(attachment, controller){
+                var w = attachment.get('width');
+                var h = attachment.get('height');
+                var selW = w;
+                var selH = Math.round(w / ratio);
+                if (selH > h) {
+                    selH = h;
+                    selW = Math.round(h * ratio);
+                }
+                var x1 = Math.round((w - selW) / 2);
+                var y1 = Math.round((h - selH) / 2);
+                controller.set('canSkipCrop', false);
+                return {
+                    handles: true, keys: true, instance: true, persistent: true,
+                    imageWidth: w, imageHeight: h,
+                    aspectRatio: cfg.label,
+                    minWidth: Math.min(120, selW),
+                    minHeight: Math.min(120, selH),
+                    x1: x1, y1: y1, x2: x1 + selW, y2: y1 + selH
+                };
+            }
+
+            var HpsCropper = wp.media.controller.Cropper.extend({
+                doCrop: function(attachment){
+                    var cd = attachment.get('cropDetails');
+                    var cropW = cd.width || (cd.x2 - cd.x1);
+                    var dstW = Math.min(cfg.maxW, cropW);
+                    cd.dst_width = dstW;
+                    cd.dst_height = Math.round(dstW / ratio);
+                    return wp.ajax.post('crop-image', {
+                        nonce: attachment.get('nonces').edit,
+                        id: attachment.get('id'),
+                        context: 'hover-popup',
+                        cropDetails: cd
+                    });
+                }
+            });
+
+            var frame = wp.media({
+                button: { text: '下一步：裁切 ' + cfg.label, close: false },
+                states: [
+                    new wp.media.controller.Library({
+                        title: '選擇圖片（將強制裁切為 ' + cfg.label + '）',
+                        library: wp.media.query({ type: 'image' }),
+                        multiple: false,
+                        date: false,
+                        suggestedWidth: cfg.w,
+                        suggestedHeight: cfg.h
+                    }),
+                    new HpsCropper({ imgSelectOptions: imgSelectOptions })
+                ]
+            });
+
+            frame.on('select', function(){ frame.setState('cropper'); });
+            frame.on('cropped', function(cropped){
+                if (cropped && cropped.url) {
+                    setByPath(state, field, cropped.url);
+                    $('[data-field="'+field+'"]').val(cropped.url);
+                    $('#'+preview).html('<img src="'+cropped.url+'" alt="">');
+                    renderPreview();
+                }
+                frame.close();
             });
             frame.open();
+        }
+
+        $(document).on('input change','input,select,textarea', renderPreview);
+
+        $(document).on('click','.hps-pick-crop',function(){
+            openCropFrame($(this).data('field-url'), $(this).data('preview'), $(this).data('target'));
         });
 
         $(document).on('click','.hps-clear-media',function(){
-            if (!state.image) state.image = {};
-            state.image.url = '';
-            $('[data-field="image.url"]').val('');
-            $('#hps-image-preview').html('<div class="hps-image-placeholder"><span class="dashicons dashicons-format-image"></span><span>尚未上傳圖片（可留空，僅顯示文字）</span></div>');
+            var field = $(this).data('field-url');
+            var preview = $(this).data('preview');
+            setByPath(state, field, '');
+            $('[data-field="'+field+'"]').val('');
+            $('#'+preview).html('<div class="hps-image-placeholder"><span class="dashicons dashicons-format-image"></span><span>尚未上傳圖片</span></div>');
             renderPreview();
         });
 
