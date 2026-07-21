@@ -112,10 +112,29 @@ const mapWoo = (p: any): WooProduct => {
       metaData.find((meta: any) => keys.includes(String(meta?.key || "")))
         ?.value || "",
     ).trim();
+  const hoverSeo =
+    p?.hover_seo && typeof p.hover_seo === "object" ? p.hover_seo : null;
+  const hoverSeoFromMeta = (() => {
+    const raw = metaData.find((meta: any) => String(meta?.key || "") === "hover_seo")
+      ?.value;
+    if (raw && typeof raw === "object") return raw;
+    if (typeof raw === "string" && raw) {
+      try {
+        const parsed = JSON.parse(raw);
+        return parsed && typeof parsed === "object" ? parsed : null;
+      } catch {
+        return null;
+      }
+    }
+    return null;
+  })();
+  const customSeo = hoverSeo || hoverSeoFromMeta;
   const seoTitle =
+    String(customSeo?.title || "").trim() ||
     String(p?.yoast_head_json?.title || p?.rank_math_title || "").trim() ||
     getMeta("_rank_math_title", "rank_math_title", "_yoast_wpseo_title");
   const seoDescription =
+    String(customSeo?.description || "").trim() ||
     String(
       p?.yoast_head_json?.description || p?.rank_math_description || "",
     ).trim() ||
