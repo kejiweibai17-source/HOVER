@@ -285,9 +285,14 @@ export default function QuickViewModal({ product, onClose }) {
                   {/* Price */}
                   <div className="mb-5 flex items-center gap-3">
                     {product.soldOut ? (
-                      <span className="text-[18px] font-bold text-[#222] line-through">
-                        SOLD OUT
-                      </span>
+                      <>
+                        <span className="text-[18px] font-bold text-[#222]">
+                          SOLD OUT
+                        </span>
+                        <span className="text-[16px] font-bold text-black line-through opacity-50">
+                          NT {displayPrice.toLocaleString()}
+                        </span>
+                      </>
                     ) : (
                       <>
                         {hasDiscount && (

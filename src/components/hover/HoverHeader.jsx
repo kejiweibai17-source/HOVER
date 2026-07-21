@@ -25,8 +25,8 @@ const SCROLL_TOP_THRESHOLD = 20;
 
 /** PNG 圖檔含透明留白，實際繪製尺寸略小於容器 */
 const HEADER_ICON = {
-  mobile: { box: 32, search: 28, cart: 30 },
-  desktop: { box: 36, search: 30, wishlist: 30, cart: 32, member: 30 },
+  mobile: { box: 32, search: 25, cart: 27 },
+  desktop: { box: 36, search: 27, wishlist: 27, cart: 29, member: 27 },
 };
 
 function HeaderIconButton({ children, className = "", ...props }) {

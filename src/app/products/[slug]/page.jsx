@@ -18,6 +18,15 @@ const getSiteUrl = () => {
 
 const SITE_URL = getSiteUrl();
 
+function resolveSeoTemplate(value, productName) {
+  return String(value || "")
+    .replace(/%title%/gi, productName)
+    .replace(/%sitename%/gi, "HOVER")
+    .replace(/%sep%/gi, "｜")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 // ===================== 動態 FAQ 生成器 =====================
 function getProductFAQs(productName) {
   const name = String(productName).toLowerCase();
@@ -89,7 +98,7 @@ export async function generateStaticParams() {
 // ===================== Metadata 動態生成與 SEO 優化 =====================
 export async function generateMetadata({ params }) {
   const p = await fetchProductBySlug(params.slug);
-  const siteName = "HOVER 服飾品牌官方商城";
+  const siteName = "HOVER";
 
   if (!p) {
     return {
@@ -98,7 +107,6 @@ export async function generateMetadata({ params }) {
     };
   }
 
-  // 1. 萃取分類名稱，用來豐富標題關鍵字
   const safeCategories = p?.categories;
   const categories = Array.isArray(safeCategories)
     ? safeCategories.map((c) => c?.name).filter(Boolean)
@@ -106,16 +114,19 @@ export async function generateMetadata({ params }) {
   const categoryString =
     categories.length > 0 ? categories.slice(0, 2).join("、") : "服飾";
 
-  const title = `${p.name}｜${categoryString}｜HOVER 威爾特`;
-
   const rawDesc = p.short_description || p.description || "";
   const cleanDesc = rawDesc
     .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
     .trim()
     .slice(0, 150);
-  const descText = cleanDesc
-    ? `${cleanDesc}... 探索 HOVER ${p.name} 的設計細節與穿搭靈感。`
-    : `探索 HOVER【${p.name}】——以舒適剪裁與簡約質感，為日常穿搭帶來更多可能。全館滿 NT$2,000 享免運。`;
+  const title =
+    resolveSeoTemplate(p.seoTitle, p.name) || `${p.name}｜HOVER`;
+  const descText =
+    resolveSeoTemplate(p.seoDescription, p.name) ||
+    (cleanDesc
+      ? cleanDesc
+      : `探索 HOVER【${p.name}】——以舒適剪裁與簡約質感，為日常穿搭帶來更多可能。全館滿 NT$2,000 享免運。`);
 
   const productPath = `/products/${params.slug}`; // 相對路徑配合 metadataBase
 
@@ -140,8 +151,8 @@ export async function generateMetadata({ params }) {
       .join(", "),
     alternates: { canonical: productPath },
     openGraph: {
-      title,
-      description: descText,
+      title: p.name,
+      description: cleanDesc || descText,
       url: productPath,
       siteName,
       images: images.map((src) => ({
@@ -155,8 +166,8 @@ export async function generateMetadata({ params }) {
     },
     twitter: {
       card: "summary_large_image",
-      title,
-      description: descText,
+      title: p.name,
+      description: cleanDesc || descText,
       images: images.length > 0 ? [images[0]] : [],
     },
   };

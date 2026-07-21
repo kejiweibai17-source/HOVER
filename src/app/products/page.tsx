@@ -14,31 +14,26 @@ import {
 const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
-// 1. 完整的 SEO Metadata 設定
-export const metadata: Metadata = {
-  title: "所有商品｜HOVER 服飾品牌",
-  description:
-    "瀏覽 HOVER 全系列服飾，包含上衣、帽子、襪品、包袋等，以舒適剪裁與簡約質感，為日常穿搭帶來更多可能。",
-  keywords: ["HOVER", "服飾", "穿搭", "日常", "帽T", "短袖", "包袋"],
-  alternates: {
-    canonical: `${SITE_URL}/products`,
+const CATEGORY_SEO: Record<string, { title: string; description: string }> = {
+  tops: {
+    title: "服飾｜HOVER",
+    description:
+      "探索 HOVER 服飾系列，以中性設計、舒適剪裁與簡約質感，打造自在融入生活的日常穿著。",
   },
-  openGraph: {
-    type: "website",
-    locale: "zh_TW",
-    title: "所有商品｜HOVER 服飾品牌",
-    description: "瀏覽 HOVER 全系列服飾，為日常穿搭帶來更多可能。",
-    url: `${SITE_URL}/products`,
-    siteName: "HOVER",
+  headwear: {
+    title: "帽款｜HOVER",
+    description:
+      "探索 HOVER 帽款系列，以簡約設計與舒適版型，打造適合日常穿搭的經典帽款。",
   },
-  twitter: {
-    card: "summary_large_image",
-    title: "所有商品｜HOVER 服飾品牌",
-    description: "瀏覽 HOVER 全系列服飾，為日常穿搭帶來更多可能。",
+  socks: {
+    title: "襪子｜HOVER",
+    description:
+      "探索 HOVER 襪子系列，以舒適著感與簡約設計，為日常穿搭增添細節與質感。",
   },
-  robots: {
-    index: true,
-    follow: true,
+  bags: {
+    title: "包袋｜HOVER",
+    description:
+      "探索 HOVER 包袋系列，以簡約設計與實用機能，陪伴每個日常。",
   },
 };
 
@@ -47,6 +42,42 @@ export const revalidate = 60;
 type PageProps = {
   searchParams: Promise<{ category?: string }>;
 };
+
+export async function generateMetadata({
+  searchParams,
+}: PageProps): Promise<Metadata> {
+  const { category } = await searchParams;
+  const slug = category ? decodeURIComponent(category).toLowerCase() : "";
+  const seo = CATEGORY_SEO[slug] || {
+    title: "所有商品｜HOVER",
+    description:
+      "探索 HOVER 全系列服飾、帽款、襪子與包袋，以舒適剪裁與簡約質感，陪伴每個日常。",
+  };
+  const canonical = slug
+    ? `/products?category=${encodeURIComponent(slug)}`
+    : "/products";
+
+  return {
+    metadataBase: new URL(SITE_URL),
+    title: seo.title,
+    description: seo.description,
+    alternates: { canonical },
+    openGraph: {
+      type: "website",
+      locale: "zh_TW",
+      url: canonical,
+      siteName: "HOVER",
+      title: seo.title,
+      description: seo.description,
+    },
+    twitter: {
+      card: "summary",
+      title: seo.title,
+      description: seo.description,
+    },
+    robots: { index: true, follow: true },
+  };
+}
 
 export default async function ProductsPage({ searchParams }: PageProps) {
   const { category: categorySlug } = await searchParams;

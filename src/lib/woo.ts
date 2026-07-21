@@ -36,6 +36,8 @@ export type WooProduct = {
   categories: WooCategoryRef[];
   short_description?: string;
   description?: string;
+  seoTitle?: string;
+  seoDescription?: string;
   attributes?: Array<{ name: string; options: string[] }>;
   sizeGuide: SizeGuide;
   washingInstructions: WashingInstructions;
@@ -104,6 +106,24 @@ const mapWoo = (p: any): WooProduct => {
         slug: String(c.slug || ""),
       }))
     : [];
+  const metaData = Array.isArray(p?.meta_data) ? p.meta_data : [];
+  const getMeta = (...keys: string[]) =>
+    String(
+      metaData.find((meta: any) => keys.includes(String(meta?.key || "")))
+        ?.value || "",
+    ).trim();
+  const seoTitle =
+    String(p?.yoast_head_json?.title || p?.rank_math_title || "").trim() ||
+    getMeta("_rank_math_title", "rank_math_title", "_yoast_wpseo_title");
+  const seoDescription =
+    String(
+      p?.yoast_head_json?.description || p?.rank_math_description || "",
+    ).trim() ||
+    getMeta(
+      "_rank_math_description",
+      "rank_math_description",
+      "_yoast_wpseo_metadesc",
+    );
   return {
     id: p.id,
     name: p.name,
@@ -116,6 +136,8 @@ const mapWoo = (p: any): WooProduct => {
     categories,
     short_description: p.short_description,
     description: p.description,
+    seoTitle,
+    seoDescription,
     attributes,
     sizeGuide: extractSizeGuideFromWooProduct(p),
     washingInstructions: extractWashingInstructionsFromWooProduct(p),

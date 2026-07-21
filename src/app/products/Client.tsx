@@ -396,6 +396,12 @@ function WishlistHeart({ product }: { product: Product }) {
 
 function ProductCard({ product }: { product: Product }) {
   const img = product.images?.[0]?.src || "/images/hover/product-1.jpg";
+  const hoverImage = product.images
+    ?.slice(1)
+    .find((image) => image?.src && image.src !== img);
+  const hoverImg = hoverImage?.src;
+  const hasHoverImage = Boolean(hoverImg);
+
   return (
     <Link href={`/products/${product.slug}`} className="group block">
       {/* Image container */}
@@ -408,8 +414,19 @@ function ProductCard({ product }: { product: Product }) {
           alt={product.images?.[0]?.alt || product.name}
           fill
           sizes="(max-width: 768px) 50vw, 25vw"
-          className="object-cover transition-transform duration-500 group-hover:scale-105"
+          className={`object-cover transition-opacity duration-500 ${
+            hasHoverImage ? "opacity-100 group-hover:opacity-0" : ""
+          }`}
         />
+        {hasHoverImage && (
+          <Image
+            src={hoverImg!}
+            alt={hoverImage?.alt || `${product.name} alternate view`}
+            fill
+            sizes="(max-width: 768px) 50vw, 25vw"
+            className="object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+          />
+        )}
 
         {/* Badge */}
         {(product.isNew || product.tag) && (
@@ -420,27 +437,29 @@ function ProductCard({ product }: { product: Product }) {
       </div>
 
       {/* Info */}
-      <div className="px-0.5">
-        <div className="mb-1 flex min-h-9 items-center justify-between gap-2">
-          <p className="flex min-w-0 flex-1 items-center text-[12px] font-semibold leading-snug text-black line-clamp-2">
+      <div className="mt-2 min-w-0 space-y-1 px-0.5 text-left md:mt-3">
+        <div className="mb-0 flex min-h-9 min-w-0 items-center justify-between gap-2">
+          <p className="flex min-w-0 flex-1 items-center break-words text-[12px] font-semibold leading-snug text-black line-clamp-2 md:text-[13px]">
             {product.name}
           </p>
           <WishlistHeart product={product} />
         </div>
 
         {product.colors && product.colors.length > 0 && (
-          <div className="mb-1 flex gap-1">
+          <div className="flex items-center gap-1.5 pt-0.5">
             {product.colors.map((c, i) => (
               <span
                 key={i}
-                className="inline-block h-3 w-3 rounded-full border border-[#ddd]"
+                className="inline-block h-3 w-3 shrink-0 rounded-full border border-[#ccc]"
                 style={{ backgroundColor: c }}
               />
             ))}
           </div>
         )}
 
-        <p className="text-[12px] text-black">NT {product.price}</p>
+        <p className="pt-0.5 text-[12px] font-bold text-[#222] md:text-[13px]">
+          NT {product.price}
+        </p>
       </div>
     </Link>
   );

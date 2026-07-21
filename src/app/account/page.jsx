@@ -295,15 +295,25 @@ function getTierDisplay(tierName, membership) {
   return map[tierName] || tierName || "品牌好友";
 }
 
-function HoverUnderlineField({ label, value, type = "text" }) {
+function HoverUnderlineField({
+  label,
+  value,
+  type = "text",
+  onChange,
+  readOnly = false,
+}) {
   return (
     <div className="pb-4">
       <input
         type={type}
-        readOnly
+        readOnly={readOnly}
         value={value || ""}
+        onChange={onChange}
         placeholder={label}
-        className="w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none cursor-default"
+        className={cn(
+          "w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none focus:border-[#2a514d]",
+          readOnly && "cursor-default opacity-70",
+        )}
       />
     </div>
   );
@@ -313,6 +323,111 @@ function HoverSectionLabel({ children }) {
   return (
     <div className="mb-6 inline-block bg-[#2a514d] px-6 py-2.5 text-[13px] font-medium tracking-wide text-white">
       {children}
+    </div>
+  );
+}
+
+const HOVER_LINE_URL = "https://line.me/R/ti/p/@330kefmm";
+
+function OrderDetail({ order }) {
+  const shipping = order.shipping || {};
+  const billing = order.billing || {};
+  const recipient =
+    `${shipping.last_name || ""}${shipping.first_name || ""}`.trim() ||
+    `${billing.last_name || ""}${billing.first_name || ""}`.trim() ||
+    "—";
+  const phone = shipping.phone || billing.phone || "—";
+  const addressParts = [
+    shipping.postcode || billing.postcode,
+    shipping.state || billing.state,
+    shipping.city || billing.city,
+    shipping.address_1 || billing.address_1,
+    shipping.address_2 || billing.address_2,
+  ].filter(Boolean);
+  const address = addressParts.join(" ") || "—";
+  const shippingMethod =
+    order.shipping_lines?.[0]?.method_title || "依訂單配送方式";
+  const shippingTotal = Number(order.shipping_total || 0);
+
+  return (
+    <div className="bg-white text-[12px] text-[#333] md:text-[13px]">
+      <div className="grid grid-cols-[minmax(0,1fr)_56px_86px] border-b border-[#d2d2d2] py-3 text-[#555] md:grid-cols-[minmax(0,1fr)_120px_160px]">
+        <span>商品名稱</span>
+        <span className="text-center">數量</span>
+        <span className="text-right">小計</span>
+      </div>
+
+      {order.line_items?.map((item, index) => (
+        <div
+          key={`${order.id}-${item.name}-${index}`}
+          className="grid grid-cols-[minmax(0,1fr)_56px_86px] items-center border-b border-[#d2d2d2] py-5 md:grid-cols-[minmax(0,1fr)_120px_160px]"
+        >
+          <div className="flex min-w-0 items-center gap-3 md:gap-5">
+            <div className="relative h-[90px] w-[74px] shrink-0 overflow-hidden bg-white md:h-[112px] md:w-[92px]">
+              {item.image ? (
+                <Image
+                  src={item.image}
+                  alt={item.name}
+                  fill
+                  sizes="92px"
+                  className="object-contain"
+                />
+              ) : (
+                <div className="flex h-full items-center justify-center bg-[#f5f5f3] text-[10px] text-[#aaa]">
+                  HOVER
+                </div>
+              )}
+            </div>
+            <div className="min-w-0 leading-[1.8]">
+              <p className="break-words font-medium text-black">{item.name}</p>
+              {item.meta_data?.map((meta) => (
+                <p key={`${meta.key}-${meta.value}`} className="text-[#555]">
+                  {meta.value}
+                </p>
+              ))}
+              <p className="mt-1 text-[#555]">
+                {formatMoneyNT(Number(item.price || item.subtotal || item.total))}
+              </p>
+            </div>
+          </div>
+          <p className="text-center">{item.quantity}</p>
+          <p className="text-right">{formatMoneyNT(Number(item.total))}</p>
+        </div>
+      ))}
+
+      <div className="border-b border-[#d2d2d2] py-4">
+        <div className="grid grid-cols-[minmax(0,1fr)_160px] gap-4 py-2">
+          <span>運費</span>
+          <span className="text-right">
+            {shippingTotal === 0
+              ? "消費滿NT$2,000免運"
+              : formatMoneyNT(shippingTotal)}
+          </span>
+        </div>
+        <div className="grid grid-cols-[minmax(0,1fr)_160px] gap-4 py-2 font-medium">
+          <span>總金額</span>
+          <span className="text-right">
+            {formatMoneyNT(Number(order.total))}
+          </span>
+        </div>
+      </div>
+
+      <div className="space-y-2 px-1 py-7 leading-[1.8]">
+        <p>收件人：{recipient} / {phone}</p>
+        <p>配送地址：{address}</p>
+        <p>配送方式：{shippingMethod}</p>
+        <p>發票抬頭：電子發票</p>
+        <p>備註：{order.customer_note || "—"}</p>
+      </div>
+
+      <a
+        href={HOVER_LINE_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex min-h-11 w-full items-center justify-center bg-[#2a514d] px-5 py-3 text-center text-[12px] tracking-[0.04em] text-white transition-opacity hover:opacity-85"
+      >
+        （如有問題請留言給客服）
+      </a>
     </div>
   );
 }
@@ -514,6 +629,20 @@ export default function AccountPage() {
   const [birthdayLoading, setBirthdayLoading] = useState(false);
   const [showBirthdayModal, setShowBirthdayModal] = useState(false);
   const [modalBirthdayInput, setModalBirthdayInput] = useState("");
+  const [profileForm, setProfileForm] = useState({
+    name: "",
+    phone: "",
+    address: "",
+  });
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [profileMessage, setProfileMessage] = useState("");
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordMessage, setPasswordMessage] = useState("");
 
   const loadProfile = useCallback(async () => {
     setLoading(true);
@@ -525,8 +654,16 @@ export default function AccountPage() {
       });
       const data = await res.json();
       if (data?.loggedIn) {
+        const nextCustomer = data.customer || {};
         setLoggedIn(true);
-        setCustomer(data.customer || {});
+        setCustomer(nextCustomer);
+        setProfileForm({
+          name:
+            String(nextCustomer.display_name || "").trim() ||
+            `${nextCustomer.first_name || ""} ${nextCustomer.last_name || ""}`.trim(),
+          phone: nextCustomer.phone || nextCustomer.billing_phone || "",
+          address: nextCustomer.billing_address || nextCustomer.address || "",
+        });
         setMembership(data.membership || null);
         const roles = Array.isArray(data?.customer?.roles)
           ? data.customer.roles
@@ -565,6 +702,7 @@ export default function AccountPage() {
       });
       const data = await res.json();
       setOrders(data.orders || []);
+      setExpandedUserOrderId((prev) => prev ?? data.orders?.[0]?.id ?? null);
       setOrdersDebug(data.debug || null);
     } catch {
       setOrders([]);
@@ -707,6 +845,83 @@ export default function AccountPage() {
     }
   };
 
+  const handleProfileSave = async () => {
+    if (!profileForm.name.trim()) {
+      setProfileMessage("錯誤：請輸入姓名");
+      return;
+    }
+
+    setProfileSaving(true);
+    setProfileMessage("");
+    try {
+      const res = await fetch("/api/account/profile", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ profile: profileForm }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) {
+        setProfileMessage(`錯誤：${data?.message || "會員資料更新失敗"}`);
+        return;
+      }
+      setProfileMessage("會員資料已更新");
+      await loadProfile();
+    } catch {
+      setProfileMessage("錯誤：系統錯誤，請稍後再試");
+    } finally {
+      setProfileSaving(false);
+    }
+  };
+
+  const handlePasswordSave = async () => {
+    setPasswordMessage("");
+    if (
+      !passwordForm.currentPassword ||
+      !passwordForm.newPassword ||
+      !passwordForm.confirmPassword
+    ) {
+      setPasswordMessage("錯誤：請完整填寫三個密碼欄位");
+      return;
+    }
+    if (passwordForm.newPassword.length < 8) {
+      setPasswordMessage("錯誤：新密碼長度至少 8 碼");
+      return;
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordMessage("錯誤：兩次輸入的新密碼不一致");
+      return;
+    }
+
+    setPasswordSaving(true);
+    try {
+      const res = await fetch("/api/account/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          currentPassword: passwordForm.currentPassword,
+          newPassword: passwordForm.newPassword,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data?.ok) {
+        setPasswordMessage(`錯誤：${data?.message || "密碼修改失敗"}`);
+        return;
+      }
+      setPasswordForm({
+        currentPassword: "",
+        newPassword: "",
+        confirmPassword: "",
+      });
+      setPasswordMessage("密碼修改成功");
+    } catch {
+      setPasswordMessage("錯誤：系統錯誤，請稍後再試");
+    } finally {
+      setPasswordSaving(false);
+    }
+  };
+
   const handleClaim = async (kind) => {
     setClaimMessage(null);
     setClaimStatus(null);
@@ -828,14 +1043,6 @@ export default function AccountPage() {
   );
   const referralTotal = ambassadorTotal + friendTotal;
 
-  const displayName =
-    customer?.display_name?.trim() ||
-    (
-      (customer?.first_name || "") +
-      (customer?.last_name ? ` ${customer?.last_name}` : "")
-    ).trim() ||
-    customer?.username ||
-    (customer?.email ? customer.email.split("@")[0] : "會員");
   const getBirthMonthLabel = (dateStr) => {
     if (!dateStr) return "";
     const d = new Date(dateStr);
@@ -1232,24 +1439,66 @@ export default function AccountPage() {
                 <div className="mb-12 grid grid-cols-1 gap-10 md:grid-cols-2 md:gap-16">
                   <div>
                     <HoverSectionLabel>會員資料修改</HoverSectionLabel>
-                    <HoverUnderlineField label="姓名" value={displayName} />
+                    <HoverUnderlineField
+                      label="姓名"
+                      value={profileForm.name}
+                      onChange={(e) =>
+                        setProfileForm((prev) => ({
+                          ...prev,
+                          name: e.target.value,
+                        }))
+                      }
+                    />
                     <HoverUnderlineField
                       label="電話"
-                      value={customer?.phone || customer?.billing_phone || "—"}
+                      value={profileForm.phone}
+                      onChange={(e) =>
+                        setProfileForm((prev) => ({
+                          ...prev,
+                          phone: e.target.value,
+                        }))
+                      }
                     />
                     <HoverUnderlineField
                       label="Email"
                       value={customer?.email || "—"}
+                      readOnly
                     />
                     <HoverUnderlineField
                       label="生日"
                       value={customer?.birthday || "未設定"}
                       type={customer?.birthday ? "date" : "text"}
+                      readOnly
                     />
                     <HoverUnderlineField
                       label="地址"
-                      value={customer?.billing_address || customer?.address || "—"}
+                      value={profileForm.address}
+                      onChange={(e) =>
+                        setProfileForm((prev) => ({
+                          ...prev,
+                          address: e.target.value,
+                        }))
+                      }
                     />
+                    <button
+                      type="button"
+                      onClick={handleProfileSave}
+                      disabled={profileSaving}
+                      className="mt-1 bg-[#2a514d] px-5 py-2.5 text-[13px] text-white transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {profileSaving ? "儲存中..." : "儲存會員資料"}
+                    </button>
+                    {profileMessage && (
+                      <p
+                        className={`mt-3 text-[12px] ${
+                          profileMessage.startsWith("錯誤：")
+                            ? "text-red-600"
+                            : "text-[#2a514d]"
+                        }`}
+                      >
+                        {profileMessage}
+                      </p>
+                    )}
                     {!customer?.birthday && (
                       <div className="mt-4">
                         {!isSettingBirthday ? (
@@ -1297,27 +1546,70 @@ export default function AccountPage() {
                         <input
                           type="password"
                           placeholder="請輸入舊密碼"
-                          disabled
-                          className="w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                          autoComplete="current-password"
+                          value={passwordForm.currentPassword}
+                          onChange={(e) =>
+                            setPasswordForm((prev) => ({
+                              ...prev,
+                              currentPassword: e.target.value,
+                            }))
+                          }
+                          className="w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none focus:border-[#2a514d]"
                         />
                       </div>
                       <div className="pb-4">
                         <input
                           type="password"
                           placeholder="新密碼"
-                          disabled
-                          className="w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                          autoComplete="new-password"
+                          value={passwordForm.newPassword}
+                          onChange={(e) =>
+                            setPasswordForm((prev) => ({
+                              ...prev,
+                              newPassword: e.target.value,
+                            }))
+                          }
+                          className="w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none focus:border-[#2a514d]"
                         />
                       </div>
                       <div className="pb-4">
                         <input
                           type="password"
                           placeholder="請再輸入一次新密碼"
-                          disabled
-                          className="w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                          autoComplete="new-password"
+                          value={passwordForm.confirmPassword}
+                          onChange={(e) =>
+                            setPasswordForm((prev) => ({
+                              ...prev,
+                              confirmPassword: e.target.value,
+                            }))
+                          }
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") handlePasswordSave();
+                          }}
+                          className="w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none focus:border-[#2a514d]"
                         />
                       </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={handlePasswordSave}
+                      disabled={passwordSaving}
+                      className="mt-1 bg-[#2a514d] px-5 py-2.5 text-[13px] text-white transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {passwordSaving ? "修改中..." : "確認修改密碼"}
+                    </button>
+                    {passwordMessage && (
+                      <p
+                        className={`mt-3 text-[12px] ${
+                          passwordMessage.startsWith("錯誤：")
+                            ? "text-red-600"
+                            : "text-[#2a514d]"
+                        }`}
+                      >
+                        {passwordMessage}
+                      </p>
+                    )}
                     <Link
                       href="/forgot-password"
                       className="mt-4 inline-block text-[13px] text-[#2a514d] underline underline-offset-2 hover:opacity-70"
@@ -1560,15 +1852,15 @@ export default function AccountPage() {
                     </p>
                   </div>
                 ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full min-w-[640px] text-left text-[13px]">
+                  <div className="overflow-x-auto bg-white">
+                    <table className="w-full min-w-[680px] border-collapse text-left text-[12px] md:text-[13px]">
                       <thead>
-                        <tr className="border-b border-[#ccc] text-[#888]">
-                          <th className="pb-3 pr-4 font-normal">訂單編號</th>
-                          <th className="pb-3 pr-4 font-normal">日期</th>
-                          <th className="pb-3 pr-4 font-normal">狀態</th>
-                          <th className="pb-3 pr-4 font-normal">總金額</th>
-                          <th className="pb-3 font-normal">付款方式</th>
+                        <tr className="border-b border-[#ccc] text-center text-[#333]">
+                          <th className="px-3 pb-3 font-normal">訂單編號</th>
+                          <th className="px-3 pb-3 font-normal">日期</th>
+                          <th className="px-3 pb-3 font-normal">狀態</th>
+                          <th className="px-3 pb-3 font-normal">總金額</th>
+                          <th className="px-3 pb-3 font-normal">付款方式</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -1618,8 +1910,8 @@ export default function AccountPage() {
 
                           const statusLabel = (() => {
                             const s = String(o.status || "").toLowerCase();
-                            if (s === "completed" || s === "processing" || s === "paid")
-                              return "已出貨";
+                            if (s === "completed") return "已到貨";
+                            if (s === "processing" || s === "paid") return "處理中";
                             if (s === "pending" || s === "on-hold" || s === "待付款")
                               return "待付款";
                             if (s === "cancelled") return "已取消";
@@ -1634,29 +1926,34 @@ export default function AccountPage() {
                                     expandedUserOrderId === o.id ? null : o.id,
                                   )
                                 }
-                                className="cursor-pointer border-b border-[#e8e8e8] transition-colors hover:bg-white/60"
+                                className="cursor-pointer border-b border-[#ccc] text-center transition-colors hover:bg-[#fafafa]"
                               >
-                                <td className="py-4 pr-4">
-                                  <span className="text-[#4a90d9] hover:underline">
+                                <td className="px-3 py-4">
+                                  <span className="text-[#2a514d] hover:underline">
                                     {o.number}
                                   </span>
                                 </td>
-                                <td className="py-4 pr-4 text-[#555]">
+                                <td className="px-3 py-4 text-[#333]">
                                   {new Date(o.date_created).toLocaleDateString(
                                     "zh-TW",
                                   )}
                                 </td>
-                                <td className="py-4 pr-4">{statusLabel}</td>
-                                <td className="py-4 pr-4 font-medium">
+                                <td className="px-3 py-4">{statusLabel}</td>
+                                <td className="px-3 py-4 font-medium">
                                   {formatMoneyNT(Number(o.total))}
                                 </td>
-                                <td className="py-4 text-[#555]">{pTitle}</td>
+                                <td className="px-3 py-4 text-[#333]">{pTitle}</td>
                               </tr>
 
                               {expandedUserOrderId === o.id && (
-                                <tr className="bg-white/50">
-                                  <td colSpan={5} className="px-0 py-5">
-                                        <div className="grid md:grid-cols-2 gap-6 sm:gap-8">
+                                <tr className="bg-white">
+                                  <td colSpan={5} className="px-0 py-0">
+                                        <OrderDetail order={o} />
+                                        <div
+                                          className="grid md:grid-cols-2 gap-6 sm:gap-8"
+                                          style={{ display: "none" }}
+                                          aria-hidden
+                                        >
                                           <div className="flex flex-col gap-3 sm:gap-4 w-full">
                                             <h4 className="font-bold text-[#202223] flex items-center gap-2">
                                               <CreditCard
@@ -2202,7 +2499,7 @@ export default function AccountPage() {
                       <div key={item.id} className="group">
                         <Link
                           href={`/products/${item.slug}`}
-                          className="relative mb-2 block aspect-[3/4] overflow-hidden bg-[#eeecea]"
+                          className="relative mb-2 block aspect-[3/4] overflow-hidden bg-white"
                         >
                           {item.image ? (
                             <Image
@@ -2217,27 +2514,39 @@ export default function AccountPage() {
                               <HoverIcon name="cart" size={80} alt="" />
                             </div>
                           )}
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              removeFromWishlist(item.id);
-                            }}
-                            className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-rose-500 shadow-sm backdrop-blur-sm transition-colors hover:bg-white"
-                            aria-label="移除收藏"
-                          >
-                            <WishlistIcon active size={18} />
-                          </button>
                         </Link>
-                        <Link
-                          href={`/products/${item.slug}`}
-                          className="block text-[12px] font-semibold uppercase leading-snug text-black line-clamp-2 hover:opacity-60"
-                        >
-                          {item.name}
-                        </Link>
-                        <p className="mt-1 text-[12px] text-black">
-                          NT {item.price}$
-                        </p>
+
+                        <div className="mt-2 min-w-0 space-y-1 px-0.5 text-left md:mt-3">
+                          <div className="mb-0 flex min-h-9 min-w-0 items-center justify-between gap-2">
+                            <Link
+                              href={`/products/${item.slug}`}
+                              className="flex min-w-0 flex-1 items-center break-words text-[12px] font-semibold leading-snug text-black line-clamp-2 hover:opacity-60 md:text-[13px]"
+                            >
+                              {item.name}
+                            </Link>
+                            <button
+                              type="button"
+                              onClick={() => removeFromWishlist(item.id)}
+                              className="flex h-9 w-9 shrink-0 items-center justify-center transition-opacity hover:opacity-60"
+                              aria-label="移除收藏"
+                            >
+                              <WishlistIcon active size={20} />
+                            </button>
+                          </div>
+
+                          {item.colorHex && (
+                            <div className="flex items-center gap-1.5 pt-0.5">
+                              <span
+                                className="inline-block h-3 w-3 shrink-0 rounded-full border border-[#ccc]"
+                                style={{ background: item.colorHex }}
+                              />
+                            </div>
+                          )}
+
+                          <p className="pt-0.5 text-[12px] font-bold text-[#222] md:text-[13px]">
+                            NT {item.price}
+                          </p>
+                        </div>
                       </div>
                     ))}
                   </div>

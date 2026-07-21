@@ -58,6 +58,23 @@ export function getVariationSize(variation: ProductVariation): string {
   return getVariationAttribute(variation, isSizeAttributeName);
 }
 
+const SIZE_ORDER = ["XS", "S", "M", "L", "XL", "2XL", "XXL", "3XL", "XXXL"];
+
+export function sortProductSizes(sizes: string[]): string[] {
+  return sizes
+    .map((size, index) => ({ size, index }))
+    .sort((a, b) => {
+      const aRank = SIZE_ORDER.indexOf(a.size.trim().toUpperCase());
+      const bRank = SIZE_ORDER.indexOf(b.size.trim().toUpperCase());
+
+      if (aRank === -1 && bRank === -1) return a.index - b.index;
+      if (aRank === -1) return 1;
+      if (bRank === -1) return -1;
+      return aRank - bRank;
+    })
+    .map(({ size }) => size);
+}
+
 export function findMatchingVariation(
   variations: ProductVariation[],
   color: string,
@@ -82,7 +99,7 @@ export function getSizesForColor(
   color: string,
   fallback: string[],
 ): string[] {
-  if (!variations.length) return fallback;
+  if (!variations.length) return sortProductSizes(fallback);
 
   const sizes: string[] = [];
   const seen = new Set<string>();
@@ -95,5 +112,5 @@ export function getSizesForColor(
     sizes.push(size);
   }
 
-  return sizes.length ? sizes : fallback;
+  return sortProductSizes(sizes.length ? sizes : fallback);
 }

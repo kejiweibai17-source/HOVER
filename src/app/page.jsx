@@ -1,7 +1,10 @@
 // app/page.jsx
 import Client from "./home";
 import { fetchAllProducts } from "@/lib/woo";
-import { fetchHeroSettings } from "@/lib/heroDefaults";
+import {
+  fetchHeroSettings,
+  getActiveHeroSlides,
+} from "@/lib/heroDefaults";
 import { fetchBrandStorySlides } from "@/lib/brandStoryDefaults";
 import { fetchMidVideoSettings } from "@/lib/midVideoDefaults";
 import { fetchCategoryTiles } from "@/lib/categoryGridDefaults";
@@ -36,44 +39,43 @@ const homeFAQs = [
   },
 ];
 
-export const metadata = {
-  metadataBase: new URL(SITE_URL),
-  title: "HOVER 威爾特｜輕盈穩定的日常服飾選品",
-  description:
-    "探索 HOVER 新作與熱銷單品——上衣、帽款、襪品到包袋。以舒適剪裁與簡約質感，陪你依照生活節奏自在穿搭。全館滿 NT$2,000 享免運。",
-  keywords: [
-    "HOVER",
-    "威爾特",
-    "日常服飾",
-    "日常穿搭",
-    "簡約服飾",
-    "質感選品",
-    "丹寧襯衫",
-    "帽款",
-    "襪子",
-    "包袋",
-    "台灣服飾品牌",
-  ],
-  icons: { icon: "/favicon.ico" },
-  openGraph: {
-    type: "website",
-    locale: "zh_TW",
-    url: "/",
-    siteName: "HOVER 威爾特",
-    title: "HOVER 威爾特｜輕盈穩定的日常服飾選品",
-    description:
-      "探索 HOVER 新作與熱銷單品——上衣、帽款、襪品到包袋。以舒適剪裁與簡約質感，陪你依照生活節奏自在穿搭。全館滿 NT$2,000 享免運。",
-    images: [
-      {
-        url: "/images/hover/hero.jpg",
-        width: 1600,
-        height: 900,
-        alt: "HOVER 威爾特官方網站主視覺",
-      },
-    ],
-  },
-  alternates: { canonical: "/" },
-};
+const HOME_TITLE = "HOVER｜只為經典而生";
+const HOME_DESCRIPTION =
+  "探索 HOVER 服飾、帽款、襪子與包袋。以中性設計、舒適剪裁與簡約質感，讓每一件單品自在融入生活，陪你走過每個日常。";
+
+export async function generateMetadata() {
+  const hero = await fetchHeroSettings();
+  const heroImage =
+    getActiveHeroSlides(hero).find((slide) => slide.image.url)?.image.url ||
+    "/images/hover/hero.jpg";
+
+  return {
+    metadataBase: new URL(SITE_URL),
+    title: HOME_TITLE,
+    description: HOME_DESCRIPTION,
+    alternates: { canonical: "/" },
+    openGraph: {
+      type: "website",
+      locale: "zh_TW",
+      url: "/",
+      siteName: "HOVER",
+      title: HOME_TITLE,
+      description: HOME_DESCRIPTION,
+      images: [
+        {
+          url: heroImage,
+          alt: "HOVER 首頁品牌主視覺",
+        },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: HOME_TITLE,
+      description: HOME_DESCRIPTION,
+      images: [heroImage],
+    },
+  };
+}
 
 export const revalidate = 60;
 
@@ -85,8 +87,8 @@ export default async function Page() {
     "@id": `${SITE_URL}/#website`,
     url: SITE_URL,
     name: "HOVER",
-    alternateName: "HOVER 威爾特",
-    description: "輕盈穩定的日常服飾選品｜上衣、帽款、襪品、包袋",
+    alternateName: HOME_TITLE,
+    description: HOME_DESCRIPTION,
     publisher: { "@id": `${SITE_URL}/#organization` },
     inLanguage: "zh-TW",
     potentialAction: {
@@ -128,11 +130,10 @@ export default async function Page() {
     "@type": "WebPage",
     "@id": `${SITE_URL}/#webpage`,
     url: SITE_URL,
-    name: "HOVER 威爾特｜輕盈穩定的日常服飾選品",
+    name: HOME_TITLE,
     isPartOf: { "@id": `${SITE_URL}/#website` },
     about: { "@id": `${SITE_URL}/#organization` },
-    description:
-      "探索 HOVER 新作與熱銷單品——上衣、帽款、襪品到包袋。以舒適剪裁與簡約質感，陪你依照生活節奏自在穿搭。",
+    description: HOME_DESCRIPTION,
   };
 
   const schemaFAQ = {

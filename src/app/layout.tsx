@@ -5,9 +5,15 @@ import "./globals.css";
 import ClientLayout from "./ClientLayout";
 
 export const metadata: Metadata = {
-  title: "HOVER 威爾特｜輕盈穩定的日常服飾選品",
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_SITE_URL ||
+      (process.env.NEXT_PUBLIC_VERCEL_URL
+        ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
+        : "http://localhost:3000"),
+  ),
+  title: "HOVER｜只為經典而生",
   description:
-    "探索 HOVER 新作與熱銷單品——上衣、帽款、襪品到包袋。以舒適剪裁與簡約質感，陪你依照生活節奏自在穿搭。全館滿 NT$2,000 享免運。",
+    "探索 HOVER 服飾、帽款、襪子與包袋。以中性設計、舒適剪裁與簡約質感，讓每一件單品自在融入生活，陪你走過每個日常。",
   icons: {
     icon: "/favicon.ico",
     shortcut: "/favicon.ico",
@@ -22,7 +28,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="zh-Hant  ">
+    <html lang="zh-Hant">
       <body className="min-h-screen bg-hover-bg font-sans text-slate-900 antialiased">
         <ClientLayout>{children}</ClientLayout>
       </body>

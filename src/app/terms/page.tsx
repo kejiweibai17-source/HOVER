@@ -14,19 +14,9 @@ const SITE_URL = getSiteUrl();
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "服務條款｜HOVER 威爾特",
-  description:
-    "HOVER 官方網站服務條款，包含網站服務、會員帳號、訂單付款、配送退貨、優惠活動及消費爭議處理等規範。",
+  title: "服務條款｜HOVER",
+  description: "查看 HOVER 網站服務條款與網站使用規範。",
   alternates: { canonical: "/terms" },
-  openGraph: {
-    type: "website",
-    locale: "zh_TW",
-    url: "/terms",
-    siteName: "HOVER 威爾特",
-    title: "服務條款｜HOVER 威爾特",
-    description:
-      "HOVER 官方網站服務條款，說明會員權益、訂購流程、付款配送、退換貨及相關使用規範。",
-  },
 };
 
 export default function TermsPage() {

@@ -33,10 +33,18 @@ function FooterAccordion({ title, children, defaultOpen = false }) {
   );
 }
 
-function FooterLink({ href, children }) {
+function FooterLink({ href, children, onClick }) {
   const external = href.startsWith("http");
   const className =
-    "text-[14px] tracking-[0.06em] text-white/90 transition-opacity hover:opacity-60";
+    "text-left text-[14px] tracking-[0.06em] text-white/90 transition-opacity hover:opacity-60";
+
+  if (onClick) {
+    return (
+      <button type="button" onClick={onClick} className={className}>
+        {children}
+      </button>
+    );
+  }
 
   if (external) {
     return (
@@ -58,7 +66,7 @@ function FooterLink({ href, children }) {
   );
 }
 
-function FooterColumn({ title, links }) {
+function FooterColumn({ title, links, onMembershipClick }) {
   return (
     <div className="min-w-0">
       <h3 className="mb-4 text-[17px] font-normal tracking-[0.1em] md:mb-5">
@@ -67,10 +75,60 @@ function FooterColumn({ title, links }) {
       <ul className="space-y-2.5 md:space-y-3">
         {links.map((l) => (
           <li key={`${title}-${l.label}`}>
-            <FooterLink href={l.href}>{l.label}</FooterLink>
+            <FooterLink
+              href={l.href}
+              onClick={l.label === "會員制度" ? onMembershipClick : undefined}
+            >
+              {l.label}
+            </FooterLink>
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function MembershipModal({ open, onClose }) {
+  useEffect(() => {
+    if (!open) return undefined;
+
+    const handleKeyDown = (event) => {
+      if (event.key === "Escape") onClose();
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm md:p-6"
+      role="dialog"
+      aria-modal="true"
+      aria-label="會員制度"
+      onClick={onClose}
+    >
+      <div
+        className="relative flex max-h-[92dvh] max-w-[96vw] items-center justify-center"
+        onClick={(event) => event.stopPropagation()}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/images/會員制度.jpg"
+          alt="HOVER 會員制度"
+          className="block max-h-[92dvh] max-w-[96vw] object-contain"
+        />
+        <button
+          type="button"
+          aria-label="關閉會員制度"
+          onClick={onClose}
+          className="absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full bg-black/65 text-[24px] font-light leading-none text-white transition-colors hover:bg-black"
+        >
+          ×
+        </button>
+      </div>
     </div>
   );
 }
@@ -248,8 +306,8 @@ function ContactColumn({ contact, social }) {
         )}
       </ul>
 
-      <div className="mt-5 flex items-center gap-4 md:mt-6">
-        <SocialLinks items={social} size={44} />
+      <div className="mt-5 flex items-center gap-2 md:mt-6">
+        <SocialLinks items={social} size={40} />
       </div>
     </div>
   );
@@ -257,6 +315,7 @@ function ContactColumn({ contact, social }) {
 
 export default function HoverFooter() {
   const [footer, setFooter] = useState(DEFAULT_FOOTER);
+  const [membershipOpen, setMembershipOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -283,7 +342,7 @@ export default function HoverFooter() {
   );
 
   return (
-    <footer className="text-white" style={{ backgroundColor }}>
+    <footer className="text-white" style={{ backgroundColor: backgroundColor || "#2a514d" }}>
       <div className="mx-auto w-full max-w-[1680px] px-6 pt-12 md:px-12 md:pt-16 lg:px-16 lg:pt-[72px] xl:px-12">
         <div className="hidden lg:flex lg:w-full lg:items-stretch lg:justify-evenly">
           <div className="flex shrink-0 items-center">
@@ -297,7 +356,11 @@ export default function HoverFooter() {
 
           {columns.map((col) => (
             <div key={col.title} className="shrink-0">
-              <FooterColumn title={col.title} links={col.links} />
+              <FooterColumn
+                title={col.title}
+                links={col.links}
+                onMembershipClick={() => setMembershipOpen(true)}
+              />
             </div>
           ))}
 
@@ -312,7 +375,16 @@ export default function HoverFooter() {
               <ul className="space-y-2.5">
                 {col.links.map((l) => (
                   <li key={`${col.title}-${l.label}`}>
-                    <FooterLink href={l.href}>{l.label}</FooterLink>
+                    <FooterLink
+                      href={l.href}
+                      onClick={
+                        l.label === "會員制度"
+                          ? () => setMembershipOpen(true)
+                          : undefined
+                      }
+                    >
+                      {l.label}
+                    </FooterLink>
                   </li>
                 ))}
               </ul>
@@ -352,8 +424,8 @@ export default function HoverFooter() {
             </ul>
           </FooterAccordion>
 
-          <div className="flex items-center gap-4 px-0 py-6">
-            <SocialLinks items={social} size={44} />
+          <div className="flex items-center gap-2 px-0 py-6">
+            <SocialLinks items={social} size={40} />
           </div>
 
           <div className="mt-10 flex justify-center px-6 pb-4 pt-4 sm:mt-0">
@@ -367,18 +439,22 @@ export default function HoverFooter() {
           )}
         </div>
 
-        <div className="hidden pb-10 pt-16 mt-0 text-center text-[12px] leading-relaxed tracking-[0.04em] text-white/70 md:mt-10 md:text-[13px] lg:block lg:pb-12 lg:pt-10">
+        <div className="hidden pb-10 pt-16 text-center text-[12px] leading-relaxed tracking-[0.04em] text-white/70 md:mt-10 md:text-[13px] lg:block lg:pb-12 lg:pt-10">
           <p className="inline-flex flex-wrap items-center justify-center gap-x-2">
-            {company && <span>{company}</span>}
+            {shortCopyright && <span>{shortCopyright}</span>}
             {company && shortCopyright && (
               <span className="text-white/40" aria-hidden>
                 ·
               </span>
             )}
-            {shortCopyright && <span>{shortCopyright}</span>}
+            {company && <span>{company}</span>}
           </p>
         </div>
       </div>
+      <MembershipModal
+        open={membershipOpen}
+        onClose={() => setMembershipOpen(false)}
+      />
     </footer>
   );
 }

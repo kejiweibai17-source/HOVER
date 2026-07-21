@@ -456,7 +456,7 @@ function ProductDetailAccordions({
           <SizeGuideTable guide={sizeGuide} />
           <div className="relative mt-4 aspect-[4/3] w-full overflow-hidden">
             <Image
-              src="/images/量測.png"
+              src={sizeGuide.imageUrl || "/images/量測.png"}
               alt="尺寸量測方式說明"
               fill
               sizes="(max-width: 768px) 100vw, 50vw"

@@ -14,19 +14,10 @@ const SITE_URL = getSiteUrl();
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "如何購買｜HOVER 威爾特",
+  title: "如何購買｜HOVER",
   description:
-    "了解 HOVER 官方網站購物流程、付款方式、配送說明、出貨時間與防詐騙提醒。",
+    "了解 HOVER 如何購買，包含付款方式、配送說明、出貨時間及訂單相關資訊。",
   alternates: { canonical: "/how-to-buy" },
-  openGraph: {
-    type: "website",
-    locale: "zh_TW",
-    url: "/how-to-buy",
-    siteName: "HOVER 威爾特",
-    title: "如何購買｜HOVER 威爾特",
-    description:
-      "HOVER 購物流程、付款與配送方式完整說明。",
-  },
 };
 
 export default function HowToBuyPage() {

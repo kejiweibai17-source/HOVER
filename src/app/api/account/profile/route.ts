@@ -19,7 +19,10 @@ const BASE =
 const CK = process.env.WC_CONSUMER_KEY;
 const CS = process.env.WC_CONSUMER_SECRET;
 const JWT_SECRET =
-  process.env.RESET_TOKEN_SECRET || process.env.JWT_SECRET || "secret";
+  process.env.RESET_TOKEN_SECRET ||
+  process.env.NEXTAUTH_SECRET ||
+  process.env.JWT_SECRET ||
+  "secret";
 
 function basicAuth() {
   if (!CK || !CS) return undefined;
@@ -54,15 +57,15 @@ function isPlaceholderGravatar(url: string) {
 }
 
 function resolveDisplayName(customer: any, sessionName?: string | null) {
-  const fromSession = String(sessionName || "").trim();
-  if (fromSession) return fromSession;
+  const full = `${customer?.first_name || ""}${customer?.last_name ? ` ${customer.last_name}` : ""}`.trim();
+  if (full) return full;
 
   const meta: any[] = Array.isArray(customer?.meta_data) ? customer.meta_data : [];
   const fromOAuthMeta = meta.find((m) => m.key === "oauth_display_name")?.value;
   if (fromOAuthMeta) return String(fromOAuthMeta).trim();
 
-  const full = `${customer?.first_name || ""}${customer?.last_name ? ` ${customer.last_name}` : ""}`.trim();
-  if (full) return full;
+  const fromSession = String(sessionName || "").trim();
+  if (fromSession) return fromSession;
   return customer?.email?.split("@")[0] || "會員";
 }
 
@@ -112,6 +115,40 @@ async function getAuthenticatedEmail() {
     }
   }
   return email;
+}
+
+/** Mutations must use a signed session/token, never the unsigned email cookie. */
+async function getVerifiedAuthenticatedEmail() {
+  const session = await getServerSession(authOptions);
+  const sessionEmail = String(session?.user?.email || "").trim().toLowerCase();
+  if (sessionEmail) return sessionEmail;
+
+  const cookieStore = cookies();
+  const authToken = cookieStore.get("auth_token")?.value;
+  if (authToken) {
+    try {
+      const decoded = jwt.verify(authToken, JWT_SECRET) as any;
+      const tokenEmail = String(decoded?.email || "").trim().toLowerCase();
+      if (tokenEmail) return tokenEmail;
+    } catch {
+      // A stale social-login token should not block a valid WordPress JWT.
+    }
+  }
+
+  const jwtValue = cookieStore.get("jwt")?.value;
+  if (!jwtValue) return null;
+
+  try {
+    const meRes = await fetch(`${BASE}/wp-json/wp/v2/users/me`, {
+      headers: { Authorization: `Bearer ${jwtValue}` },
+      cache: "no-store",
+    });
+    if (!meRes.ok) return null;
+    const me = await meRes.json();
+    return String(me?.email || "").trim().toLowerCase() || null;
+  } catch {
+    return null;
+  }
 }
 
 export async function GET() {
@@ -308,6 +345,14 @@ export async function GET() {
         display_name: resolveDisplayName(customer, session?.user?.name),
         avatar_url: resolveAvatarUrl(customer, session?.user?.image),
         birthday: birthday,
+        phone: customer?.billing?.phone || "",
+        billing_phone: customer?.billing?.phone || "",
+        billing_address: [
+          customer?.billing?.address_1,
+          customer?.billing?.address_2,
+        ]
+          .filter(Boolean)
+          .join(" "),
       }
       : {
         email: normalizedEmail,
@@ -328,7 +373,7 @@ export async function GET() {
   }
 }
 
-// ✅ PUT 方法：更新會員資料 (修復管理員找不到資料的問題)
+// PUT：更新會員資料或設定一次性生日
 export async function PUT(req: Request) {
   try {
     const auth = basicAuth();
@@ -336,7 +381,7 @@ export async function PUT(req: Request) {
       return NextResponse.json({ ok: false, message: "Auth Error" }, { status: 500 });
     }
 
-    const email = await getAuthenticatedEmail();
+    const email = await getVerifiedAuthenticatedEmail();
     if (!email) {
       return NextResponse.json(
         { ok: false, message: "尚未登入" },
@@ -344,9 +389,12 @@ export async function PUT(req: Request) {
       );
     }
 
-    const body = await req.json();
-    const { birthday } = body;
-    if (!birthday) {
+    const body = await req.json().catch(() => ({}));
+    const birthday = String(body?.birthday || "").trim();
+    const profile = body?.profile;
+    const isProfileUpdate = profile && typeof profile === "object";
+
+    if (!birthday && !isProfileUpdate) {
       return NextResponse.json({ ok: false, message: "無效的資料" });
     }
 
@@ -400,7 +448,80 @@ export async function PUT(req: Request) {
       }
     }
 
-    // 2. 檢查是否已設定過 (如果有 ID 的話)
+    if (!customerId) {
+      return NextResponse.json(
+        { ok: false, message: "找不到會員資料" },
+        { status: 404 },
+      );
+    }
+
+    if (isProfileUpdate) {
+      const name = String(profile.name || "").trim();
+      const phone = String(profile.phone || "").trim();
+      const address = String(profile.address || "").trim();
+
+      if (!name) {
+        return NextResponse.json(
+          { ok: false, message: "請輸入姓名" },
+          { status: 400 },
+        );
+      }
+      if (name.length > 100 || phone.length > 30 || address.length > 250) {
+        return NextResponse.json(
+          { ok: false, message: "輸入內容過長" },
+          { status: 400 },
+        );
+      }
+      if (phone && !/^[0-9+\-()\s#]+$/.test(phone)) {
+        return NextResponse.json(
+          { ok: false, message: "電話格式不正確" },
+          { status: 400 },
+        );
+      }
+
+      const updateRes = await fetch(
+        `${BASE}/wp-json/wc/v3/customers/${customerId}`,
+        {
+          method: "PUT",
+          headers: {
+            Authorization: auth,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            first_name: name,
+            last_name: "",
+            billing: {
+              first_name: name,
+              last_name: "",
+              phone,
+              address_1: address,
+              address_2: "",
+            },
+            meta_data: [{ key: "oauth_display_name", value: name }],
+          }),
+          cache: "no-store",
+        },
+      );
+
+      if (!updateRes.ok) {
+        const errorBody = await updateRes.json().catch(() => ({}));
+        return NextResponse.json(
+          { ok: false, message: errorBody?.message || "會員資料更新失敗" },
+          { status: updateRes.status },
+        );
+      }
+
+      return NextResponse.json({ ok: true, message: "會員資料已更新" });
+    }
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(birthday)) {
+      return NextResponse.json(
+        { ok: false, message: "生日格式不正確" },
+        { status: 400 },
+      );
+    }
+
+    // 2. 檢查是否已設定過
     if (customerId) {
       const bdMeta = metaData.find(
         (m: any) =>
@@ -415,9 +536,8 @@ export async function PUT(req: Request) {
       }
     }
 
-    // 3. 執行動作：有 ID 則更新，無 ID 則建立
+    // 3. 更新現有會員
     if (customerId) {
-      // === 情況 A: 更新現有會員 (包含管理員) ===
       console.log(`Updating customer ${customerId} birthday to ${birthday}`);
       const updateRes = await fetch(`${BASE}/wp-json/wc/v3/customers/${customerId}`, {
         method: "PUT",
@@ -439,37 +559,6 @@ export async function PUT(req: Request) {
         console.error("Update failed:", err);
         return NextResponse.json({ ok: false, message: err.message || "更新失敗" });
       }
-    } else {
-      // === 情況 B: 自動建立新會員 (因為找不到 ID) ===
-      console.log(`Creating new customer for ${normalizedEmail}`);
-
-      const username = normalizedEmail.split('@')[0] + "_" + Math.floor(Math.random() * 1000);
-
-      const createRes = await fetch(`${BASE}/wp-json/wc/v3/customers`, {
-        method: "POST",
-        headers: {
-          Authorization: auth,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          email: normalizedEmail,
-          username: username, // 必填，自動生成一個
-          first_name: "會員", // 預設名稱，讓他之後自己改
-          password: Math.random().toString(36).slice(-10) + "!Aa", // 生成隨機密碼
-          meta_data: [
-            { key: "birthday", value: birthday },
-            { key: "billing_birth_date", value: birthday },
-            { key: "_billing_birth_date", value: birthday }
-          ],
-        }),
-      });
-
-      if (!createRes.ok) {
-        const err = await createRes.json();
-        console.error("Create failed:", err);
-        // 這裡如果不成功，可能是 Email 已存在但搜尋不到，或者密碼強度不足
-        return NextResponse.json({ ok: false, message: err.message || "建立會員失敗，請聯繫客服" });
-      }
     }
 
     return NextResponse.json({ ok: true, message: "生日設定成功" });
@@ -479,6 +568,110 @@ export async function PUT(req: Request) {
     return NextResponse.json(
       { ok: false, message: "系統錯誤" },
       { status: 500 }
+    );
+  }
+}
+
+// PATCH：驗證舊密碼後修改 WordPress / WooCommerce 密碼
+export async function PATCH(req: Request) {
+  try {
+    const auth = basicAuth();
+    if (!auth) {
+      return NextResponse.json(
+        { ok: false, message: "Auth Error" },
+        { status: 500 },
+      );
+    }
+
+    const email = await getVerifiedAuthenticatedEmail();
+    if (!email) {
+      return NextResponse.json(
+        { ok: false, message: "尚未登入" },
+        { status: 401 },
+      );
+    }
+
+    const body = await req.json().catch(() => ({}));
+    const currentPassword = String(body?.currentPassword || "");
+    const newPassword = String(body?.newPassword || "");
+
+    if (!currentPassword || !newPassword) {
+      return NextResponse.json(
+        { ok: false, message: "請完整填寫密碼欄位" },
+        { status: 400 },
+      );
+    }
+    if (newPassword.length < 8) {
+      return NextResponse.json(
+        { ok: false, message: "新密碼長度至少 8 碼" },
+        { status: 400 },
+      );
+    }
+    if (currentPassword === newPassword) {
+      return NextResponse.json(
+        { ok: false, message: "新密碼不可與舊密碼相同" },
+        { status: 400 },
+      );
+    }
+
+    const customerRes = await fetch(
+      `${BASE}/wp-json/wc/v3/customers?email=${encodeURIComponent(email)}&role=all`,
+      { headers: { Authorization: auth }, cache: "no-store" },
+    );
+    const customers = customerRes.ok
+      ? await customerRes.json().catch(() => [])
+      : [];
+    const customer = Array.isArray(customers) ? customers[0] : null;
+    const customerId = customer?.id;
+    if (!customerId) {
+      return NextResponse.json(
+        { ok: false, message: "找不到會員資料" },
+        { status: 404 },
+      );
+    }
+
+    const verifyRes = await fetch(`${BASE}/wp-json/jwt-auth/v1/token`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: customer?.username || email,
+        password: currentPassword,
+      }),
+      cache: "no-store",
+    });
+    if (!verifyRes.ok) {
+      return NextResponse.json(
+        { ok: false, message: "舊密碼不正確" },
+        { status: 400 },
+      );
+    }
+
+    const updateRes = await fetch(
+      `${BASE}/wp-json/wc/v3/customers/${customerId}`,
+      {
+        method: "PUT",
+        headers: {
+          Authorization: auth,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ password: newPassword }),
+        cache: "no-store",
+      },
+    );
+    if (!updateRes.ok) {
+      const errorBody = await updateRes.json().catch(() => ({}));
+      return NextResponse.json(
+        { ok: false, message: errorBody?.message || "密碼修改失敗" },
+        { status: updateRes.status },
+      );
+    }
+
+    return NextResponse.json({ ok: true, message: "密碼修改成功" });
+  } catch (error) {
+    console.error("PATCH profile password error:", error);
+    return NextResponse.json(
+      { ok: false, message: "系統錯誤，請稍後再試" },
+      { status: 500 },
     );
   }
 }

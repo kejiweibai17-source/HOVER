@@ -39,7 +39,8 @@ function hsg_defaults(): array
             ['label' => '衣長', 'values' => ['65', '69.5', '72', '76.5']],
             ['label' => '袖長', 'values' => ['18.5', '20', '21.5', '24']],
         ],
-        'note' => '※為平放測量，±2cm誤差範圍屬於製作標準範圍內。',
+        'note'     => '※為平放測量，±2cm誤差範圍屬於製作標準範圍內。',
+        'imageUrl' => '',
     ];
 }
 
@@ -50,6 +51,7 @@ function hsg_normalize(array $data): array
     $data['enabled'] = !empty($data['enabled']);
     $data['unitLabel'] = sanitize_text_field($data['unitLabel'] ?? $d['unitLabel']) ?: $d['unitLabel'];
     $data['note'] = sanitize_textarea_field($data['note'] ?? $d['note']);
+    $data['imageUrl'] = esc_url_raw((string) ($data['imageUrl'] ?? $data['image_url'] ?? $d['imageUrl']));
 
     $sizes = [];
     foreach (($data['sizes'] ?? []) as $size) {
@@ -123,6 +125,14 @@ add_action('add_meta_boxes', function () {
     );
 });
 
+/** 商品編輯頁啟用 WordPress 媒體庫 */
+add_action('admin_enqueue_scripts', function () {
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if ($screen && $screen->post_type === 'product' && $screen->base === 'post') {
+        wp_enqueue_media();
+    }
+});
+
 function hsg_render_meta_box($post): void
 {
     $guide = hsg_get_for_product((int) $post->ID);
@@ -160,6 +170,22 @@ function hsg_render_meta_box($post): void
                 <label class="hsg-label">備註文字</label>
                 <input type="text" class="large-text" id="hsg-note" value="<?php echo esc_attr($guide['note']); ?>">
             </div>
+        </div>
+
+        <div class="hsg-image-field">
+            <label class="hsg-label" for="hsg-image-url">尺寸量測圖片</label>
+            <div class="hsg-image-controls">
+                <input
+                    type="url"
+                    class="large-text"
+                    id="hsg-image-url"
+                    value="<?php echo esc_attr($guide['imageUrl'] ?? ''); ?>"
+                    placeholder="選擇媒體庫圖片或貼上圖片網址"
+                >
+                <button type="button" class="button button-secondary" id="hsg-select-image">從媒體庫選擇</button>
+                <button type="button" class="button-link-delete" id="hsg-clear-image">恢復預設</button>
+            </div>
+            <div class="hsg-image-preview" id="hsg-image-preview"></div>
         </div>
 
         <div class="hsg-table-wrap">
@@ -211,6 +237,21 @@ function hsg_print_admin_styles(): void
         }
         .hsg-admin .hsg-field { display: flex; flex-direction: column; gap: 6px; }
         .hsg-admin .hsg-label { font-weight: 600; font-size: 13px; }
+        .hsg-admin .hsg-image-field {
+            margin: 0 0 14px; padding: 14px; border: 1px solid #dcdcde;
+            border-radius: 8px; background: #fafafa;
+        }
+        .hsg-admin .hsg-image-controls {
+            display: grid; grid-template-columns: minmax(220px, 1fr) auto auto;
+            align-items: center; gap: 8px; margin-top: 8px;
+        }
+        .hsg-admin .hsg-image-preview {
+            display: none; margin-top: 12px; padding: 10px; border: 1px solid #dcdcde;
+            border-radius: 6px; background: #fff; text-align: center;
+        }
+        .hsg-admin .hsg-image-preview img {
+            display: block; max-width: 100%; max-height: 280px; width: auto; height: auto; margin: 0 auto;
+        }
         .hsg-admin .hsg-table-wrap {
             overflow-x: auto; border: 1px solid #dcdcde; border-radius: 8px; background: #fff;
         }
@@ -228,6 +269,7 @@ function hsg_print_admin_styles(): void
         .hsg-admin .hsg-muted { color: #888; font-size: 12px; padding: 16px; }
         @media (max-width: 782px) {
             .hsg-admin .hsg-grid-2 { grid-template-columns: 1fr; }
+            .hsg-admin .hsg-image-controls { grid-template-columns: 1fr; }
         }
     </style>
     <?php
@@ -253,12 +295,24 @@ function hsg_admin_footer_script(): void
 
         function esc(s){ return $('<div/>').text(s || '').html(); }
 
+        function renderImagePreview(){
+            var url = String($('#hsg-image-url').val() || '').trim();
+            var $preview = $('#hsg-image-preview');
+            if (!url) {
+                $preview.html('<span class="hsg-muted">未設定自訂圖片，前台將沿用預設尺寸圖。</span>').show();
+                return;
+            }
+            $preview.html('<img src="'+esc(url)+'" alt="尺寸量測圖片預覽">').show();
+        }
+
         function syncPayload(){
             state.enabled = $('#hsg-enabled').is(':checked');
             state.unitLabel = $('#hsg-unit-label').val();
             state.note = $('#hsg-note').val();
+            state.imageUrl = $('#hsg-image-url').val();
             $('#hsg-payload').val(JSON.stringify(state));
             renderPreview();
+            renderImagePreview();
         }
 
         function renderTable(){
@@ -316,6 +370,11 @@ function hsg_admin_footer_script(): void
             if (state.note) {
                 html += '<p class="hsg-preview-note">'+esc(state.note)+'</p>';
             }
+            if (state.imageUrl) {
+                html += '<div style="margin-top:12px;text-align:center">';
+                html += '<img src="'+esc(state.imageUrl)+'" alt="尺寸量測圖片" style="max-width:100%;max-height:260px;width:auto;height:auto">';
+                html += '</div>';
+            }
             $('#hsg-preview').html(html);
         }
 
@@ -323,6 +382,7 @@ function hsg_admin_footer_script(): void
             state.enabled = $('#hsg-enabled').is(':checked');
             state.unitLabel = $('#hsg-unit-label').val();
             state.note = $('#hsg-note').val();
+            state.imageUrl = $('#hsg-image-url').val();
 
             var sizes = [];
             $('.hsg-size-input').each(function(){
@@ -343,7 +403,7 @@ function hsg_admin_footer_script(): void
             state.rows = rows;
         }
 
-        $('#hsg-enabled, #hsg-unit-label, #hsg-note').on('change input', function(){
+        $('#hsg-enabled, #hsg-unit-label, #hsg-note, #hsg-image-url').on('change input', function(){
             readFromDom();
             syncPayload();
         });
@@ -360,7 +420,31 @@ function hsg_admin_footer_script(): void
             $('#hsg-enabled').prop('checked', true);
             $('#hsg-unit-label').val(state.unitLabel);
             $('#hsg-note').val(state.note);
+            $('#hsg-image-url').val(state.imageUrl || '');
             renderTable();
+        });
+
+        var imageFrame = null;
+        $('#hsg-select-image').on('click', function(){
+            if (imageFrame) {
+                imageFrame.open();
+                return;
+            }
+            imageFrame = wp.media({
+                title: '選擇尺寸量測圖片',
+                button: { text: '使用這張圖片' },
+                library: { type: 'image' },
+                multiple: false
+            });
+            imageFrame.on('select', function(){
+                var attachment = imageFrame.state().get('selection').first().toJSON();
+                $('#hsg-image-url').val(attachment.url || '').trigger('change');
+            });
+            imageFrame.open();
+        });
+
+        $('#hsg-clear-image').on('click', function(){
+            $('#hsg-image-url').val('').trigger('change');
         });
 
         $('#hsg-add-size').on('click', function(){

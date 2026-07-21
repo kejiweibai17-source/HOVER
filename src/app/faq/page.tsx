@@ -16,19 +16,10 @@ const SITE_URL = getSiteUrl();
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "常見問題｜HOVER 威爾特",
+  title: "常見問題｜HOVER",
   description:
-    "HOVER 常見問題：客服與訂單、商品出貨、付款發票、退貨退款及商品保養說明。",
+    "查看 HOVER 常見問題，包含商品、會員、付款、配送、退貨及購物相關資訊。",
   alternates: { canonical: "/faq" },
-  openGraph: {
-    type: "website",
-    locale: "zh_TW",
-    url: "/faq",
-    siteName: "HOVER 威爾特",
-    title: "常見問題｜HOVER 威爾特",
-    description:
-      "HOVER 官方網站常見問題完整解答。",
-  },
 };
 
 const schemaFAQ = {

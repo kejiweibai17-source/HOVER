@@ -9,11 +9,52 @@ module.exports = {
   sitemapSize: 7000,
   
   // 3. 排除不需要被搜尋引擎收錄的頁面 (例如結帳頁、會員中心)
-  exclude: ['/cart', '/checkout', '/account/*', '/api/*'],
+  exclude: [
+    '/cart',
+    '/checkout',
+    '/account',
+    '/account/*',
+    '/admin/*',
+    '/api/*',
+    '/sitemap.xml',
+    '/login',
+    '/register',
+    '/forgot-password',
+    '/reset-password',
+    '/verify-email',
+    '/thank-you',
+    '/thinking',
+  ],
 
   // 4. 動態抓取 WooCommerce 產品，塞進實體 sitemap.xml 裡
   additionalPaths: async (config) => {
-    const paths = [];
+    const paths = [
+      {
+        loc: '/products',
+        changefreq: 'weekly',
+        priority: 0.8,
+      },
+      {
+        loc: '/products?category=tops',
+        changefreq: 'weekly',
+        priority: 0.8,
+      },
+      {
+        loc: '/products?category=headwear',
+        changefreq: 'weekly',
+        priority: 0.8,
+      },
+      {
+        loc: '/products?category=socks',
+        changefreq: 'weekly',
+        priority: 0.8,
+      },
+      {
+        loc: '/products?category=bags',
+        changefreq: 'weekly',
+        priority: 0.8,
+      },
+    ];
     
     // 讀取你在 .env.local 設定的環境變數
     const wpUrl = process.env.WC_API_BASE;

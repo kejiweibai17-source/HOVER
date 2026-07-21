@@ -179,6 +179,34 @@ export async function GET() {
     debugInfo.resolved_customer_id = customerId;
 
     const ordersRaw = await fetchAllUserOrders(auth, customerId, normalizedEmail, debugInfo);
+    const productIds = Array.from(
+      new Set(
+        ordersRaw.flatMap((order: any) =>
+          (order.line_items || [])
+            .map((item: any) => Number(item.product_id || 0))
+            .filter(Boolean),
+        ),
+      ),
+    );
+    const productImages = new Map<number, string>();
+
+    if (productIds.length > 0) {
+      try {
+        const productRes = await fetch(
+          `${BASE}/wp-json/wc/v3/products?include=${productIds.join(",")}&per_page=100`,
+          { headers: { Authorization: auth }, cache: "no-store" },
+        );
+        if (productRes.ok) {
+          const products = await productRes.json();
+          for (const product of products || []) {
+            const src = product?.images?.[0]?.src;
+            if (product?.id && src) productImages.set(Number(product.id), src);
+          }
+        }
+      } catch {
+        // Product images are optional; order data should still render.
+      }
+    }
 
     const orders = ordersRaw.map((o: any) => ({
       id: o.id,
@@ -189,12 +217,39 @@ export async function GET() {
       currency: o.currency,
       payment_method_title: o.payment_method_title || "標準支付",
       customer_note: o.customer_note || "",
+      billing: o.billing || {},
+      shipping: o.shipping || {},
+      shipping_total: o.shipping_total || "0",
+      discount_total: o.discount_total || "0",
+      shipping_lines: (o.shipping_lines || []).map((line: any) => ({
+        method_title: line.method_title || "",
+        total: line.total || "0",
+      })),
+      coupon_lines: (o.coupon_lines || []).map((line: any) => ({
+        code: line.code || "",
+        discount: line.discount || "0",
+      })),
       payment_info: extractPaymentDetails(o.meta_data || []),
       meta_data: o.meta_data || [],
       line_items: (o.line_items || []).map((it: any) => ({
         name: it.name,
         quantity: it.quantity,
         total: it.total,
+        subtotal: it.subtotal,
+        price: it.price,
+        image:
+          it.image?.src ||
+          productImages.get(Number(it.product_id || 0)) ||
+          "",
+        product_id: it.product_id || 0,
+        sku: it.sku || "",
+        variation_id: it.variation_id || 0,
+        meta_data: (it.meta_data || [])
+          .filter((meta: any) => meta?.display_key && meta?.display_value)
+          .map((meta: any) => ({
+            key: meta.display_key,
+            value: meta.display_value,
+          })),
       })),
     }));
 

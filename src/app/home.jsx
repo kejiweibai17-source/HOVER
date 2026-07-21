@@ -215,11 +215,15 @@ function ProductCard({ product }) {
         </div>
 
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 pt-0.5">
-          <span className="text-[12px] font-bold text-[#222] md:text-[13px]">
+          <span
+            className={`text-[12px] font-bold text-[#222] md:text-[13px] ${
+              product.soldOut ? "line-through" : ""
+            }`}
+          >
             NT {product.originalPrice}
           </span>
           {product.soldOut && (
-            <span className="text-[12px] font-bold text-[#222] line-through md:text-[13px]">
+            <span className="text-[12px] font-bold text-[#222] md:text-[13px]">
               SOLD OUT
             </span>
           )}

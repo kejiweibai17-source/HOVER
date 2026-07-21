@@ -9,6 +9,7 @@ export type SizeGuide = {
   sizes: string[];
   rows: SizeGuideRow[];
   note: string;
+  imageUrl: string;
 };
 
 export const DEFAULT_SIZE_GUIDE: SizeGuide = {
@@ -22,6 +23,7 @@ export const DEFAULT_SIZE_GUIDE: SizeGuide = {
     { label: "袖長", values: ["18.5", "20", "21.5", "24"] },
   ],
   note: "※為平放測量，±2cm誤差範圍屬於製作標準範圍內。",
+  imageUrl: "/images/量測.png",
 };
 
 function parseBool(value: unknown, fallback = false): boolean {
@@ -89,6 +91,9 @@ export function normalizeSizeGuide(raw: unknown): SizeGuide {
     sizes: finalSizes,
     rows: rows.length ? rows : d.rows,
     note: String(parsed.note || d.note).trim() || d.note,
+    imageUrl: String(
+      parsed.imageUrl || parsed.image_url || d.imageUrl,
+    ).trim() || d.imageUrl,
   };
 }
 

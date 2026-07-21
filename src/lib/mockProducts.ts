@@ -149,5 +149,11 @@ const PRODUCTS: Omit<MockProduct, "id" | "images">[] = [
 export const MOCK_PRODUCTS: MockProduct[] = PRODUCTS.map((p, i) => ({
   ...p,
   id: i + 1,
-  images: [{ src: IMAGES[i % IMAGES.length], alt: p.name }],
+  images: [
+    { src: IMAGES[i % IMAGES.length], alt: p.name },
+    {
+      src: IMAGES[(i + 1) % IMAGES.length],
+      alt: `${p.name} alternate view`,
+    },
+  ],
 }));

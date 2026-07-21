@@ -14,19 +14,10 @@ const SITE_URL = getSiteUrl();
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "申請退貨｜HOVER 威爾特",
+  title: "申請退貨｜HOVER",
   description:
-    "了解 HOVER 退貨須知、申請流程、超商退貨說明、退款方式與時間，安心完成退貨申請。",
+    "了解 HOVER 退貨流程、退貨申請方式、退款說明及相關注意事項。",
   alternates: { canonical: "/returns" },
-  openGraph: {
-    type: "website",
-    locale: "zh_TW",
-    url: "/returns",
-    siteName: "HOVER 威爾特",
-    title: "申請退貨｜HOVER 威爾特",
-    description:
-      "HOVER 退貨申請流程、退款說明與注意事項完整指南。",
-  },
 };
 
 export default function ReturnsPage() {

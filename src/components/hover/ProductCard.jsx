@@ -10,6 +10,8 @@ export default function ProductCard({
   salePrice,
   soldOut = false,
 }) {
+  const price = salePrice || originalPrice;
+
   return (
     <div className="group flex min-w-0 flex-col">
       <Link href={href} className="relative block aspect-[404/479] overflow-hidden bg-white">
@@ -22,37 +24,43 @@ export default function ProductCard({
         />
       </Link>
 
-      <div className="mt-4 space-y-1">
-        <Link href={href} className="block text-[16px] font-semibold text-black hover:opacity-70">
+      <div className="mt-2 min-w-0 space-y-1 px-0.5 text-left md:mt-3">
+        <Link
+          href={href}
+          className="block break-words text-[12px] font-semibold leading-snug text-black line-clamp-2 hover:opacity-60 md:text-[13px]"
+        >
           {name}
         </Link>
 
         {colors.length > 0 && (
-          <div className="flex items-center gap-2 pt-1">
+          <div className="flex items-center gap-1.5 pt-0.5">
             {colors.map((color) => (
-              <div key={color.label} className="flex items-center gap-1.5">
-                <span
-                  className={`inline-block h-3 w-3 rounded-full border border-neutral-300 ${color.active ? "ring-1 ring-neutral-400 ring-offset-1" : ""}`}
-                  style={{ backgroundColor: color.hex || "#4a6fa5" }}
-                />
-                <span className="text-[13px] text-[#717171]">{color.label}</span>
-              </div>
+              <span
+                key={color.label}
+                className={`inline-block h-3 w-3 shrink-0 rounded-full border border-[#ccc] ${
+                  color.active ? "ring-1 ring-neutral-400 ring-offset-1" : ""
+                }`}
+                style={{ backgroundColor: color.hex || "#4a6fa5" }}
+                title={color.label}
+              />
             ))}
           </div>
         )}
 
-        <div className="flex items-center gap-4 pt-1">
-          {soldOut ? (
-            <span className="text-[14px] font-extrabold text-[#252525] line-through">SOLD OUT</span>
-          ) : (
-            <>
-              {originalPrice && (
-                <span className="text-[14px] text-[#b3b3b3] line-through">NT. {originalPrice}</span>
-              )}
-              {salePrice && (
-                <span className="text-[14px] font-extrabold text-[#252525]">NT. {salePrice}</span>
-              )}
-            </>
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 pt-0.5">
+          {price && (
+            <span
+              className={`text-[12px] font-bold text-[#222] md:text-[13px] ${
+                soldOut ? "line-through" : ""
+              }`}
+            >
+              NT {price}
+            </span>
+          )}
+          {soldOut && (
+            <span className="text-[12px] font-bold text-[#222] md:text-[13px]">
+              SOLD OUT
+            </span>
           )}
         </div>
       </div>

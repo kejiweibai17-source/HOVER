@@ -14,19 +14,10 @@ const SITE_URL = getSiteUrl();
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "隱私權保護｜HOVER 威爾特",
+  title: "隱私權政策｜HOVER",
   description:
-    "了解 HOVER 如何蒐集、使用與保護您的個人資料，包含蒐集目的、Cookie、第三方服務、當事人權利及政策修改說明。",
+    "查看 HOVER 隱私權政策，了解個人資料蒐集、使用方式及資訊安全保護。",
   alternates: { canonical: "/privacy" },
-  openGraph: {
-    type: "website",
-    locale: "zh_TW",
-    url: "/privacy",
-    siteName: "HOVER 威爾特",
-    title: "隱私權保護｜HOVER 威爾特",
-    description:
-      "了解 HOVER 如何蒐集、使用與保護您的個人資料，包含會員資料、訂單資訊及第三方登入相關說明。",
-  },
 };
 
 export default function PrivacyPage() {

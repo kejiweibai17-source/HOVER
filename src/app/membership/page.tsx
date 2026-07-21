@@ -14,19 +14,10 @@ const SITE_URL = getSiteUrl();
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
-  title: "會員制度｜HOVER 威爾特",
+  title: "會員制度｜HOVER",
   description:
-    "了解 HOVER 會員制度：品牌好友與臻享會員權益、購物金使用說明與升級條件。",
+    "加入 HOVER 會員，享有入會禮、生日禮、會員優惠與消費累積升等，了解完整會員權益與專屬福利。",
   alternates: { canonical: "/membership" },
-  openGraph: {
-    type: "website",
-    locale: "zh_TW",
-    url: "/membership",
-    siteName: "HOVER 威爾特",
-    title: "會員制度｜HOVER 威爾特",
-    description:
-      "HOVER FRIENDS 品牌好友與 HOVER EXCLUSIVE 臻享會員完整權益說明。",
-  },
 };
 
 export default function MembershipPage() {
