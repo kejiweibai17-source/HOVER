@@ -4,9 +4,27 @@ module.exports = {
   // 1. 你的正式網域
   siteUrl: process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000',
   
-  // 2. 自動產生 robots.txt
-  generateRobotsTxt: true, 
+  // 2. 自動產生 robots.txt（建置中：全站 Disallow，不進搜尋）
+  generateRobotsTxt: true,
   sitemapSize: 7000,
+
+  robotsTxtOptions: {
+    policies: [
+      {
+        userAgent: "*",
+        disallow: "/",
+      },
+    ],
+    // 建置中不對外宣告 sitemap
+    transformRobotsTxt: async () =>
+      [
+        "# 建置中：禁止搜尋引擎收錄（網站仍可正常瀏覽）",
+        "User-agent: *",
+        "Disallow: /",
+        "",
+      ].join("\n"),
+  },
+
   
   // 3. 排除不需要被搜尋引擎收錄的頁面 (例如結帳頁、會員中心)
   exclude: [

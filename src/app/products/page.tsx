@@ -75,7 +75,6 @@ export async function generateMetadata({
       title: seo.title,
       description: seo.description,
     },
-    robots: { index: true, follow: true },
   };
 }
 
