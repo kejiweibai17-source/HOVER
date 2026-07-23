@@ -28,8 +28,8 @@ const SCROLL_TOP_THRESHOLD = 20;
  * PNG／SVG 有透明留白，繪製尺寸需略大於字級才會看起來一樣高。
  */
 const HEADER_ICON = {
-  mobile: { box: 30, search: 22, cart: 22 },
-  desktop: { box: 30, search: 22, wishlist: 22, cart: 22, member: 22 },
+  mobile: { box: 32, search: 22, cart: 22 },
+  desktop: { box: 34, search: 22, wishlist: 24, cart: 22, member: 22 },
 };
 
 function HeaderIconButton({ children, className = "", ...props }) {
@@ -274,7 +274,7 @@ export default function HoverHeader({
           >
             <HoverLogo aria-hidden className="h-8 w-auto" />
           </Link>
-          <div className="-mr-0.5 flex items-center justify-end gap-0.5">
+          <div className="-mr-0.5 flex items-center justify-end gap-0.5 pr-1">
             <HeaderIconButton
               aria-label="搜尋"
               style={{
@@ -313,7 +313,7 @@ export default function HoverHeader({
 
         {/* 桌機 — Logo + nav row */}
         <div
-          className={`relative hidden flex-col items-center px-6 transition-all duration-500 ease-out md:flex ${
+          className={`relative hidden flex-col items-center px-6 md:px-8 transition-all duration-500 ease-out md:flex ${
             atTop ? "pt-2 pb-1" : "pt-3 pb-2"
           }`}
         >
@@ -346,7 +346,7 @@ export default function HoverHeader({
               ))}
             </nav>
 
-            <div className="col-start-3 -mr-1 flex items-center justify-end gap-0.5">
+            <div className="col-start-3 flex items-center justify-end gap-0.5 pr-2 md:pr-3">
               <HeaderIconButton
                 aria-label="搜尋"
                 className="transition-opacity hover:opacity-50"

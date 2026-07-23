@@ -261,10 +261,10 @@ function ProductPurchasePanel({
           onClick={onToggleWishlist}
           disabled={wishlistPending}
           className={`shrink-0 transition-opacity hover:opacity-70 ${
-            isSaved ? "opacity-100" : "opacity-80"
+            wishlistPending ? "opacity-50" : "opacity-100"
           }`}
         >
-          <WishlistIcon active={isSaved} size={isMobile ? 28 : 24} />
+          <WishlistIcon active={isSaved} size={isMobile ? 36 : 34} />
         </button>
       </div>
 
