@@ -2,102 +2,109 @@
 
 import { useState } from "react";
 
-export type PolicySubSection = {
+export type PolicyInnerItem = {
   title: string;
-  paragraphs: string[];
-  list?: string[];
-  links?: { label: string; href: string }[];
+  titleColor?: string;
+  /** 是否可收折；false 則標題與內容直接展開顯示 */
+  collapsible: boolean;
+  contentHtml: string;
 };
 
 export type PolicySection = {
   num: string;
   title: string;
-  paragraphs?: string[];
-  list?: string[];
-  subSections?: PolicySubSection[];
+  titleColor?: string;
+  items: PolicyInnerItem[];
 };
 
-function SubAccordionPanel({
-  subSections,
+const richClass =
+  "policy-rich-content space-y-3 text-[12px] leading-[2] tracking-[0.04em] md:text-[13px] [&_a]:underline [&_a]:underline-offset-2 [&_li]:my-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:m-0 [&_strong]:font-bold [&_ul]:list-disc [&_ul]:pl-5";
+
+function hasHtmlText(html?: string): boolean {
+  return Boolean(html && html.replace(/<[^>]+>/g, "").trim());
+}
+
+function RichHtml({
+  html,
+  contentColor,
 }: {
-  subSections: PolicySubSection[];
+  html: string;
+  contentColor: string;
 }) {
-  const [openSubs, setOpenSubs] = useState<Set<number>>(
-    () => new Set(subSections.map((_, i) => i)),
-  );
-
-  const toggleSub = (index: number) => {
-    setOpenSubs((prev) => {
-      const next = new Set(prev);
-      if (next.has(index)) next.delete(index);
-      else next.add(index);
-      return next;
-    });
-  };
-
+  if (!hasHtmlText(html)) return null;
   return (
-    <div className="overflow-hidden rounded-sm bg-[#ececec]">
-      {subSections.map((sub, i) => {
-        const open = openSubs.has(i);
-        return (
-          <div key={sub.title}>
-            <button
-              type="button"
-              onClick={() => toggleSub(i)}
-              aria-expanded={open}
-              className="flex w-full items-center justify-between gap-4 border-b border-[#ffffff] mb-4  px-4 py-3.5 text-left md:px-5 md:py-4"
-            >
-              <span className="text-[13px] font-bold tracking-[0.04em] text-[#0F172A] md:text-[14px]">
-                {sub.title}
-              </span>
-              <span
-                className="shrink-0 text-[20px] font-light leading-none text-black"
-                aria-hidden
-              >
-                {open ? "−" : "+"}
-              </span>
-            </button>
-            <div
-              className={`overflow-hidden bg-[#ececec] transition-all duration-300 ${
-                open ? "max-h-[800px] opacity-100" : "max-h-0 opacity-0"
-              }`}
-            >
-              <div className="space-y-3 px-4 pb-4 pt-1 text-[12px] leading-[2] tracking-[0.04em] text-[#2a514d] md:px-5 md:pb-5 md:text-[13px]">
-                {sub.paragraphs.map((p, idx) => (
-                  <p key={`${sub.title}-p-${idx}`}>{p}</p>
-                ))}
-                {sub.list && (
-                  <ul className="list-none space-y-2 pl-0">
-                    {sub.list.map((item) => (
-                      <li key={item} className="flex gap-2">
-                        <span className="shrink-0 text-[#2a514d]">·</span>
-                        <span>{item}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                {sub.links && (
-                  <ul className="list-none space-y-2 pl-0">
-                    {sub.links.map((link) => (
-                      <li key={link.href} className="flex gap-2">
-                        <span className="shrink-0 text-[#2a514d]">・</span>
-                        <a
-                          href={link.href}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-[#2a514d] underline underline-offset-2 transition-opacity hover:opacity-70"
-                        >
-                          {link.label}
-                        </a>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
-          </div>
-        );
-      })}
+    <div
+      className={richClass}
+      style={{ color: contentColor }}
+      dangerouslySetInnerHTML={{ __html: html }}
+    />
+  );
+}
+
+function InnerItemBlock({
+  item,
+  contentColor,
+  defaultOpen,
+}: {
+  item: PolicyInnerItem;
+  contentColor: string;
+  defaultOpen: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  const hasTitle = Boolean(item.title?.trim());
+  const hasContent = hasHtmlText(item.contentHtml);
+  const titleColor = item.titleColor || "#0f172a";
+
+  if (!hasTitle && !hasContent) return null;
+
+  // 不收折：直接顯示標題 + 內容
+  if (!item.collapsible) {
+    return (
+      <div className="border-b border-[#ffffff] px-4 py-3.5 last:border-b-0 md:px-5 md:py-4">
+        {hasTitle ? (
+          <p
+            className="mb-2 text-[13px] font-bold tracking-[0.04em] md:text-[14px]"
+            style={{ color: titleColor }}
+          >
+            {item.title.trim()}
+          </p>
+        ) : null}
+        <RichHtml html={item.contentHtml || ""} contentColor={contentColor} />
+      </div>
+    );
+  }
+
+  // 可收折：內層 accordion
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="mb-0 flex w-full items-center justify-between gap-4 border-b border-[#ffffff] px-4 py-3.5 text-left md:px-5 md:py-4"
+      >
+        <span
+          className="text-[13px] font-bold tracking-[0.04em] md:text-[14px]"
+          style={{ color: titleColor }}
+        >
+          {hasTitle ? item.title.trim() : "內容"}
+        </span>
+        <span
+          className="shrink-0 text-[20px] font-light leading-none text-black"
+          aria-hidden
+        >
+          {open ? "−" : "+"}
+        </span>
+      </button>
+      <div
+        className={`overflow-hidden bg-[#ececec] transition-all duration-300 ${
+          open ? "max-h-[1200px] opacity-100" : "max-h-0 opacity-0"
+        }`}
+      >
+        <div className="px-4 pb-4 pt-1 md:px-5 md:pb-5">
+          <RichHtml html={item.contentHtml || ""} contentColor={contentColor} />
+        </div>
+      </div>
     </div>
   );
 }
@@ -106,15 +113,18 @@ function PolicyAccordionItem({
   section,
   open,
   onToggle,
+  contentColor,
 }: {
   section: PolicySection;
   open: boolean;
   onToggle: () => void;
+  contentColor: string;
 }) {
-  const hasBody =
-    (section.paragraphs && section.paragraphs.length > 0) ||
-    (section.list && section.list.length > 0) ||
-    (section.subSections && section.subSections.length > 0);
+  const items = section.items || [];
+  const showBody = items.some(
+    (item) => item.title?.trim() || hasHtmlText(item.contentHtml),
+  );
+  const titleColor = section.titleColor || "#4b5563";
 
   return (
     <div className="border-b border-[#d8d8d8]">
@@ -128,7 +138,10 @@ function PolicyAccordionItem({
           <span className="text-[13px] font-light tracking-[0.08em] text-[#999] md:text-[14px]">
             {section.num}
           </span>
-          <span className="text-[15px] font-bold tracking-[0.06em] text-gray-700 md:text-[16px]">
+          <span
+            className="text-[15px] font-bold tracking-[0.06em] md:text-[16px]"
+            style={{ color: titleColor }}
+          >
             {section.title}
           </span>
         </span>
@@ -141,46 +154,21 @@ function PolicyAccordionItem({
       </button>
       <div
         className={`overflow-hidden transition-all duration-300 ${
-          open ? "max-h-[4000px] pb-6 opacity-100" : "max-h-0 opacity-0"
+          open ? "max-h-[6000px] pb-6 opacity-100" : "max-h-0 opacity-0"
         }`}
       >
-        {hasBody && (
-          <div className="bg-[#ececec]  py-4  md:py-5">
-            {section.subSections ? (
-              <>
-                {section.paragraphs && section.paragraphs.length > 0 && (
-                  <div className="mb-4 space-y-3 px-4 text-[12px] leading-[2] tracking-[0.04em] text-[#2a514d] md:mb-5 md:px-5 md:text-[13px]">
-                    {section.paragraphs.map((p, idx) => (
-                      <p key={`${section.num}-intro-${idx}`}>{p}</p>
-                    ))}
-                  </div>
-                )}
-                <SubAccordionPanel subSections={section.subSections} />
-              </>
-            ) : (
-              <div className="space-y-3 px-4 text-[12px] leading-[2] tracking-[0.04em] text-[#2a514d] md:px-5 md:text-[13px]">
-                {section.list ? (
-                  <>
-                    {section.paragraphs?.[0] && <p>{section.paragraphs[0]}</p>}
-                    <ul className="list-none space-y-2 pl-0">
-                      {section.list.map((item) => (
-                        <li key={item} className="flex gap-2">
-                          <span className="shrink-0 text-[#2a514d]">・</span>
-                          <span>{item}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    {section.paragraphs?.slice(1).map((p, idx) => (
-                      <p key={`${section.num}-after-${idx}`}>{p}</p>
-                    ))}
-                  </>
-                ) : (
-                  section.paragraphs?.map((p, idx) => (
-                    <p key={`${section.num}-p-${idx}`}>{p}</p>
-                  ))
-                )}
-              </div>
-            )}
+        {showBody && (
+          <div className="overflow-hidden rounded-sm bg-[#ececec] py-4 md:py-5">
+            <div>
+              {items.map((item, i) => (
+                <InnerItemBlock
+                  key={`${item.title}-${i}`}
+                  item={item}
+                  contentColor={contentColor}
+                  defaultOpen
+                />
+              ))}
+            </div>
           </div>
         )}
       </div>
@@ -190,8 +178,10 @@ function PolicyAccordionItem({
 
 export default function PolicyAccordion({
   sections,
+  contentColor = "#2a514d",
 }: {
   sections: PolicySection[];
+  contentColor?: string;
 }) {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
@@ -199,10 +189,11 @@ export default function PolicyAccordion({
     <>
       {sections.map((section, i) => (
         <PolicyAccordionItem
-          key={section.num}
+          key={`${section.num}-${section.title}-${i}`}
           section={section}
           open={openIndex === i}
           onToggle={() => setOpenIndex(openIndex === i ? null : i)}
+          contentColor={contentColor}
         />
       ))}
     </>

@@ -1,6 +1,4 @@
-import type { PolicySection } from "@/components/hover/PolicyAccordion";
-
-export const RETURNS_SECTIONS: PolicySection[] = [
+export const RETURNS_SECTIONS = [
   {
     num: "01",
     title: "退貨通知",

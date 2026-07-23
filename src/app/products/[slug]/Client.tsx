@@ -5,7 +5,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import Image from "next/image";
 import { useRouter, useParams } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { ChevronLeft, ChevronRight, Minus, Plus } from "lucide-react";
+import { Minus, Plus } from "lucide-react";
 import WishlistIcon from "@/components/hover/WishlistIcon";
 import SizeGuideTable from "@/components/hover/SizeGuideTable";
 import WashingInstructionsList from "@/components/hover/WashingInstructionsList";
@@ -127,17 +127,11 @@ function ProductGallery({
   part?: "all" | "hero" | "rest";
 }) {
   const gallery = useMemo(() => normalizeGalleryImages(images), [images]);
-  const [index, setIndex] = useState(0);
+  const [index] = useState(0);
   const secondLarge = gallery[1];
   const gridImages = gallery.slice(2, GALLERY_IMAGE_COUNT);
-  const total = gallery.length;
   const showHero = part === "all" || part === "hero";
   const showRest = part === "all" || part === "rest";
-
-  const go = (delta: number) => {
-    if (total <= 1) return;
-    setIndex((prev) => (prev + delta + total) % total);
-  };
 
   return (
     <div className="flex flex-col gap-2">
@@ -165,27 +159,6 @@ function ProductGallery({
               />
             </motion.div>
           </AnimatePresence>
-
-          {total > 1 && (
-            <>
-              <button
-                type="button"
-                aria-label="上一張"
-                onClick={() => go(-1)}
-                className="absolute left-4 top-1/2 z-10 -translate-y-1/2 text-white drop-shadow-[0_1px_4px_rgba(0,0,0,0.45)] transition-opacity hover:opacity-70 md:left-6"
-              >
-                <ChevronLeft size={30} strokeWidth={1.25} />
-              </button>
-              <button
-                type="button"
-                aria-label="下一張"
-                onClick={() => go(1)}
-                className="absolute right-4 top-1/2 z-10 -translate-y-1/2 text-white drop-shadow-[0_1px_4px_rgba(0,0,0,0.45)] transition-opacity hover:opacity-70 md:right-6"
-              >
-                <ChevronRight size={30} strokeWidth={1.25} />
-              </button>
-            </>
-          )}
         </div>
       )}
 
@@ -276,7 +249,7 @@ function ProductPurchasePanel({
     <>
       <div className={`flex items-start justify-between gap-3 ${isMobile ? "mb-4" : "mb-5 gap-4"}`}>
         <h1
-          className={`font-bold uppercase leading-snug tracking-[0.02em] text-black ${
+          className={`font-semibold uppercase leading-snug tracking-[0.02em] text-black ${
             isMobile ? "text-[14px] leading-[1.45]" : "text-[17px] md:text-[20px]"
           }`}
         >
@@ -306,7 +279,7 @@ function ProductPurchasePanel({
           </span>
         )}
         <span
-          className={`font-bold ${
+          className={`font-semibold ${
             isMobile ? "text-[16px]" : "text-[18px] md:text-[20px]"
           } ${hasDiscount ? "text-[#c90000]" : "text-black"}`}
         >

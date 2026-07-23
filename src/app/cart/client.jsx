@@ -1344,9 +1344,6 @@ function CheckoutStep({
                 label="全家超商僅取貨"
               />
             </div>
-            <p className="mt-3 text-[11px] leading-[1.7] text-[#888]">
-              * 運送方式 7-11超商僅取貨、全家超商僅取貨
-            </p>
           </section>
 
           <section>
@@ -1688,8 +1685,8 @@ function CheckoutStep({
                             {Number(c.minimumAmount || 0) > 0 && (
                               <p className="mt-0.5 text-[10px] text-[#888]">
                                 滿 NT$
-                                {Number(c.minimumAmount).toLocaleString()}{" "}
-                                可用 · 點此套用
+                                {Number(c.minimumAmount).toLocaleString()} 可用
+                                · 點此套用
                               </p>
                             )}
                           </div>

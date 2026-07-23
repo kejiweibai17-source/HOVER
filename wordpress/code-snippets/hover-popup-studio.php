@@ -68,13 +68,46 @@ function hps_defaults(): array
         'title'          => 'Join HOVER',
         'subtitle'       => '加入會員',
         'body'           => '立即獲得 NT$100 入會購物金',
-        'footnote'       => '詳情請參閱隱私權保護政策',
+        'footnote'       => '詳情請參閱會員條款與隱私權政策',
         'showGiftIcon'   => true,
+        'giftIconScale'  => 110, // 100 | 110 | 120（%）
         'colors'         => [
             'title'    => '#222222',
             'subtitle' => '#555555',
             'body'     => '#444444',
             'footnote' => '#999999',
+        ],
+        'typography'     => [
+            'title' => [
+                'fontSize'   => 28,
+                'fontWeight' => 500,
+                'lineHeight' => 1.35,
+            ],
+            'subtitle' => [
+                'fontSize'   => 14,
+                'fontWeight' => 400,
+                'lineHeight' => 1.4,
+            ],
+            'body' => [
+                'fontSize'   => 13,
+                'fontWeight' => 400,
+                'lineHeight' => 1.75,
+            ],
+            'footnote' => [
+                'fontSize'   => 11,
+                'fontWeight' => 400,
+                'lineHeight' => 1.5,
+            ],
+        ],
+        'links' => [
+            'terms' => [
+                'label' => '會員條款',
+                'href'  => '/terms',
+            ],
+            'privacy' => [
+                'label' => '隱私權政策',
+                'href'  => '/privacy',
+            ],
         ],
         'imageDesktop'   => [
             'url' => '',
@@ -90,9 +123,13 @@ function hps_defaults(): array
             'alt' => 'HOVER 公告',
         ],
         'button' => [
-            'label' => '立即加入',
-            'href'  => '/register',
-            'show'  => true,
+            'label'      => '立即加入',
+            'href'       => '/register',
+            'show'       => true,
+            'width'      => 'M',      // S | M | L
+            'fontSize'   => 13,
+            'fontWeight' => 600,
+            'variant'    => 'brand',  // brand（品牌綠）| white
         ],
         'trigger' => [
             'delaySec'      => 0,  // 0=不延遲；與 scroll 同時設定時以先達成者觸發
@@ -169,6 +206,54 @@ function hps_normalize_image($raw, array $fallback): array
     ];
 }
 
+function hps_clamp_float($value, float $min, float $max, float $fallback): float
+{
+    $n = is_numeric($value) ? (float) $value : $fallback;
+    if ($n < $min) {
+        return $min;
+    }
+    if ($n > $max) {
+        return $max;
+    }
+    return round($n, 2);
+}
+
+function hps_normalize_type_block($raw, array $fallback): array
+{
+    if (!is_array($raw)) {
+        $raw = [];
+    }
+    $size = absint($raw['fontSize'] ?? $fallback['fontSize']);
+    if ($size < 8) {
+        $size = 8;
+    }
+    if ($size > 48) {
+        $size = 48;
+    }
+    $weight = absint($raw['fontWeight'] ?? $fallback['fontWeight']);
+    if (!in_array($weight, [400, 500, 600, 700], true)) {
+        $weight = (int) $fallback['fontWeight'];
+    }
+    return [
+        'fontSize'   => $size,
+        'fontWeight' => $weight,
+        'lineHeight' => hps_clamp_float($raw['lineHeight'] ?? $fallback['lineHeight'], 1.0, 2.4, (float) $fallback['lineHeight']),
+    ];
+}
+
+function hps_normalize_typography($raw, array $fallback): array
+{
+    if (!is_array($raw)) {
+        $raw = [];
+    }
+    return [
+        'title'    => hps_normalize_type_block($raw['title'] ?? [], $fallback['title']),
+        'subtitle' => hps_normalize_type_block($raw['subtitle'] ?? [], $fallback['subtitle']),
+        'body'     => hps_normalize_type_block($raw['body'] ?? [], $fallback['body']),
+        'footnote' => hps_normalize_type_block($raw['footnote'] ?? [], $fallback['footnote']),
+    ];
+}
+
 function hps_normalize(array $data): array
 {
     $d = hps_defaults();
@@ -188,12 +273,33 @@ function hps_normalize(array $data): array
     $data['footnote']       = sanitize_text_field($data['footnote'] ?? $d['footnote']);
     $data['showGiftIcon']   = !empty($data['showGiftIcon']);
 
+    $scale = absint($data['giftIconScale'] ?? $d['giftIconScale']);
+    $data['giftIconScale'] = in_array($scale, [100, 110, 120], true) ? $scale : 110;
+
     $colors = is_array($data['colors'] ?? null) ? $data['colors'] : [];
     $data['colors'] = [
         'title'    => sanitize_hex_color($colors['title'] ?? '') ?: $d['colors']['title'],
         'subtitle' => sanitize_hex_color($colors['subtitle'] ?? '') ?: $d['colors']['subtitle'],
         'body'     => sanitize_hex_color($colors['body'] ?? '') ?: $d['colors']['body'],
         'footnote' => sanitize_hex_color($colors['footnote'] ?? '') ?: $d['colors']['footnote'],
+    ];
+
+    $data['typography'] = hps_normalize_typography($data['typography'] ?? [], $d['typography']);
+
+    $links = is_array($data['links'] ?? null) ? $data['links'] : [];
+    $terms = is_array($links['terms'] ?? null) ? $links['terms'] : [];
+    $privacy = is_array($links['privacy'] ?? null) ? $links['privacy'] : [];
+    $data['links'] = [
+        'terms' => [
+            'label' => sanitize_text_field($terms['label'] ?? $d['links']['terms']['label'])
+                ?: $d['links']['terms']['label'],
+            'href'  => hps_sanitize_url($terms['href'] ?? $d['links']['terms']['href']),
+        ],
+        'privacy' => [
+            'label' => sanitize_text_field($privacy['label'] ?? $d['links']['privacy']['label'])
+                ?: $d['links']['privacy']['label'],
+            'href'  => hps_sanitize_url($privacy['href'] ?? $d['links']['privacy']['href']),
+        ],
     ];
 
     // 相容舊版單一 image
@@ -210,11 +316,28 @@ function hps_normalize(array $data): array
     $data['imageMobile']  = $mobile;
     $data['image']        = $desktop; // 舊前端相容
 
-    $button = $data['button'] ?? [];
+    $button = is_array($data['button'] ?? null) ? $data['button'] : [];
+    $btn_width = sanitize_text_field($button['width'] ?? $d['button']['width']);
+    $btn_variant = sanitize_text_field($button['variant'] ?? $d['button']['variant']);
+    $btn_weight = absint($button['fontWeight'] ?? $d['button']['fontWeight']);
+    $btn_size = absint($button['fontSize'] ?? $d['button']['fontSize']);
+    if ($btn_size < 10) {
+        $btn_size = 10;
+    }
+    if ($btn_size > 20) {
+        $btn_size = 20;
+    }
+    if (!in_array($btn_weight, [400, 500, 600, 700], true)) {
+        $btn_weight = 600;
+    }
     $data['button'] = [
-        'label' => sanitize_text_field($button['label'] ?? $d['button']['label']) ?: $d['button']['label'],
-        'href'  => hps_sanitize_url($button['href'] ?? $d['button']['href']),
-        'show'  => !empty($button['show']),
+        'label'      => sanitize_text_field($button['label'] ?? $d['button']['label']) ?: $d['button']['label'],
+        'href'       => hps_sanitize_url($button['href'] ?? $d['button']['href']),
+        'show'       => !empty($button['show']),
+        'width'      => in_array($btn_width, ['S', 'M', 'L'], true) ? $btn_width : 'M',
+        'fontSize'   => $btn_size,
+        'fontWeight' => $btn_weight,
+        'variant'    => in_array($btn_variant, ['brand', 'white'], true) ? $btn_variant : 'brand',
     ];
 
     $trigger = $data['trigger'] ?? [];
@@ -310,6 +433,42 @@ function hps_status_label(array $s): string
     return '未在有效期';
 }
 
+function hps_typography_fields_html(string $key, string $label, array $type, bool $only_split = false): string
+{
+    $wrap_class = $only_split ? 'hps-type-row hps-only-split' : 'hps-type-row';
+    $weights = [
+        400 => 'Regular 400',
+        500 => 'Medium 500',
+        600 => 'SemiBold 600',
+        700 => 'Bold 700',
+    ];
+    ob_start();
+    ?>
+    <div class="<?php echo esc_attr($wrap_class); ?>">
+        <p class="hps-label" style="margin:0"><?php echo esc_html($label); ?></p>
+        <div class="hps-grid-3">
+            <div class="hps-field">
+                <label class="hps-sublabel">大小 (px)</label>
+                <input type="number" min="8" max="48" class="small-text" data-field="typography.<?php echo esc_attr($key); ?>.fontSize" value="<?php echo esc_attr((string) $type['fontSize']); ?>">
+            </div>
+            <div class="hps-field">
+                <label class="hps-sublabel">粗細</label>
+                <select data-field="typography.<?php echo esc_attr($key); ?>.fontWeight" class="regular-text">
+                    <?php foreach ($weights as $w => $wlabel) : ?>
+                        <option value="<?php echo esc_attr((string) $w); ?>" <?php selected((int) $type['fontWeight'], $w); ?>><?php echo esc_html($wlabel); ?></option>
+                    <?php endforeach; ?>
+                </select>
+            </div>
+            <div class="hps-field">
+                <label class="hps-sublabel">行距</label>
+                <input type="number" min="1" max="2.4" step="0.05" class="small-text" data-field="typography.<?php echo esc_attr($key); ?>.lineHeight" value="<?php echo esc_attr((string) $type['lineHeight']); ?>">
+            </div>
+        </div>
+    </div>
+    <?php
+    return (string) ob_get_clean();
+}
+
 function hps_render_page(): void
 {
     if (!current_user_can('manage_options')) {
@@ -327,7 +486,7 @@ function hps_render_page(): void
             <div class="hps-topbar">
                 <div>
                     <h1>HOVER 首頁彈出公告</h1>
-                    <p class="description">支援左右分欄／滿版形象兩種版型；可強制裁切桌機／手機圖、設定文字顏色、觸發條件與顯示頻率。</p>
+                    <p class="description">支援左右分欄／滿版形象；可調整字級粗細行距、Gift Icon 比例、條款連結、按鈕寬度與品牌綠／白切換。</p>
                 </div>
                 <div class="hps-topbar-actions">
                     <span class="hps-status <?php echo !empty($s['active']) ? 'is-live' : ''; ?>"><?php echo esc_html($status); ?></span>
@@ -403,18 +562,26 @@ function hps_render_page(): void
                                     <label class="hps-label">主標題</label>
                                     <input type="text" class="large-text" data-field="title" value="<?php echo esc_attr($s['title']); ?>" placeholder="例：Join HOVER">
                                 </div>
+                                <?php echo hps_typography_fields_html('title', '主標題字級', $s['typography']['title'], false); ?>
+
                                 <div class="hps-field hps-only-split">
                                     <label class="hps-label">副標題</label>
                                     <input type="text" class="large-text" data-field="subtitle" value="<?php echo esc_attr($s['subtitle']); ?>" placeholder="例：加入會員">
                                 </div>
+                                <?php echo hps_typography_fields_html('subtitle', '副標題字級', $s['typography']['subtitle'], true); ?>
+
                                 <div class="hps-field">
                                     <label class="hps-label">內文</label>
                                     <textarea rows="3" class="large-text" data-field="body" placeholder="公告說明"><?php echo esc_textarea($s['body']); ?></textarea>
                                 </div>
+                                <?php echo hps_typography_fields_html('body', '內文字級', $s['typography']['body'], false); ?>
+
                                 <div class="hps-field hps-only-split">
                                     <label class="hps-label">底部細字（選填）</label>
-                                    <input type="text" class="large-text" data-field="footnote" value="<?php echo esc_attr($s['footnote']); ?>" placeholder="例：詳情請參閱隱私權保護政策">
+                                    <input type="text" class="large-text" data-field="footnote" value="<?php echo esc_attr($s['footnote']); ?>" placeholder="例：詳情請參閱會員條款與隱私權政策">
+                                    <p class="description">細字中若出現下方「會員條款／隱私權政策」標籤文字，前台會自動變成可點連結。</p>
                                 </div>
+                                <?php echo hps_typography_fields_html('footnote', '底部細字字級', $s['typography']['footnote'], true); ?>
 
                                 <div class="hps-colors">
                                     <p class="hps-label" style="margin:0 0 8px">文字顏色</p>
@@ -439,6 +606,29 @@ function hps_render_page(): void
                                     <span class="hps-switch-ui"></span>
                                     <span class="hps-switch-label">顯示禮物圖示</span>
                                 </label>
+                                <div class="hps-field hps-only-split">
+                                    <label class="hps-label">Gift Icon 大小</label>
+                                    <select data-field="giftIconScale" class="regular-text">
+                                        <option value="100" <?php selected((int) $s['giftIconScale'], 100); ?>>100%</option>
+                                        <option value="110" <?php selected((int) $s['giftIconScale'], 110); ?>>110%（建議）</option>
+                                        <option value="120" <?php selected((int) $s['giftIconScale'], 120); ?>>120%</option>
+                                    </select>
+                                </div>
+
+                                <div class="hps-field hps-only-split">
+                                    <label class="hps-label">會員條款連結</label>
+                                    <div class="hps-grid-2">
+                                        <input type="text" class="regular-text" data-field="links.terms.label" value="<?php echo esc_attr($s['links']['terms']['label']); ?>" placeholder="會員條款">
+                                        <input type="text" class="regular-text" data-field="links.terms.href" value="<?php echo esc_attr($s['links']['terms']['href']); ?>" placeholder="/terms">
+                                    </div>
+                                </div>
+                                <div class="hps-field hps-only-split">
+                                    <label class="hps-label">隱私權政策連結</label>
+                                    <div class="hps-grid-2">
+                                        <input type="text" class="regular-text" data-field="links.privacy.label" value="<?php echo esc_attr($s['links']['privacy']['label']); ?>" placeholder="隱私權政策">
+                                        <input type="text" class="regular-text" data-field="links.privacy.href" value="<?php echo esc_attr($s['links']['privacy']['href']); ?>" placeholder="/privacy">
+                                    </div>
+                                </div>
 
                                 <div class="hps-field">
                                     <label class="hps-label">桌機圖片 <span class="hps-crop-hint" id="hps-desktop-hint">（強制裁切 16:9｜建議 1920×1080）</span></label>
@@ -478,20 +668,50 @@ function hps_render_page(): void
                         </div>
 
                         <div class="hps-card">
-                            <div class="hps-card-head"><h2>按鈕連結</h2></div>
-                            <div class="hps-card-body hps-grid-2">
-                                <label class="hps-switch hps-span-2">
+                            <div class="hps-card-head"><h2>按鈕設定</h2></div>
+                            <div class="hps-card-body hps-stack">
+                                <label class="hps-switch">
                                     <input type="checkbox" data-field="button.show" <?php checked(!empty($s['button']['show'])); ?>>
                                     <span class="hps-switch-ui"></span>
                                     <span class="hps-switch-label">顯示按鈕</span>
                                 </label>
-                                <div class="hps-field">
-                                    <label class="hps-label">按鈕文字</label>
-                                    <input type="text" class="regular-text" data-field="button.label" value="<?php echo esc_attr($s['button']['label']); ?>">
-                                </div>
-                                <div class="hps-field">
-                                    <label class="hps-label">按鈕連結</label>
-                                    <input type="text" class="regular-text" data-field="button.href" value="<?php echo esc_attr($s['button']['href']); ?>" placeholder="/register 或 /products">
+                                <div class="hps-grid-2">
+                                    <div class="hps-field">
+                                        <label class="hps-label">按鈕文字</label>
+                                        <input type="text" class="regular-text" data-field="button.label" value="<?php echo esc_attr($s['button']['label']); ?>">
+                                    </div>
+                                    <div class="hps-field">
+                                        <label class="hps-label">按鈕連結</label>
+                                        <input type="text" class="regular-text" data-field="button.href" value="<?php echo esc_attr($s['button']['href']); ?>" placeholder="/register 或 /products">
+                                    </div>
+                                    <div class="hps-field">
+                                        <label class="hps-label">按鈕寬度</label>
+                                        <select data-field="button.width" class="regular-text">
+                                            <option value="S" <?php selected($s['button']['width'], 'S'); ?>>S</option>
+                                            <option value="M" <?php selected($s['button']['width'], 'M'); ?>>M（預設）</option>
+                                            <option value="L" <?php selected($s['button']['width'], 'L'); ?>>L</option>
+                                        </select>
+                                        <p class="description">高度固定，僅調整寬度。</p>
+                                    </div>
+                                    <div class="hps-field">
+                                        <label class="hps-label">按鈕顏色</label>
+                                        <select data-field="button.variant" class="regular-text">
+                                            <option value="brand" <?php selected($s['button']['variant'], 'brand'); ?>>品牌綠（預設）</option>
+                                            <option value="white" <?php selected($s['button']['variant'], 'white'); ?>>白色</option>
+                                        </select>
+                                    </div>
+                                    <div class="hps-field">
+                                        <label class="hps-label">按鈕文字大小 (px)</label>
+                                        <input type="number" min="10" max="20" class="small-text" data-field="button.fontSize" value="<?php echo esc_attr((string) $s['button']['fontSize']); ?>">
+                                    </div>
+                                    <div class="hps-field">
+                                        <label class="hps-label">按鈕文字粗細</label>
+                                        <select data-field="button.fontWeight" class="regular-text">
+                                            <?php foreach ([400 => 'Regular 400', 500 => 'Medium 500', 600 => 'SemiBold 600', 700 => 'Bold 700'] as $w => $label) : ?>
+                                                <option value="<?php echo esc_attr((string) $w); ?>" <?php selected((int) $s['button']['fontWeight'], $w); ?>><?php echo esc_html($label); ?></option>
+                                            <?php endforeach; ?>
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -624,9 +844,16 @@ function hps_print_admin_styles(): void
         .hover-popup-admin .hps-grid-2 {
             display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px;
         }
+        .hover-popup-admin .hps-grid-3 {
+            display: grid; grid-template-columns: 1fr 1.2fr 1fr; gap: 10px 12px;
+        }
         .hover-popup-admin .hps-span-2 { grid-column: 1 / -1; }
         .hover-popup-admin .hps-field { display: flex; flex-direction: column; gap: 6px; }
         .hover-popup-admin .hps-label { font-weight: 600; font-size: 13px; }
+        .hover-popup-admin .hps-sublabel { font-size: 11px; color: #646970; font-weight: 600; }
+        .hover-popup-admin .hps-type-row {
+            background: #f6f7f7; border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px;
+        }
         .hover-popup-admin .hps-stack { display: flex; flex-direction: column; gap: 16px; }
         .hover-popup-admin .hps-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 4px; }
         .hover-popup-admin .hps-foot { margin-top: 4px; }
@@ -764,21 +991,28 @@ function hps_print_admin_styles(): void
         .hover-popup-admin .hps-mock-foot { font-size: 8px; margin: 0; line-height: 1.45; opacity: .75; max-width: 92%; }
         .hover-popup-admin .hps-mock-btn {
             display: inline-flex; align-items: center; justify-content: center;
-            flex-shrink: 0; margin-top: 4px; min-width: 88px; max-width: 100%;
-            padding: 8px 12px; box-sizing: border-box;
-            background: #2a514d; color: #fff; font-size: 10px; letter-spacing: .1em; font-weight: 600;
-            white-space: nowrap;
+            flex-shrink: 0; margin-top: 4px; height: 36px; box-sizing: border-box;
+            padding: 0 12px; background: #2a514d; color: #fff; font-size: 10px;
+            letter-spacing: .1em; font-weight: 600; white-space: nowrap;
         }
+        .hover-popup-admin .hps-mock-btn.is-white { background: #fff; color: #222; border: 1px solid #ddd; }
+        .hover-popup-admin .hps-mock-btn.is-width-S { min-width: 72px; }
+        .hover-popup-admin .hps-mock-btn.is-width-M { min-width: 96px; }
+        .hover-popup-admin .hps-mock-btn.is-width-L { min-width: 128px; }
         .hover-popup-admin .hps-device.is-mobile .hps-mock-btn {
-            min-width: 0; width: 100%; max-width: 132px; padding: 8px 10px; font-size: 9px;
+            min-width: 0; max-width: 132px; font-size: 9px;
         }
-        .hover-popup-admin .hps-mock-modal.is-full .hps-mock-btn {
-            background: #fff; color: #222;
+        .hover-popup-admin .hps-mock-modal.is-full .hps-mock-btn.is-brand {
+            background: #2a514d; color: #fff;
         }
         .hover-popup-admin .hps-mock-gift {
             width: 20px; height: 20px; margin: 0 auto; color: #2a514d; flex-shrink: 0;
+            transform-origin: center;
         }
         .hover-popup-admin .hps-mock-gift svg { width: 100%; height: 100%; display: block; }
+        .hover-popup-admin .hps-mock-foot a {
+            color: inherit; text-decoration: underline; text-underline-offset: 2px;
+        }
         @media (max-width: 1280px) {
             .hover-popup-admin .hps-layout { grid-template-columns: minmax(0, 1fr) minmax(420px, 460px); }
             .hover-popup-admin .hps-device.is-desktop .hps-mock-modal.is-split,
@@ -795,7 +1029,8 @@ function hps_print_admin_styles(): void
         }
         @media (max-width: 720px) {
             .hover-popup-admin .hps-dual-preview { grid-template-columns: 1fr; }
-            .hover-popup-admin .hps-grid-2 { grid-template-columns: 1fr; }
+            .hover-popup-admin .hps-grid-2,
+            .hover-popup-admin .hps-grid-3 { grid-template-columns: 1fr; }
         }
     </style>
     <?php
@@ -833,6 +1068,17 @@ function hps_admin_footer_script(): void
                 var path = String(el.data('field'));
                 var val = el.is(':checkbox') ? el.is(':checked') : el.val();
                 if (path.indexOf('trigger.') === 0) val = parseInt(val, 10) || 0;
+                if (path === 'giftIconScale') val = parseInt(val, 10) || 110;
+                if (path.indexOf('typography.') === 0) {
+                    if (path.indexOf('.fontSize') > -1 || path.indexOf('.fontWeight') > -1) {
+                        val = parseInt(val, 10) || 0;
+                    } else if (path.indexOf('.lineHeight') > -1) {
+                        val = parseFloat(val) || 1.4;
+                    }
+                }
+                if (path === 'button.fontSize' || path === 'button.fontWeight') {
+                    val = parseInt(val, 10) || 0;
+                }
                 setByPath(state, path, val);
             });
             if (state.imageDesktop) {
@@ -851,11 +1097,34 @@ function hps_admin_footer_script(): void
             $('#hps-preview-desktop').css('aspect-ratio', '16/9');
         }
 
+        function typeStyle(block, scale){
+            block = block || {};
+            var size = (parseInt(block.fontSize, 10) || 14) * (scale || 1);
+            return 'font-size:'+size+'px;font-weight:'+(block.fontWeight||400)+';line-height:'+(block.lineHeight||1.4)+';';
+        }
+
+        function linkifyFootnote(text, links){
+            var out = esc(text || '');
+            links = links || {};
+            var items = [links.terms, links.privacy].filter(Boolean);
+            items.sort(function(a,b){ return String(b.label||'').length - String(a.label||'').length; });
+            items.forEach(function(item){
+                var label = String(item.label || '');
+                var href = String(item.href || '');
+                if (!label || !href) return;
+                var safeLabel = esc(label);
+                var re = new RegExp(safeLabel.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+                out = out.replace(re, '<a href="'+esc(href)+'">'+safeLabel+'</a>');
+            });
+            return out;
+        }
+
         function renderPreview(){
             readFields();
             syncLayoutFields();
             var layout = state.layout || 'split';
             var colors = state.colors || {};
+            var typo = state.typography || {};
             var deskImg = (state.imageDesktop && state.imageDesktop.url) || (state.image && state.image.url) || '';
             var mobImg = (state.imageMobile && state.imageMobile.url) || deskImg;
             var isFull = layout === 'full';
@@ -867,26 +1136,37 @@ function hps_admin_footer_script(): void
                 : (colors.body || '#444');
             var subColor = colors.subtitle || '#555';
             var footColor = colors.footnote || '#999';
+            var giftScale = (parseInt(state.giftIconScale, 10) || 110) / 100;
+            var btn = state.button || {};
+            var btnWidth = btn.width || 'M';
+            var btnVariant = btn.variant || 'brand';
+            // 滿版預設若未特別選白色，仍可用品牌綠；使用者選 white 才白底
+            var btnClass = 'hps-mock-btn is-width-'+btnWidth+' is-'+btnVariant;
+            if (btnVariant === 'white') btnClass += ' is-white';
 
             function giftHtml(){
-                return '<div class="hps-mock-gift" style="color:'+esc(colors.title||'#2a514d')+'" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 12v10H4V12"/><path d="M2 7h20v5H2z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 1 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg></div>';
+                return '<div class="hps-mock-gift" style="color:'+esc(colors.title||'#2a514d')+';transform:scale('+giftScale+')" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 12v10H4V12"/><path d="M2 7h20v5H2z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 1 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg></div>';
             }
 
             function buildModal(device, img){
+                var previewScale = device === 'mobile' ? 0.42 : 0.5;
                 var html = '<div class="hps-mock-modal is-'+esc(layout);
                 if (layout === 'split' && state.imagePosition === 'right' && device === 'desktop') html += ' is-right';
                 html += '">';
                 html += '<button type="button" class="hps-mock-close" aria-hidden="true">×</button>';
                 if (img) html += '<img class="hps-mock-image" src="'+esc(img)+'" alt="">';
                 html += '<div class="hps-mock-body">';
-                if (state.title) html += '<h3 class="hps-mock-title" style="color:'+esc(titleColor)+'">'+esc(state.title)+'</h3>';
-                if (layout === 'split' && state.subtitle) html += '<p class="hps-mock-sub" style="color:'+esc(subColor)+'">'+esc(state.subtitle)+'</p>';
+                if (state.title) html += '<h3 class="hps-mock-title" style="color:'+esc(titleColor)+';'+typeStyle(typo.title, previewScale)+'">'+esc(state.title)+'</h3>';
+                if (layout === 'split' && state.subtitle) html += '<p class="hps-mock-sub" style="color:'+esc(subColor)+';'+typeStyle(typo.subtitle, previewScale)+'">'+esc(state.subtitle)+'</p>';
                 if (layout === 'split' && state.showGiftIcon) html += giftHtml();
-                if (state.body) html += '<p class="hps-mock-text" style="color:'+esc(bodyColor)+'">'+esc(state.body)+'</p>';
-                if (state.button && state.button.show && state.button.label) {
-                    html += '<span class="hps-mock-btn">'+esc(state.button.label)+'</span>';
+                if (state.body) html += '<p class="hps-mock-text" style="color:'+esc(bodyColor)+';'+typeStyle(typo.body, previewScale)+'">'+esc(state.body)+'</p>';
+                if (btn.show && btn.label) {
+                    var btnFs = Math.max(8, Math.round((parseInt(btn.fontSize,10)||13) * previewScale));
+                    html += '<span class="'+btnClass+'" style="font-size:'+btnFs+'px;font-weight:'+(btn.fontWeight||600)+'">'+esc(btn.label)+'</span>';
                 }
-                if (layout === 'split' && state.footnote) html += '<p class="hps-mock-foot" style="color:'+esc(footColor)+'">'+esc(state.footnote)+'</p>';
+                if (layout === 'split' && state.footnote) {
+                    html += '<p class="hps-mock-foot" style="color:'+esc(footColor)+';'+typeStyle(typo.footnote, previewScale)+'">'+linkifyFootnote(state.footnote, state.links)+'</p>';
+                }
                 html += '</div></div>';
                 return html;
             }

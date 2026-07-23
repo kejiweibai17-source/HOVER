@@ -1,6 +1,4 @@
-import type { PolicySection } from "@/components/hover/PolicyAccordion";
-
-export const HOW_TO_BUY_SECTIONS: PolicySection[] = [
+export const HOW_TO_BUY_SECTIONS = [
   {
     num: "01",
     title: "購物流程",

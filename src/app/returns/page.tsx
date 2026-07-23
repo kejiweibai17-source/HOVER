@@ -1,7 +1,8 @@
 import { Metadata } from "next";
 import ReturnsClient from "./client";
+import { fetchPolicyPage } from "@/lib/fetchPolicyPage";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 const getSiteUrl = () => {
   if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
@@ -20,6 +21,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/returns" },
 };
 
-export default function ReturnsPage() {
-  return <ReturnsClient />;
+export default async function ReturnsPage() {
+  const { data } = await fetchPolicyPage("returns");
+  return <ReturnsClient initial={data} />;
 }

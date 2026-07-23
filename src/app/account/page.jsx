@@ -319,11 +319,16 @@ function HoverUnderlineField({
   );
 }
 
-function HoverSectionLabel({ children }) {
+function HoverSectionAction({ children, onClick, disabled = false }) {
   return (
-    <div className="mb-6 inline-block bg-[#2a514d] px-6 py-2.5 text-[13px] font-medium tracking-wide text-white">
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="mb-6 inline-block bg-[#2a514d] px-6 py-2.5 text-[13px] font-medium tracking-wide text-white transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+    >
       {children}
-    </div>
+    </button>
   );
 }
 
@@ -643,6 +648,8 @@ export default function AccountPage() {
   });
   const [passwordSaving, setPasswordSaving] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState("");
+  const [profileEditing, setProfileEditing] = useState(false);
+  const [passwordEditing, setPasswordEditing] = useState(false);
 
   const loadProfile = useCallback(async () => {
     setLoading(true);
@@ -845,6 +852,15 @@ export default function AccountPage() {
     }
   };
 
+  const handleProfileAction = async () => {
+    if (!profileEditing) {
+      setProfileMessage("");
+      setProfileEditing(true);
+      return;
+    }
+    await handleProfileSave();
+  };
+
   const handleProfileSave = async () => {
     if (!profileForm.name.trim()) {
       setProfileMessage("錯誤：請輸入姓名");
@@ -866,12 +882,22 @@ export default function AccountPage() {
         return;
       }
       setProfileMessage("會員資料已更新");
+      setProfileEditing(false);
       await loadProfile();
     } catch {
       setProfileMessage("錯誤：系統錯誤，請稍後再試");
     } finally {
       setProfileSaving(false);
     }
+  };
+
+  const handlePasswordAction = async () => {
+    if (!passwordEditing) {
+      setPasswordMessage("");
+      setPasswordEditing(true);
+      return;
+    }
+    await handlePasswordSave();
   };
 
   const handlePasswordSave = async () => {
@@ -915,6 +941,7 @@ export default function AccountPage() {
         confirmPassword: "",
       });
       setPasswordMessage("密碼修改成功");
+      setPasswordEditing(false);
     } catch {
       setPasswordMessage("錯誤：系統錯誤，請稍後再試");
     } finally {
@@ -1438,10 +1465,20 @@ export default function AccountPage() {
                 {/* Profile + password columns */}
                 <div className="mb-12 grid grid-cols-1 gap-10 md:grid-cols-2 md:gap-16">
                   <div>
-                    <HoverSectionLabel>會員資料修改</HoverSectionLabel>
+                    <HoverSectionAction
+                      onClick={handleProfileAction}
+                      disabled={profileSaving}
+                    >
+                      {profileSaving
+                        ? "儲存中..."
+                        : profileEditing
+                          ? "確認修改"
+                          : "會員資料修改"}
+                    </HoverSectionAction>
                     <HoverUnderlineField
                       label="姓名"
                       value={profileForm.name}
+                      readOnly={!profileEditing}
                       onChange={(e) =>
                         setProfileForm((prev) => ({
                           ...prev,
@@ -1452,6 +1489,7 @@ export default function AccountPage() {
                     <HoverUnderlineField
                       label="電話"
                       value={profileForm.phone}
+                      readOnly={!profileEditing}
                       onChange={(e) =>
                         setProfileForm((prev) => ({
                           ...prev,
@@ -1460,7 +1498,7 @@ export default function AccountPage() {
                       }
                     />
                     <HoverUnderlineField
-                      label="Email"
+                      label="電子信箱"
                       value={customer?.email || "—"}
                       readOnly
                     />
@@ -1473,6 +1511,7 @@ export default function AccountPage() {
                     <HoverUnderlineField
                       label="地址"
                       value={profileForm.address}
+                      readOnly={!profileEditing}
                       onChange={(e) =>
                         setProfileForm((prev) => ({
                           ...prev,
@@ -1480,14 +1519,6 @@ export default function AccountPage() {
                         }))
                       }
                     />
-                    <button
-                      type="button"
-                      onClick={handleProfileSave}
-                      disabled={profileSaving}
-                      className="mt-1 bg-[#2a514d] px-5 py-2.5 text-[13px] text-white transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {profileSaving ? "儲存中..." : "儲存會員資料"}
-                    </button>
                     {profileMessage && (
                       <p
                         className={`mt-3 text-[12px] ${
@@ -1540,13 +1571,23 @@ export default function AccountPage() {
                     )}
                   </div>
                   <div>
-                    <HoverSectionLabel>密碼修改</HoverSectionLabel>
+                    <HoverSectionAction
+                      onClick={handlePasswordAction}
+                      disabled={passwordSaving}
+                    >
+                      {passwordSaving
+                        ? "修改中..."
+                        : passwordEditing
+                          ? "確認修改"
+                          : "密碼修改"}
+                    </HoverSectionAction>
                     <div className="space-y-0">
                       <div className="pb-4">
                         <input
                           type="password"
                           placeholder="請輸入舊密碼"
                           autoComplete="current-password"
+                          readOnly={!passwordEditing}
                           value={passwordForm.currentPassword}
                           onChange={(e) =>
                             setPasswordForm((prev) => ({
@@ -1554,7 +1595,10 @@ export default function AccountPage() {
                               currentPassword: e.target.value,
                             }))
                           }
-                          className="w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none focus:border-[#2a514d]"
+                          className={cn(
+                            "w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none focus:border-[#2a514d]",
+                            !passwordEditing && "cursor-default opacity-70",
+                          )}
                         />
                       </div>
                       <div className="pb-4">
@@ -1562,6 +1606,7 @@ export default function AccountPage() {
                           type="password"
                           placeholder="新密碼"
                           autoComplete="new-password"
+                          readOnly={!passwordEditing}
                           value={passwordForm.newPassword}
                           onChange={(e) =>
                             setPasswordForm((prev) => ({
@@ -1569,7 +1614,10 @@ export default function AccountPage() {
                               newPassword: e.target.value,
                             }))
                           }
-                          className="w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none focus:border-[#2a514d]"
+                          className={cn(
+                            "w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none focus:border-[#2a514d]",
+                            !passwordEditing && "cursor-default opacity-70",
+                          )}
                         />
                       </div>
                       <div className="pb-4">
@@ -1577,6 +1625,7 @@ export default function AccountPage() {
                           type="password"
                           placeholder="請再輸入一次新密碼"
                           autoComplete="new-password"
+                          readOnly={!passwordEditing}
                           value={passwordForm.confirmPassword}
                           onChange={(e) =>
                             setPasswordForm((prev) => ({
@@ -1585,20 +1634,17 @@ export default function AccountPage() {
                             }))
                           }
                           onKeyDown={(e) => {
-                            if (e.key === "Enter") handlePasswordSave();
+                            if (e.key === "Enter" && passwordEditing) {
+                              handlePasswordAction();
+                            }
                           }}
-                          className="w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none focus:border-[#2a514d]"
+                          className={cn(
+                            "w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none focus:border-[#2a514d]",
+                            !passwordEditing && "cursor-default opacity-70",
+                          )}
                         />
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={handlePasswordSave}
-                      disabled={passwordSaving}
-                      className="mt-1 bg-[#2a514d] px-5 py-2.5 text-[13px] text-white transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      {passwordSaving ? "修改中..." : "確認修改密碼"}
-                    </button>
                     {passwordMessage && (
                       <p
                         className={`mt-3 text-[12px] ${

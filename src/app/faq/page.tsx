@@ -1,9 +1,10 @@
 import { Metadata } from "next";
 import Script from "next/script";
 import FAQClient from "./client";
-import { FAQ_SECTIONS } from "./faq-data";
+import { fetchPolicyPage } from "@/lib/fetchPolicyPage";
+import { policyPageToFaqSchema } from "@/lib/policyPagesDefaults";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 const getSiteUrl = () => {
   if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
@@ -22,11 +23,14 @@ export const metadata: Metadata = {
   alternates: { canonical: "/faq" },
 };
 
-const schemaFAQ = {
-  "@context": "https://schema.org",
-  "@type": "FAQPage",
-  mainEntity: FAQ_SECTIONS.flatMap((section) =>
-    section.items.map((item) => ({
+export default async function FAQPage() {
+  const { data: page } = await fetchPolicyPage("faq");
+  const faqItems = policyPageToFaqSchema(page);
+
+  const schemaFAQ = {
+    "@context": "https://schema.org",
+    "@type": "FAQPage",
+    mainEntity: faqItems.map((item) => ({
       "@type": "Question",
       name: item.question,
       acceptedAnswer: {
@@ -34,10 +38,8 @@ const schemaFAQ = {
         text: item.answer,
       },
     })),
-  ),
-};
+  };
 
-export default function FAQPage() {
   return (
     <>
       <Script
@@ -45,7 +47,7 @@ export default function FAQPage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaFAQ) }}
       />
-      <FAQClient />
+      <FAQClient initial={page} />
     </>
   );
 }

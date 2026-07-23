@@ -1,7 +1,8 @@
 import { Metadata } from "next";
 import HowToBuyClient from "./client";
+import { fetchPolicyPage } from "@/lib/fetchPolicyPage";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 const getSiteUrl = () => {
   if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
@@ -20,6 +21,7 @@ export const metadata: Metadata = {
   alternates: { canonical: "/how-to-buy" },
 };
 
-export default function HowToBuyPage() {
-  return <HowToBuyClient />;
+export default async function HowToBuyPage() {
+  const { data } = await fetchPolicyPage("how-to-buy");
+  return <HowToBuyClient initial={data} />;
 }

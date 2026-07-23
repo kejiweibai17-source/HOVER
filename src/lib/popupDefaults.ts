@@ -1,12 +1,44 @@
+import type { CSSProperties } from "react";
+
 export type PopupImage = {
   url: string;
   alt: string;
 };
 
+export type PopupButtonWidth = "S" | "M" | "L";
+export type PopupButtonVariant = "brand" | "white";
+
 export type PopupButton = {
   label: string;
   href: string;
   show: boolean;
+  width: PopupButtonWidth;
+  fontSize: number;
+  fontWeight: number;
+  variant: PopupButtonVariant;
+};
+
+export type PopupTypeBlock = {
+  fontSize: number;
+  fontWeight: number;
+  lineHeight: number;
+};
+
+export type PopupTypography = {
+  title: PopupTypeBlock;
+  subtitle: PopupTypeBlock;
+  body: PopupTypeBlock;
+  footnote: PopupTypeBlock;
+};
+
+export type PopupLinkItem = {
+  label: string;
+  href: string;
+};
+
+export type PopupLinks = {
+  terms: PopupLinkItem;
+  privacy: PopupLinkItem;
 };
 
 export type PopupSchedule = {
@@ -24,6 +56,7 @@ export type PopupTrigger = {
 export type PopupLayout = "split" | "full";
 export type PopupImagePosition = "left" | "right";
 export type PopupFrequency = "always" | "daily" | "weekly" | "once";
+export type PopupGiftScale = 100 | 110 | 120;
 
 export type PopupColors = {
   title: string;
@@ -43,7 +76,10 @@ export type PopupSettings = {
   body: string;
   footnote: string;
   showGiftIcon: boolean;
+  giftIconScale: PopupGiftScale;
   colors: PopupColors;
+  typography: PopupTypography;
+  links: PopupLinks;
   imageDesktop: PopupImage;
   imageMobile: PopupImage;
   /** @deprecated 相容舊 API，等同 imageDesktop */
@@ -53,6 +89,13 @@ export type PopupSettings = {
   frequency: PopupFrequency;
   schedule: PopupSchedule;
   active?: boolean;
+};
+
+const DEFAULT_TYPE: PopupTypography = {
+  title: { fontSize: 28, fontWeight: 500, lineHeight: 1.35 },
+  subtitle: { fontSize: 14, fontWeight: 400, lineHeight: 1.4 },
+  body: { fontSize: 13, fontWeight: 400, lineHeight: 1.75 },
+  footnote: { fontSize: 11, fontWeight: 400, lineHeight: 1.5 },
 };
 
 export const DEFAULT_POPUP: PopupSettings = {
@@ -66,16 +109,30 @@ export const DEFAULT_POPUP: PopupSettings = {
   body: "",
   footnote: "",
   showGiftIcon: false,
+  giftIconScale: 110,
   colors: {
     title: "#222222",
     subtitle: "#555555",
     body: "#444444",
     footnote: "#999999",
   },
+  typography: DEFAULT_TYPE,
+  links: {
+    terms: { label: "會員條款", href: "/terms" },
+    privacy: { label: "隱私權政策", href: "/privacy" },
+  },
   imageDesktop: { url: "", alt: "" },
   imageMobile: { url: "", alt: "" },
   image: { url: "", alt: "" },
-  button: { label: "立即加入", href: "/register", show: true },
+  button: {
+    label: "立即加入",
+    href: "/register",
+    show: true,
+    width: "M",
+    fontSize: 13,
+    fontWeight: 600,
+    variant: "brand",
+  },
   trigger: { delaySec: 0, scrollPercent: 0 },
   frequency: "weekly",
   schedule: { startAt: "", endAt: "" },
@@ -92,6 +149,10 @@ function parseBool(value: unknown, fallback = false): boolean {
 function parseIntSafe(value: unknown, fallback = 0): number {
   const n = Number(value);
   return Number.isFinite(n) ? Math.max(0, Math.floor(n)) : fallback;
+}
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, n));
 }
 
 function normalizeImage(raw: unknown, fallback: PopupImage): PopupImage {
@@ -114,6 +175,45 @@ function normalizeColors(raw: unknown, fallback: PopupColors): PopupColors {
     subtitle: sanitizeHex(o.subtitle, fallback.subtitle),
     body: sanitizeHex(o.body, fallback.body),
     footnote: sanitizeHex(o.footnote, fallback.footnote),
+  };
+}
+
+function normalizeTypeBlock(raw: unknown, fallback: PopupTypeBlock): PopupTypeBlock {
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const weight = parseIntSafe(o.fontWeight, fallback.fontWeight);
+  return {
+    fontSize: clamp(parseIntSafe(o.fontSize, fallback.fontSize), 8, 48),
+    fontWeight: ([400, 500, 600, 700] as const).includes(weight as 400)
+      ? weight
+      : fallback.fontWeight,
+    lineHeight: clamp(
+      Number.isFinite(Number(o.lineHeight))
+        ? Number(o.lineHeight)
+        : fallback.lineHeight,
+      1,
+      2.4,
+    ),
+  };
+}
+
+function normalizeTypography(
+  raw: unknown,
+  fallback: PopupTypography,
+): PopupTypography {
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  return {
+    title: normalizeTypeBlock(o.title, fallback.title),
+    subtitle: normalizeTypeBlock(o.subtitle, fallback.subtitle),
+    body: normalizeTypeBlock(o.body, fallback.body),
+    footnote: normalizeTypeBlock(o.footnote, fallback.footnote),
+  };
+}
+
+function normalizeLinkItem(raw: unknown, fallback: PopupLinkItem): PopupLinkItem {
+  const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  return {
+    label: String(o.label || fallback.label).trim() || fallback.label,
+    href: String(o.href || fallback.href).trim() || fallback.href,
   };
 }
 
@@ -147,6 +247,24 @@ export function isPopupVisible(popup: PopupSettings, now = new Date()): boolean 
   );
 }
 
+export function typeStyle(
+  block: PopupTypeBlock,
+  opts?: { mobile?: boolean },
+): CSSProperties {
+  const scale = opts?.mobile ? 0.86 : 1;
+  return {
+    fontSize: `${Math.round(block.fontSize * scale)}px`,
+    fontWeight: block.fontWeight,
+    lineHeight: block.lineHeight,
+  };
+}
+
+export function buttonWidthPx(width: PopupButtonWidth): number {
+  if (width === "S") return 120;
+  if (width === "L") return 200;
+  return 148;
+}
+
 export function normalizePopupSettings(raw: unknown): PopupSettings {
   const d = DEFAULT_POPUP;
   if (!raw || typeof raw !== "object") return d;
@@ -155,6 +273,7 @@ export function normalizePopupSettings(raw: unknown): PopupSettings {
   const buttonRaw = (o.button as Record<string, unknown>) || {};
   const scheduleRaw = (o.schedule as Record<string, unknown>) || {};
   const triggerRaw = (o.trigger as Record<string, unknown>) || {};
+  const linksRaw = (o.links as Record<string, unknown>) || {};
   const legacyImage = normalizeImage(o.image, d.image);
   let imageDesktop = normalizeImage(o.imageDesktop ?? o.image_desktop, d.imageDesktop);
   let imageMobile = normalizeImage(o.imageMobile ?? o.image_mobile, d.imageMobile);
@@ -178,6 +297,26 @@ export function normalizePopupSettings(raw: unknown): PopupSettings {
 
   const scroll = Math.min(100, parseIntSafe(triggerRaw.scrollPercent ?? triggerRaw.scroll, 0));
 
+  const scaleRaw = parseIntSafe(o.giftIconScale ?? o.gift_icon_scale, d.giftIconScale);
+  const giftIconScale: PopupGiftScale = ([100, 110, 120] as const).includes(
+    scaleRaw as PopupGiftScale,
+  )
+    ? (scaleRaw as PopupGiftScale)
+    : 110;
+
+  const widthRaw = String(buttonRaw.width || d.button.width).toUpperCase();
+  const width: PopupButtonWidth = (["S", "M", "L"] as const).includes(
+    widthRaw as PopupButtonWidth,
+  )
+    ? (widthRaw as PopupButtonWidth)
+    : "M";
+
+  const variantRaw = String(buttonRaw.variant || d.button.variant);
+  const variant: PopupButtonVariant =
+    variantRaw === "white" ? "white" : "brand";
+
+  const btnWeight = parseIntSafe(buttonRaw.fontWeight, d.button.fontWeight);
+
   const popup: PopupSettings = {
     enabled: parseBool(o.enabled, d.enabled),
     version: String(o.version || d.version).trim() || d.version,
@@ -192,7 +331,13 @@ export function normalizePopupSettings(raw: unknown): PopupSettings {
     body: String(o.body || "").trim(),
     footnote: String(o.footnote || "").trim(),
     showGiftIcon: parseBool(o.showGiftIcon ?? o.show_gift_icon, layout === "split"),
+    giftIconScale,
     colors: normalizeColors(o.colors, d.colors),
+    typography: normalizeTypography(o.typography, d.typography),
+    links: {
+      terms: normalizeLinkItem(linksRaw.terms, d.links.terms),
+      privacy: normalizeLinkItem(linksRaw.privacy, d.links.privacy),
+    },
     imageDesktop,
     imageMobile,
     image: imageDesktop,
@@ -200,6 +345,16 @@ export function normalizePopupSettings(raw: unknown): PopupSettings {
       label: String(buttonRaw.label || d.button.label).trim() || d.button.label,
       href: String(buttonRaw.href || d.button.href).trim() || d.button.href,
       show: parseBool(buttonRaw.show ?? buttonRaw.enabled, d.button.show),
+      width,
+      fontSize: clamp(
+        parseIntSafe(buttonRaw.fontSize, d.button.fontSize),
+        10,
+        20,
+      ),
+      fontWeight: ([400, 500, 600, 700] as const).includes(btnWeight as 400)
+        ? btnWeight
+        : d.button.fontWeight,
+      variant,
     },
     trigger: {
       delaySec: parseIntSafe(triggerRaw.delaySec ?? triggerRaw.delay, 0),

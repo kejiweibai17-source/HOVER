@@ -1,22 +1,55 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import PolicyAccordion from "@/components/hover/PolicyAccordion";
-import { RETURNS_SECTIONS } from "./returns-data";
+import {
+  normalizePolicyPage,
+  type PolicyPageSettings,
+} from "@/lib/policyPagesDefaults";
 
-export default function ReturnsClient() {
+export default function ReturnsClient({
+  initial,
+}: {
+  initial: PolicyPageSettings;
+}) {
+  const [page, setPage] = useState<PolicyPageSettings>(initial);
+
+  useEffect(() => {
+    setPage(initial);
+  }, [initial]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/policy-pages?page=returns", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((json) => {
+        if (cancelled || !json?.data || json.fallback) return;
+        setPage(normalizePolicyPage(json.data, "returns"));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <div className="relative bg-white pb-24">
       <header className="px-4 pb-8 pt-14 text-center md:pb-10 md:pt-20">
         <h1 className="font-serif text-[28px] font-medium tracking-[0.12em] text-[#2a514d] md:text-[32px]">
-          申請退貨
+          {page.pageTitle || "申請退貨"}
         </h1>
-        <p className="mx-auto mt-6 max-w-[560px] text-[12px] leading-[2] tracking-[0.04em] text-[#374151] md:text-[13px]">
-          HOVER 希望每一次購買都能讓您安心。若您收到商品後有退貨需求，請依照以下說明提出申請，我們將協助您完成退貨流程。
-        </p>
+        {page.intro ? (
+          <p className="mx-auto mt-6 max-w-[560px] text-[12px] leading-[2] tracking-[0.04em] text-[#374151] md:text-[13px]">
+            {page.intro}
+          </p>
+        ) : null}
       </header>
 
       <div className="mx-auto max-w-[760px] border-t border-[#d8d8d8] px-4 md:px-6">
-        <PolicyAccordion sections={RETURNS_SECTIONS} />
+        <PolicyAccordion
+          sections={page.sections}
+          contentColor={page.contentColor}
+        />
       </div>
     </div>
   );

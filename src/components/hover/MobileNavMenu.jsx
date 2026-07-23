@@ -72,20 +72,22 @@ export default function MobileNavMenu({
             <div className="shrink-0 px-6 pb-8">
               <button
                 type="button"
-                className={`${linkClass} flex w-full items-center gap-3 border-t text-left`}
+                className={`${linkClass} flex w-full items-center gap-2 border-t text-left`}
                 onClick={handleFavorites}
               >
-                <WishlistIcon size={36} />
-                <span className="text-[14px] font-bold tracking-[0.12em]">收藏清單</span>
+                <WishlistIcon size={22} />
+                <span className="text-[14px] font-semibold tracking-[0.12em]">
+                  收藏清單
+                </span>
               </button>
 
               <button
                 type="button"
-                className={`${linkClass} flex w-full items-center gap-3 border-b-0 text-left`}
+                className={`${linkClass} flex w-full items-center gap-2 border-b-0 text-left`}
                 onClick={handleAccount}
               >
-                <HoverIcon name="member" size={36} alt="" />
-                <span className="text-[14px] font-bold tracking-[0.12em]">
+                <HoverIcon name="member" size={22} alt="" />
+                <span className="text-[14px] font-semibold tracking-[0.12em]">
                   {loggedIn ? "會員中心" : "會員登入"}
                 </span>
               </button>

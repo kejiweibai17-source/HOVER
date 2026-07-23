@@ -66,7 +66,7 @@ function FooterLink({ href, children, onClick }) {
   );
 }
 
-function FooterColumn({ title, links, onMembershipClick }) {
+function FooterColumn({ title, links }) {
   return (
     <div className="min-w-0">
       <h3 className="mb-4 text-[17px] font-normal tracking-[0.1em] md:mb-5">
@@ -75,60 +75,10 @@ function FooterColumn({ title, links, onMembershipClick }) {
       <ul className="space-y-2.5 md:space-y-3">
         {links.map((l) => (
           <li key={`${title}-${l.label}`}>
-            <FooterLink
-              href={l.href}
-              onClick={l.label === "會員制度" ? onMembershipClick : undefined}
-            >
-              {l.label}
-            </FooterLink>
+            <FooterLink href={l.href}>{l.label}</FooterLink>
           </li>
         ))}
       </ul>
-    </div>
-  );
-}
-
-function MembershipModal({ open, onClose }) {
-  useEffect(() => {
-    if (!open) return undefined;
-
-    const handleKeyDown = (event) => {
-      if (event.key === "Escape") onClose();
-    };
-
-    document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [open, onClose]);
-
-  if (!open) return null;
-
-  return (
-    <div
-      className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/80 p-3 backdrop-blur-sm md:p-6"
-      role="dialog"
-      aria-modal="true"
-      aria-label="會員制度"
-      onClick={onClose}
-    >
-      <div
-        className="relative flex max-h-[92dvh] max-w-[96vw] items-center justify-center"
-        onClick={(event) => event.stopPropagation()}
-      >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src="/images/會員制度.jpg"
-          alt="HOVER 會員制度"
-          className="block max-h-[92dvh] max-w-[96vw] object-contain"
-        />
-        <button
-          type="button"
-          aria-label="關閉會員制度"
-          onClick={onClose}
-          className="absolute right-2 top-2 flex h-9 w-9 items-center justify-center rounded-full bg-black/65 text-[24px] font-light leading-none text-white transition-colors hover:bg-black"
-        >
-          ×
-        </button>
-      </div>
     </div>
   );
 }
@@ -315,7 +265,6 @@ function ContactColumn({ contact, social }) {
 
 export default function HoverFooter() {
   const [footer, setFooter] = useState(DEFAULT_FOOTER);
-  const [membershipOpen, setMembershipOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -356,11 +305,7 @@ export default function HoverFooter() {
 
           {columns.map((col) => (
             <div key={col.title} className="shrink-0">
-              <FooterColumn
-                title={col.title}
-                links={col.links}
-                onMembershipClick={() => setMembershipOpen(true)}
-              />
+              <FooterColumn title={col.title} links={col.links} />
             </div>
           ))}
 
@@ -375,16 +320,7 @@ export default function HoverFooter() {
               <ul className="space-y-2.5">
                 {col.links.map((l) => (
                   <li key={`${col.title}-${l.label}`}>
-                    <FooterLink
-                      href={l.href}
-                      onClick={
-                        l.label === "會員制度"
-                          ? () => setMembershipOpen(true)
-                          : undefined
-                      }
-                    >
-                      {l.label}
-                    </FooterLink>
+                    <FooterLink href={l.href}>{l.label}</FooterLink>
                   </li>
                 ))}
               </ul>
@@ -451,10 +387,6 @@ export default function HoverFooter() {
           </p>
         </div>
       </div>
-      <MembershipModal
-        open={membershipOpen}
-        onClose={() => setMembershipOpen(false)}
-      />
     </footer>
   );
 }

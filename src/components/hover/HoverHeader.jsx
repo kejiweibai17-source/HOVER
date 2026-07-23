@@ -23,10 +23,13 @@ import { FALLBACK_NAV_CATEGORIES } from "@/lib/categoryNav";
 
 const SCROLL_TOP_THRESHOLD = 20;
 
-/** PNG 圖檔含透明留白，實際繪製尺寸略小於容器 */
+/**
+ * 桌機 icon 光學對齊選單文字（15–16px semibold）。
+ * PNG／SVG 有透明留白，繪製尺寸需略大於字級才會看起來一樣高。
+ */
 const HEADER_ICON = {
-  mobile: { box: 32, search: 25, cart: 27 },
-  desktop: { box: 36, search: 27, wishlist: 27, cart: 29, member: 27 },
+  mobile: { box: 30, search: 22, cart: 22 },
+  desktop: { box: 30, search: 22, wishlist: 22, cart: 22, member: 22 },
 };
 
 function HeaderIconButton({ children, className = "", ...props }) {
@@ -107,7 +110,6 @@ export default function HoverHeader({
   const cartItems = useCartStore((state) => state.items) || [];
   const cartCount = cartItems.reduce((t, i) => t + (i.qty || 0), 0);
   const loggedIn = useAuthStore((state) => state.loggedIn);
-  const authUser = useAuthStore((state) => state.user);
   const refreshAuth = useAuthStore((state) => state.refreshAuth);
   const checkAuth = useAuthStore((state) => state.checkAuth);
   const openSearch = useSearchStore((state) => state.openSearch);
@@ -272,7 +274,7 @@ export default function HoverHeader({
           >
             <HoverLogo aria-hidden className="h-8 w-auto" />
           </Link>
-          <div className="-mr-0.5 flex items-center justify-end gap-0">
+          <div className="-mr-0.5 flex items-center justify-end gap-0.5">
             <HeaderIconButton
               aria-label="搜尋"
               style={{
@@ -344,7 +346,7 @@ export default function HoverHeader({
               ))}
             </nav>
 
-            <div className="col-start-3 -mr-1 flex items-center justify-end gap-0">
+            <div className="col-start-3 -mr-1 flex items-center justify-end gap-0.5">
               <HeaderIconButton
                 aria-label="搜尋"
                 className="transition-opacity hover:opacity-50"
@@ -385,7 +387,7 @@ export default function HoverHeader({
                 aria-label={
                   cartCount > 0 ? `購物車，${cartCount} 件商品` : "購物車"
                 }
-                className="relative flex shrink-0 m-2  items-center justify-center text-black transition-opacity hover:opacity-50"
+                className="relative flex shrink-0 items-center justify-center text-black transition-opacity hover:opacity-50"
                 style={{
                   width: HEADER_ICON.desktop.box,
                   height: HEADER_ICON.desktop.box,
@@ -395,37 +397,25 @@ export default function HoverHeader({
               </Link>
               <Link
                 href="/account"
-                aria-label={
-                  loggedIn && authUser ? `Hi ${authUser.name}` : "會員"
-                }
-                className="flex shrink-0 items-center justify-center gap-1.5 text-black hover:opacity-50"
-                style={
-                  loggedIn && authUser
-                    ? undefined
-                    : {
-                        width: HEADER_ICON.desktop.box,
-                        height: HEADER_ICON.desktop.box,
-                      }
-                }
+                aria-label={loggedIn ? "會員中心（已登入）" : "會員登入"}
+                title={loggedIn ? "已登入" : "會員登入"}
+                className="relative flex shrink-0 items-center justify-center text-black transition-opacity hover:opacity-50"
+                style={{
+                  width: HEADER_ICON.desktop.box,
+                  height: HEADER_ICON.desktop.box,
+                }}
               >
-                {loggedIn && authUser ? (
-                  <>
-                    <HoverIcon
-                      name="member"
-                      size={HEADER_ICON.desktop.member}
-                      alt="會員"
-                    />
-                    <span className="hidden max-w-[88px] truncate text-[12px] font-medium tracking-wide lg:inline">
-                      Hi {authUser.name}
-                    </span>
-                  </>
-                ) : (
-                  <HoverIcon
-                    name="member"
-                    size={HEADER_ICON.desktop.member}
-                    alt="會員"
+                <HoverIcon
+                  name="member"
+                  size={HEADER_ICON.desktop.member}
+                  alt="會員"
+                />
+                {loggedIn ? (
+                  <span
+                    className="absolute right-0 top-0 h-1.5 w-1.5 rounded-full bg-[#2a514d] ring-1 ring-white"
+                    aria-hidden
                   />
-                )}
+                ) : null}
               </Link>
             </div>
           </div>

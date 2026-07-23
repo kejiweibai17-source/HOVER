@@ -8,10 +8,12 @@ import { Gift, X } from "lucide-react";
 import { useAuthStore } from "@/lib/authStore";
 import {
   DEFAULT_POPUP,
+  buttonWidthPx,
   isPopupDismissed,
   isPopupVisible,
   markPopupDismissed,
   normalizePopupSettings,
+  typeStyle,
 } from "@/lib/popupDefaults";
 
 function useIsMobile(breakpoint = 768) {
@@ -26,10 +28,22 @@ function useIsMobile(breakpoint = 768) {
   return mobile;
 }
 
-function CtaButton({ label, href, light = false, onNavigate }) {
-  const className = light
-    ? "inline-flex min-w-[148px] items-center justify-center bg-white px-8 py-3.5 text-[12px] font-semibold tracking-[0.14em] text-[#222] transition-opacity hover:opacity-85 md:text-[13px]"
-    : "inline-flex min-w-[148px] items-center justify-center bg-[#2a514d] px-8 py-3.5 text-[12px] font-semibold tracking-[0.14em] text-white transition-opacity hover:opacity-85 md:text-[13px]";
+function CtaButton({ label, href, button, onNavigate }) {
+  const width = button?.width || "M";
+  const variant = button?.variant || "brand";
+  const fontSize = button?.fontSize || 13;
+  const fontWeight = button?.fontWeight || 600;
+  const isWhite = variant === "white";
+
+  const className = isWhite
+    ? "inline-flex h-11 items-center justify-center px-5 tracking-[0.14em] text-[#222] transition-opacity hover:opacity-85 bg-white border border-[#ddd]"
+    : "inline-flex h-11 items-center justify-center px-5 tracking-[0.14em] text-white transition-opacity hover:opacity-85 bg-[#2a514d]";
+
+  const style = {
+    minWidth: `${buttonWidthPx(width)}px`,
+    fontSize: `${fontSize}px`,
+    fontWeight,
+  };
 
   const onClick = () => onNavigate?.();
 
@@ -40,6 +54,7 @@ function CtaButton({ label, href, light = false, onNavigate }) {
         target="_blank"
         rel="noopener noreferrer"
         className={className}
+        style={style}
         onClick={onClick}
       >
         {label}
@@ -48,20 +63,74 @@ function CtaButton({ label, href, light = false, onNavigate }) {
   }
 
   return (
-    <Link href={href} className={className} onClick={onClick}>
+    <Link href={href} className={className} style={style} onClick={onClick}>
       {label}
     </Link>
   );
 }
 
-function GiftIcon({ color = "#2a514d" }) {
+function GiftIcon({ color = "#2a514d", scale = 110 }) {
+  const s = (Number(scale) || 110) / 100;
+  const box = Math.round(36 * s);
+  const icon = Math.round(24 * s);
   return (
     <div
-      className="mx-auto flex h-8 w-8 shrink-0 items-center justify-center md:h-9 md:w-9"
-      style={{ color }}
+      className="mx-auto flex shrink-0 items-center justify-center"
+      style={{ color, width: box, height: box }}
     >
-      <Gift size={24} strokeWidth={1.35} aria-hidden />
+      <Gift size={icon} strokeWidth={1.35} aria-hidden />
     </div>
+  );
+}
+
+function FootnoteText({ text, links, color, style }) {
+  const items = [links?.terms, links?.privacy]
+    .filter((item) => item?.label && item?.href)
+    .sort((a, b) => b.label.length - a.label.length);
+
+  if (!text) return null;
+
+  if (items.length === 0) {
+    return (
+      <p className="max-w-[260px]" style={{ color, ...style }}>
+        {text}
+      </p>
+    );
+  }
+
+  const pattern = new RegExp(
+    `(${items.map((i) => i.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})`,
+    "g",
+  );
+  const parts = text.split(pattern);
+
+  return (
+    <p className="max-w-[260px]" style={{ color, ...style }}>
+      {parts.map((part, idx) => {
+        const match = items.find((i) => i.label === part);
+        if (!match) return part;
+        const href = match.href;
+        const className = "underline underline-offset-2 hover:opacity-70";
+        if (href.startsWith("http")) {
+          return (
+            <a
+              key={`${part}-${idx}`}
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={className}
+            >
+              {part}
+            </a>
+          );
+        }
+        return (
+          <Link key={`${part}-${idx}`} href={href} className={className}>
+            {part}
+          </Link>
+        );
+      })}
+    </p>
   );
 }
 
@@ -181,9 +250,16 @@ export default function HoverPopup() {
     (popup.hideForMembers && loggedIn);
 
   const colors = popup.colors || DEFAULT_POPUP.colors;
+  const typography = popup.typography || DEFAULT_POPUP.typography;
 
   const content = useMemo(() => {
+    const mobileOpts = { mobile: isMobile };
     if (popup.layout === "full") {
+      // 滿版：若按鈕選品牌綠就用綠；選白色則白底
+      const fullButton = {
+        ...popup.button,
+        variant: popup.button.variant === "white" ? "white" : "brand",
+      };
       return (
         <div className="relative aspect-[9/16] w-full overflow-hidden md:aspect-[16/9]">
           {imageUrl ? (
@@ -211,18 +287,25 @@ export default function HoverPopup() {
             {popup.title && (
               <h2
                 id="hover-popup-title"
-                className="max-w-[520px] text-[22px] font-semibold leading-[1.4] tracking-[0.02em] md:text-[28px]"
-                style={{ color: colors.title === "#222222" ? "#ffffff" : colors.title }}
+                className="max-w-[520px] tracking-[0.02em]"
+                style={{
+                  color:
+                    colors.title === "#222222" ? "#ffffff" : colors.title,
+                  ...typeStyle(typography.title, mobileOpts),
+                }}
               >
                 {popup.title}
               </h2>
             )}
             {popup.body && (
               <p
-                className="mx-auto max-w-[420px] whitespace-pre-line text-[13px] leading-[1.8] tracking-[0.02em] md:mx-0 md:text-[15px]"
+                className="mx-auto max-w-[420px] whitespace-pre-line tracking-[0.02em] md:mx-0"
                 style={{
                   color:
-                    colors.body === "#444444" ? "rgba(255,255,255,0.9)" : colors.body,
+                    colors.body === "#444444"
+                      ? "rgba(255,255,255,0.9)"
+                      : colors.body,
+                  ...typeStyle(typography.body, mobileOpts),
                 }}
               >
                 {popup.body}
@@ -232,7 +315,7 @@ export default function HoverPopup() {
               <CtaButton
                 label={popup.button.label}
                 href={popup.button.href || "/"}
-                light
+                button={fullButton}
                 onNavigate={handleClose}
               />
             )}
@@ -241,7 +324,6 @@ export default function HoverPopup() {
       );
     }
 
-    // split layout — desktop 55/45；手機圖 40% / 文 60%
     const imageFirst = isMobile || popup.imagePosition !== "right";
 
     const imageBlock = (
@@ -293,25 +375,36 @@ export default function HoverPopup() {
         {popup.title && (
           <h2
             id="hover-popup-title"
-            className="max-w-[280px] font-serif text-[22px] font-medium leading-[1.35] tracking-[0.04em] md:max-w-[300px] md:text-[28px]"
-            style={{ color: colors.title }}
+            className="max-w-[280px] font-serif tracking-[0.04em] md:max-w-[300px]"
+            style={{
+              color: colors.title,
+              ...typeStyle(typography.title, mobileOpts),
+            }}
           >
             {popup.title}
           </h2>
         )}
         {popup.subtitle && (
           <p
-            className="text-[13px] leading-snug tracking-[0.06em] md:text-[14px]"
-            style={{ color: colors.subtitle }}
+            className="tracking-[0.06em]"
+            style={{
+              color: colors.subtitle,
+              ...typeStyle(typography.subtitle, mobileOpts),
+            }}
           >
             {popup.subtitle}
           </p>
         )}
-        {popup.showGiftIcon && <GiftIcon color={colors.title} />}
+        {popup.showGiftIcon && (
+          <GiftIcon color={colors.title} scale={popup.giftIconScale} />
+        )}
         {popup.body && (
           <p
-            className="max-w-[280px] whitespace-pre-line text-[12px] leading-[1.75] tracking-[0.02em] md:text-[13px]"
-            style={{ color: colors.body }}
+            className="max-w-[280px] whitespace-pre-line tracking-[0.02em]"
+            style={{
+              color: colors.body,
+              ...typeStyle(typography.body, mobileOpts),
+            }}
           >
             {popup.body}
           </p>
@@ -321,17 +414,18 @@ export default function HoverPopup() {
             <CtaButton
               label={popup.button.label}
               href={popup.button.href || "/"}
+              button={popup.button}
               onNavigate={handleClose}
             />
           </div>
         )}
         {popup.footnote && (
-          <p
-            className="max-w-[260px] text-[10px] leading-relaxed tracking-[0.02em] md:text-[11px]"
-            style={{ color: colors.footnote }}
-          >
-            {popup.footnote}
-          </p>
+          <FootnoteText
+            text={popup.footnote}
+            links={popup.links}
+            color={colors.footnote}
+            style={typeStyle(typography.footnote, mobileOpts)}
+          />
         )}
       </div>
     );
@@ -359,7 +453,16 @@ export default function HoverPopup() {
         )}
       </div>
     );
-  }, [popup, colors, imageUrl, imageAlt, isMobile, showButton, handleClose]);
+  }, [
+    popup,
+    colors,
+    typography,
+    imageUrl,
+    imageAlt,
+    isMobile,
+    showButton,
+    handleClose,
+  ]);
 
   if (suppress) return null;
 

@@ -381,10 +381,11 @@ function hop_output_document(WC_Order $order, string $doc): void
         margin-top: 40px;
     }
     .totals.no-gap { margin-top: 0; border-top: 0; }
-    /* 訂單明細：總件數下方不要有線 */
+    /* 訂單明細：總件數只保留上方線，下方線條拿掉 */
     .totals.detail-only {
-        border-bottom: 0;
+        border-bottom: none !important;
         margin-bottom: 0;
+        padding-bottom: 4px;
     }
     .totals-amount {
         display: inline-flex;
@@ -411,7 +412,8 @@ function hop_output_document(WC_Order $order, string $doc): void
     }
     .doc-footer .brand-logo {
         display: block;
-        width: 220px;
+        width: 340px;
+        max-width: 72%;
         height: auto;
         margin: 0 auto;
     }
