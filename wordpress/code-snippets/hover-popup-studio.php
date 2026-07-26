@@ -70,7 +70,7 @@ function hps_defaults(): array
         'body'           => '立即獲得 NT$100 入會購物金',
         'footnote'       => '詳情請參閱會員條款與隱私權政策',
         'showGiftIcon'   => true,
-        'giftIconScale'  => 110, // 100 | 110 | 120（%）
+        'giftIconScale'  => 140, // 120 | 140 | 160（%）
         'colors'         => [
             'title'    => '#222222',
             'subtitle' => '#555555',
@@ -274,7 +274,13 @@ function hps_normalize(array $data): array
     $data['showGiftIcon']   = !empty($data['showGiftIcon']);
 
     $scale = absint($data['giftIconScale'] ?? $d['giftIconScale']);
-    $data['giftIconScale'] = in_array($scale, [100, 110, 120], true) ? $scale : 110;
+    // 舊版 100／110 → 映射到新檔；其餘非 120/140/160 則用建議值 140
+    if ($scale === 100) {
+        $scale = 120;
+    } elseif ($scale === 110) {
+        $scale = 140;
+    }
+    $data['giftIconScale'] = in_array($scale, [120, 140, 160], true) ? $scale : 140;
 
     $colors = is_array($data['colors'] ?? null) ? $data['colors'] : [];
     $data['colors'] = [
@@ -609,9 +615,9 @@ function hps_render_page(): void
                                 <div class="hps-field hps-only-split">
                                     <label class="hps-label">Gift Icon 大小</label>
                                     <select data-field="giftIconScale" class="regular-text">
-                                        <option value="100" <?php selected((int) $s['giftIconScale'], 100); ?>>100%</option>
-                                        <option value="110" <?php selected((int) $s['giftIconScale'], 110); ?>>110%（建議）</option>
                                         <option value="120" <?php selected((int) $s['giftIconScale'], 120); ?>>120%</option>
+                                        <option value="140" <?php selected((int) $s['giftIconScale'], 140); ?>>140%（建議）</option>
+                                        <option value="160" <?php selected((int) $s['giftIconScale'], 160); ?>>160%</option>
                                     </select>
                                 </div>
 
@@ -912,20 +918,25 @@ function hps_print_admin_styles(): void
             box-shadow: 0 16px 40px rgba(0,0,0,.28); width: 100%;
         }
         .hover-popup-admin .hps-device.is-desktop .hps-mock-modal.is-split {
-            display: grid; grid-template-columns: 55% 45%; width: 100%; max-width: 460px;
-            min-height: 240px; align-items: stretch;
+            display: grid; grid-template-columns: 55% 45%; width: 100%; max-width: 440px;
+            min-height: 300px; align-items: stretch;
+            /* 對齊前台 max-w-[880px]、左圖右文 55/45、圖區 min-h ~360 的比例縮放 */
+            aspect-ratio: 880 / 400;
+            max-height: none;
         }
         .hover-popup-admin .hps-device.is-desktop .hps-mock-modal.is-split.is-right { grid-template-columns: 45% 55%; }
         .hover-popup-admin .hps-device.is-desktop .hps-mock-modal.is-split.is-right .hps-mock-image { order: 2; }
         .hover-popup-admin .hps-device.is-desktop .hps-mock-modal.is-split.is-right .hps-mock-body { order: 1; }
         .hover-popup-admin .hps-device.is-desktop .hps-mock-modal.is-full {
-            width: 100%; max-width: 460px; min-height: 0; aspect-ratio: 16/9;
+            width: 100%; max-width: 440px; min-height: 0; aspect-ratio: 16/9;
         }
         .hover-popup-admin .hps-device.is-mobile .hps-mock-modal {
-            max-width: 180px; width: 100%;
+            max-width: 210px; width: 100%;
         }
         .hover-popup-admin .hps-device.is-mobile .hps-mock-modal.is-split {
-            display: flex; flex-direction: column; height: auto; min-height: 340px;
+            /* 對齊前台 max-w-[420px]、圖約 38% 高 */
+            display: flex; flex-direction: column; height: auto;
+            min-height: 380px; max-height: 480px; aspect-ratio: 420 / 560;
         }
         .hover-popup-admin .hps-device.is-mobile .hps-mock-modal.is-full {
             min-height: 0; aspect-ratio: 9/16;
@@ -940,11 +951,11 @@ function hps_print_admin_styles(): void
             width: 100%; height: 100%; object-fit: cover; display: block; background: #d8d8d8;
         }
         .hover-popup-admin .hps-device.is-desktop .hps-mock-modal.is-split .hps-mock-image {
-            min-height: 240px; height: 100%;
+            min-height: 0; height: 100%; width: 100%;
         }
         .hover-popup-admin .hps-device.is-mobile .hps-mock-modal.is-split .hps-mock-image {
-            width: 100%; flex: 0 0 auto; height: auto; aspect-ratio: 16/10; max-height: 132px;
-            object-fit: cover;
+            width: 100%; flex: 0 0 38%; height: 38%; min-height: 120px; max-height: 180px;
+            aspect-ratio: auto; object-fit: cover;
         }
         .hover-popup-admin .hps-mock-modal.is-full .hps-mock-image {
             position: absolute; inset: 0; min-height: 100%;
@@ -1006,12 +1017,16 @@ function hps_print_admin_styles(): void
             background: #2a514d; color: #fff;
         }
         .hover-popup-admin .hps-mock-gift {
-            width: 20px; height: 20px; margin: 0 auto; color: #2a514d; flex-shrink: 0;
+            width: 28px; height: 28px; margin: 0 auto; color: #2a514d; flex-shrink: 0;
             transform-origin: center;
         }
         .hover-popup-admin .hps-mock-gift svg { width: 100%; height: 100%; display: block; }
         .hover-popup-admin .hps-mock-foot a {
-            color: inherit; text-decoration: underline; text-underline-offset: 2px;
+            color: inherit;
+            text-decoration: underline;
+            text-decoration-color: #2a514d;
+            text-decoration-thickness: 1px;
+            text-underline-offset: 3px;
         }
         @media (max-width: 1280px) {
             .hover-popup-admin .hps-layout { grid-template-columns: minmax(0, 1fr) minmax(420px, 460px); }
@@ -1025,7 +1040,7 @@ function hps_print_admin_styles(): void
                 display: grid; grid-template-columns: 1.35fr .75fr; gap: 16px; align-items: start;
             }
             .hover-popup-admin .hps-device.is-desktop .hps-mock-modal.is-split,
-            .hover-popup-admin .hps-device.is-desktop .hps-mock-modal.is-full { max-width: 520px; }
+            .hover-popup-admin .hps-device.is-desktop .hps-mock-modal.is-full { max-width: 480px; }
         }
         @media (max-width: 720px) {
             .hover-popup-admin .hps-dual-preview { grid-template-columns: 1fr; }
@@ -1068,7 +1083,7 @@ function hps_admin_footer_script(): void
                 var path = String(el.data('field'));
                 var val = el.is(':checkbox') ? el.is(':checked') : el.val();
                 if (path.indexOf('trigger.') === 0) val = parseInt(val, 10) || 0;
-                if (path === 'giftIconScale') val = parseInt(val, 10) || 110;
+                if (path === 'giftIconScale') val = parseInt(val, 10) || 140;
                 if (path.indexOf('typography.') === 0) {
                     if (path.indexOf('.fontSize') > -1 || path.indexOf('.fontWeight') > -1) {
                         val = parseInt(val, 10) || 0;
@@ -1136,7 +1151,7 @@ function hps_admin_footer_script(): void
                 : (colors.body || '#444');
             var subColor = colors.subtitle || '#555';
             var footColor = colors.footnote || '#999';
-            var giftScale = (parseInt(state.giftIconScale, 10) || 110) / 100;
+            var giftScale = (parseInt(state.giftIconScale, 10) || 140) / 100;
             var btn = state.button || {};
             var btnWidth = btn.width || 'M';
             var btnVariant = btn.variant || 'brand';

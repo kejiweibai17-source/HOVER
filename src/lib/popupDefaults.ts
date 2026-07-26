@@ -56,7 +56,7 @@ export type PopupTrigger = {
 export type PopupLayout = "split" | "full";
 export type PopupImagePosition = "left" | "right";
 export type PopupFrequency = "always" | "daily" | "weekly" | "once";
-export type PopupGiftScale = 100 | 110 | 120;
+export type PopupGiftScale = 120 | 140 | 160;
 
 export type PopupColors = {
   title: string;
@@ -109,7 +109,7 @@ export const DEFAULT_POPUP: PopupSettings = {
   body: "",
   footnote: "",
   showGiftIcon: false,
-  giftIconScale: 110,
+  giftIconScale: 140,
   colors: {
     title: "#222222",
     subtitle: "#555555",
@@ -298,11 +298,14 @@ export function normalizePopupSettings(raw: unknown): PopupSettings {
   const scroll = Math.min(100, parseIntSafe(triggerRaw.scrollPercent ?? triggerRaw.scroll, 0));
 
   const scaleRaw = parseIntSafe(o.giftIconScale ?? o.gift_icon_scale, d.giftIconScale);
-  const giftIconScale: PopupGiftScale = ([100, 110, 120] as const).includes(
-    scaleRaw as PopupGiftScale,
+  let mappedScale = scaleRaw;
+  if (scaleRaw === 100) mappedScale = 120;
+  else if (scaleRaw === 110) mappedScale = 140;
+  const giftIconScale: PopupGiftScale = ([120, 140, 160] as const).includes(
+    mappedScale as PopupGiftScale,
   )
-    ? (scaleRaw as PopupGiftScale)
-    : 110;
+    ? (mappedScale as PopupGiftScale)
+    : 140;
 
   const widthRaw = String(buttonRaw.width || d.button.width).toUpperCase();
   const width: PopupButtonWidth = (["S", "M", "L"] as const).includes(

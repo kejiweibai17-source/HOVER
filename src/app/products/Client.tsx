@@ -15,6 +15,8 @@ import { useSearchStore } from "@/lib/searchStore";
 import { useCartStore } from "@/lib/cartStore";
 import { MOCK_PRODUCTS } from "@/lib/mockProducts";
 import { guessColorHex } from "@/lib/productColors";
+import CategoryBannerBlock from "@/components/hover/CategoryBannerBlock";
+import type { CategoryBanner } from "@/lib/categoryBannerDefaults";
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 
 export type Product = {
@@ -407,7 +409,7 @@ function ProductCard({ product }: { product: Product }) {
       {/* Image container */}
       <div
         className="relative mb-2 w-full overflow-hidden bg-white"
-        style={{ aspectRatio: "3/4" }}
+        style={{ aspectRatio: "1/1" }}
       >
         <Image
           src={img}
@@ -526,9 +528,13 @@ function Pagination({
 export default function Client({
   items,
   categoryLabel = "ALL ITEMS",
+  categorySlug = "all",
+  banner = null,
 }: {
   items: Product[];
   categoryLabel?: string;
+  categorySlug?: string;
+  banner?: CategoryBanner | null;
 }) {
   const products: Product[] = items?.length > 0 ? items : MOCK_PRODUCTS;
 
@@ -582,7 +588,7 @@ export default function Client({
   const gridRef = useRef<HTMLDivElement>(null);
 
   return (
-    <div className="bg-white pb-[100px] pt-10 text-black">
+    <div className="bg-white pb-[100px] text-black">
       {/* Filter sidebar drawer */}
       <FilterSidebar
         open={filterOpen}
@@ -594,84 +600,162 @@ export default function Client({
 
       {/* Page content */}
       <div>
-        {/* Page title */}
-        <div className="py-10 text-center">
-          <h1 className="text-[22px] font-semibold tracking-[0.3em] uppercase">
-            全部商品種類
-          </h1>
-        </div>
-
-        {/* Breadcrumb — align left with filter bar */}
-        <nav className="mb-4 flex items-center gap-1 px-4 text-[11px] text-[#888] md:px-12 lg:px-16">
-          <Link href="/" className="hover:text-black">
-            HOME
-          </Link>
-          <span>&gt;</span>
-          <span className="text-black">{categoryLabel}</span>
-        </nav>
-
-        {/* Filter & Sort bar — full width, content at both edges */}
-        <div className="mb-8 w-full border-t border-b border-[#e8e8e8]">
-          <div className="flex w-full items-center justify-between px-4 pb-4 pt-3 md:px-12 lg:px-16">
-            <button
-              type="button"
-              onClick={() => (filterOpen ? setFilterOpen(false) : openFilter())}
-              className="flex items-center gap-2 text-[13px] text-black hover:opacity-60"
-            >
-              <SlidersHorizontal size={15} strokeWidth={1.5} />
-              Filters
-            </button>
-            <SortDropdown value={sortBy} onChange={setSortBy} />
-          </div>
-        </div>
-
-        <div className="mx-auto max-w-[1200px] px-4 md:px-8">
-          {/* Product grid / 查無結果 */}
-          {sorted.length === 0 ? (
-            <div
-              ref={gridRef}
-              className="flex flex-col items-center justify-center gap-3 py-24 text-center"
-            >
-              <p className="text-[15px] font-medium tracking-[0.08em] text-[#333]">
-                查無此結果
-              </p>
-              <p className="text-[13px] text-[#888]">
-                請調整或清除篩選條件後再試一次。
-              </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedFilters(new Set());
-                  setDraftFilters(new Set());
-                }}
-                className="mt-2 border border-[#2a514d] px-6 py-2 text-[13px] font-bold tracking-[0.08em] text-[#2a514d] transition-colors hover:bg-[#2a514d] hover:text-white"
-              >
-                清除篩選條件
-              </button>
+        {banner ? (
+          <>
+            {/* 桌機：上方 Banner＋標題＋麵包屑 = 50vh；手機 Banner 16:9 流式 */}
+            <div className="md:flex md:h-[50vh] md:min-h-[280px] md:flex-col">
+              <CategoryBannerBlock banner={banner} viewportFill />
+              <nav className="mb-3 mt-4 flex shrink-0 items-center gap-1 px-4 text-[11px] text-[#888] md:mt-4 md:mb-3 md:px-12 lg:px-16">
+                <Link href="/" className="hover:text-black">
+                  HOME
+                </Link>
+                <span>&gt;</span>
+                <span className="text-black">{categoryLabel}</span>
+              </nav>
             </div>
-          ) : (
-            <div
-              ref={gridRef}
-              className="grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-3 md:grid-cols-4 md:gap-x-5 md:gap-y-10"
-            >
-              {paginated.map((product) => (
-                <ProductCard key={product.id} product={product} />
-              ))}
-            </div>
-          )}
 
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <Pagination
-              current={currentPage}
-              total={totalPages}
-              onChange={(p) => {
-                setCurrentPage(p);
-                window.scrollTo({ top: 0, behavior: "smooth" });
-              }}
-            />
-          )}
-        </div>
+            {/* 桌機：下方篩選＋產品至少 50vh */}
+            <div className="md:flex md:min-h-[50vh] md:flex-col">
+              <div className="w-full shrink-0 border-t border-b border-[#e8e8e8]">
+                <div className="flex w-full items-center justify-between px-4 pb-4 pt-3 md:px-12 lg:px-16">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      filterOpen ? setFilterOpen(false) : openFilter()
+                    }
+                    className="flex items-center gap-2 text-[13px] text-black hover:opacity-60"
+                  >
+                    <SlidersHorizontal size={15} strokeWidth={1.5} />
+                    Filters
+                  </button>
+                  <SortDropdown value={sortBy} onChange={setSortBy} />
+                </div>
+              </div>
+
+              <div className="mx-auto w-full max-w-[1200px] flex-1 px-4 pt-6 md:px-8">
+                {sorted.length === 0 ? (
+                  <div
+                    ref={gridRef}
+                    className="flex flex-col items-center justify-center gap-3 py-24 text-center"
+                  >
+                    <p className="text-[15px] font-medium tracking-[0.08em] text-[#333]">
+                      查無此結果
+                    </p>
+                    <p className="text-[13px] text-[#888]">
+                      請調整或清除篩選條件後再試一次。
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedFilters(new Set());
+                        setDraftFilters(new Set());
+                      }}
+                      className="mt-2 border border-[#2a514d] px-6 py-2 text-[13px] font-bold tracking-[0.08em] text-[#2a514d] transition-colors hover:bg-[#2a514d] hover:text-white"
+                    >
+                      清除篩選條件
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    ref={gridRef}
+                    className="grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-3 md:grid-cols-4 md:gap-x-5 md:gap-y-10"
+                  >
+                    {paginated.map((product) => (
+                      <ProductCard key={product.id} product={product} />
+                    ))}
+                  </div>
+                )}
+
+                {totalPages > 1 && (
+                  <Pagination
+                    current={currentPage}
+                    total={totalPages}
+                    onChange={(p) => {
+                      setCurrentPage(p);
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                  />
+                )}
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="py-10 pt-20 text-center">
+              <h1 className="text-[22px] font-semibold tracking-[0.3em] uppercase">
+                {categorySlug === "all" ? "全部商品種類" : categoryLabel}
+              </h1>
+            </div>
+            <nav className="mb-4 mt-6 flex items-center gap-1 px-4 text-[11px] text-[#888] md:mt-8 md:px-12 lg:px-16">
+              <Link href="/" className="hover:text-black">
+                HOME
+              </Link>
+              <span>&gt;</span>
+              <span className="text-black">{categoryLabel}</span>
+            </nav>
+            <div className="mb-8 w-full border-t border-b border-[#e8e8e8]">
+              <div className="flex w-full items-center justify-between px-4 pb-4 pt-3 md:px-12 lg:px-16">
+                <button
+                  type="button"
+                  onClick={() =>
+                    filterOpen ? setFilterOpen(false) : openFilter()
+                  }
+                  className="flex items-center gap-2 text-[13px] text-black hover:opacity-60"
+                >
+                  <SlidersHorizontal size={15} strokeWidth={1.5} />
+                  Filters
+                </button>
+                <SortDropdown value={sortBy} onChange={setSortBy} />
+              </div>
+            </div>
+
+            <div className="mx-auto max-w-[1200px] px-4 md:px-8">
+              {sorted.length === 0 ? (
+                <div
+                  ref={gridRef}
+                  className="flex flex-col items-center justify-center gap-3 py-24 text-center"
+                >
+                  <p className="text-[15px] font-medium tracking-[0.08em] text-[#333]">
+                    查無此結果
+                  </p>
+                  <p className="text-[13px] text-[#888]">
+                    請調整或清除篩選條件後再試一次。
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedFilters(new Set());
+                      setDraftFilters(new Set());
+                    }}
+                    className="mt-2 border border-[#2a514d] px-6 py-2 text-[13px] font-bold tracking-[0.08em] text-[#2a514d] transition-colors hover:bg-[#2a514d] hover:text-white"
+                  >
+                    清除篩選條件
+                  </button>
+                </div>
+              ) : (
+                <div
+                  ref={gridRef}
+                  className="grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-3 md:grid-cols-4 md:gap-x-5 md:gap-y-10"
+                >
+                  {paginated.map((product) => (
+                    <ProductCard key={product.id} product={product} />
+                  ))}
+                </div>
+              )}
+
+              {totalPages > 1 && (
+                <Pagination
+                  current={currentPage}
+                  total={totalPages}
+                  onChange={(p) => {
+                    setCurrentPage(p);
+                    window.scrollTo({ top: 0, behavior: "smooth" });
+                  }}
+                />
+              )}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

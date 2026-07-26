@@ -10,6 +10,10 @@ import {
   filterProductsByCategorySlug,
   mapWooToListProduct,
 } from "@/lib/woo";
+import {
+  fetchCategoryBannerSettings,
+  resolveCategoryBanner,
+} from "@/lib/categoryBannerDefaults";
 
 const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -79,42 +83,62 @@ export async function generateMetadata({
 }
 
 export default async function ProductsPage({ searchParams }: PageProps) {
-  const { category: categorySlug } = await searchParams;
+  const { category: categorySlugRaw } = await searchParams;
+  const categorySlug = categorySlugRaw
+    ? decodeURIComponent(categorySlugRaw).toLowerCase()
+    : "";
 
   let items = MOCK_PRODUCTS;
   let categoryLabel = "ALL ITEMS";
 
-  try {
-    const [wooProducts, categories] = await Promise.all([
-      fetchAllProducts(),
-      fetchProductCategories(),
-    ]);
+  const [bannerSettings, productResult] = await Promise.all([
+    fetchCategoryBannerSettings(),
+    (async () => {
+      try {
+        const [wooProducts, categories] = await Promise.all([
+          fetchAllProducts(),
+          fetchProductCategories(),
+        ]);
 
-    const listableProducts = filterListableProducts(wooProducts);
+        const listableProducts = filterListableProducts(wooProducts);
+        const filtered = categorySlug
+          ? filterProductsByCategorySlug(
+              listableProducts,
+              categories,
+              categorySlug,
+            )
+          : listableProducts;
 
-    const filtered = categorySlug
-      ? filterProductsByCategorySlug(listableProducts, categories, categorySlug)
-      : listableProducts;
+        let label = "ALL ITEMS";
+        if (categorySlug) {
+          const matched = categories.find(
+            (category) =>
+              category.slug.toLowerCase() === categorySlug.toLowerCase(),
+          );
+          label = matched?.name || categorySlug.toUpperCase();
+        }
 
-    items = filtered.map(mapWooToListProduct);
+        console.log(
+          "🌐 [商品列表] WooCommerce 商品數:",
+          wooProducts.length,
+          categorySlug ? `篩選 ${categorySlug}: ${filtered.length}` : "",
+        );
 
-    if (categorySlug) {
-      const matched = categories.find(
-        (category) =>
-          category.slug.toLowerCase() ===
-          decodeURIComponent(categorySlug).toLowerCase(),
-      );
-      categoryLabel = matched?.name || categorySlug.toUpperCase();
-    }
+        return {
+          items: filtered.map(mapWooToListProduct),
+          categoryLabel: label,
+        };
+      } catch (error) {
+        console.error("❌ 商品列表抓取失敗，使用 mock 資料:", error);
+        return { items: MOCK_PRODUCTS, categoryLabel: "ALL ITEMS" };
+      }
+    })(),
+  ]);
 
-    console.log(
-      "🌐 [商品列表] WooCommerce 商品數:",
-      wooProducts.length,
-      categorySlug ? `篩選 ${categorySlug}: ${filtered.length}` : "",
-    );
-  } catch (error) {
-    console.error("❌ 商品列表抓取失敗，使用 mock 資料:", error);
-  }
+  items = productResult.items;
+  categoryLabel = productResult.categoryLabel;
+
+  const banner = resolveCategoryBanner(bannerSettings, categorySlug || "all");
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -135,15 +159,18 @@ export default async function ProductsPage({ searchParams }: PageProps) {
 
   return (
     <>
-      {/* 注入結構化資料 */}
       <Script
         id="json-ld-products"
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 
-      {/* 渲染 Client Component */}
-      <Client items={items} categoryLabel={categoryLabel} />
+      <Client
+        items={items}
+        categoryLabel={categoryLabel}
+        categorySlug={categorySlug || "all"}
+        banner={banner}
+      />
     </>
   );
 }

@@ -354,7 +354,7 @@ function hop_output_document(WC_Order $order, string $doc): void
     tbody td {
         font-size: 13px;
         padding: 14px 4px;
-        border-bottom: 1px solid #d9d9d9;
+        border-bottom: 1px solid #9a9a9a;
         vertical-align: middle;
     }
     tbody tr.empty td { height: 44px; }
@@ -374,8 +374,8 @@ function hop_output_document(WC_Order $order, string $doc): void
 
     .totals {
         display: flex; justify-content: space-between; align-items: center;
-        border-top: 1px solid #d9d9d9;
-        border-bottom: 1px solid #d9d9d9;
+        border-top: 1px solid #9a9a9a;
+        border-bottom: 1px solid #9a9a9a;
         padding: 12px 4px;
         font-size: 13px;
         margin-top: 40px;
@@ -412,8 +412,8 @@ function hop_output_document(WC_Order $order, string $doc): void
     }
     .doc-footer .brand-logo {
         display: block;
-        width: 340px;
-        max-width: 72%;
+        width: 220px;
+        max-width: 48%;
         height: auto;
         margin: 0 auto;
     }

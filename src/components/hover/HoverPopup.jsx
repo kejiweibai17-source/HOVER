@@ -69,10 +69,10 @@ function CtaButton({ label, href, button, onNavigate }) {
   );
 }
 
-function GiftIcon({ color = "#2a514d", scale = 110 }) {
-  const s = (Number(scale) || 110) / 100;
-  const box = Math.round(36 * s);
-  const icon = Math.round(24 * s);
+function GiftIcon({ color = "#2a514d", scale = 140 }) {
+  const s = (Number(scale) || 140) / 100;
+  const box = Math.round(40 * s);
+  const icon = Math.round(28 * s);
   return (
     <div
       className="mx-auto flex shrink-0 items-center justify-center"
@@ -89,6 +89,9 @@ function FootnoteText({ text, links, color, style }) {
     .sort((a, b) => b.label.length - a.label.length);
 
   if (!text) return null;
+
+  const linkClassName =
+    "underline decoration-[#2a514d] decoration-1 underline-offset-[3px] hover:opacity-70";
 
   if (items.length === 0) {
     return (
@@ -110,7 +113,6 @@ function FootnoteText({ text, links, color, style }) {
         const match = items.find((i) => i.label === part);
         if (!match) return part;
         const href = match.href;
-        const className = "underline underline-offset-2 hover:opacity-70";
         if (href.startsWith("http")) {
           return (
             <a
@@ -118,14 +120,14 @@ function FootnoteText({ text, links, color, style }) {
               href={href}
               target="_blank"
               rel="noopener noreferrer"
-              className={className}
+              className={linkClassName}
             >
               {part}
             </a>
           );
         }
         return (
-          <Link key={`${part}-${idx}`} href={href} className={className}>
+          <Link key={`${part}-${idx}`} href={href} className={linkClassName}>
             {part}
           </Link>
         );
