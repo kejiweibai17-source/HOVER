@@ -24,17 +24,19 @@ function getAuthHeaders() {
   };
 }
 
-/** 以 email upsert Woo 客戶（沒有就建立；已有則同步 Google 姓名/大頭貼） */
+/** 以 email upsert Woo 客戶（沒有就建立；已有則同步 OAuth 姓名/大頭貼/來源） */
 async function upsertWooCustomer(
   email: string,
   name?: string,
   avatarUrl?: string,
+  provider?: string | null,
 ) {
   if (!hasWooConfig()) return null;
 
   const headers = getAuthHeaders();
   const [first, ...rest] = String(name || "").trim().split(/\s+/);
   const last = rest.join(" ");
+  const oauthProvider = String(provider || "").trim().toLowerCase();
 
   const q = await fetch(
     `${BASE}/wp-json/wc/v3/customers?email=${encodeURIComponent(email)}&role=all`,
@@ -58,6 +60,9 @@ async function upsertWooCustomer(
     if (name?.trim()) {
       meta.push({ key: "oauth_display_name", value: name.trim() });
     }
+    if (oauthProvider) {
+      meta.push({ key: "oauth_provider", value: oauthProvider });
+    }
 
     if (Object.keys(patch).length > 0 || meta.length > 0) {
       if (meta.length > 0) patch.meta_data = meta;
@@ -79,6 +84,7 @@ async function upsertWooCustomer(
   ];
   if (avatarUrl) meta_data.push({ key: "avatar_url", value: avatarUrl });
   if (name?.trim()) meta_data.push({ key: "oauth_display_name", value: name.trim() });
+  if (oauthProvider) meta_data.push({ key: "oauth_provider", value: oauthProvider });
 
   const r = await fetch(`${BASE}/wp-json/wc/v3/customers`, {
     method: "POST",
@@ -112,6 +118,7 @@ async function upsertWooCustomer(
         }
         if (avatarUrl) meta.push({ key: "avatar_url", value: avatarUrl });
         if (name?.trim()) meta.push({ key: "oauth_display_name", value: name.trim() });
+        if (oauthProvider) meta.push({ key: "oauth_provider", value: oauthProvider });
         if (Object.keys(patch).length > 0 || meta.length > 0) {
           if (meta.length > 0) patch.meta_data = meta;
           const upd = await fetch(`${BASE}/wp-json/wc/v3/customers/${existing.id}`, {
@@ -307,7 +314,7 @@ export const authOptions: AuthOptions = {
   },
   providers,
   callbacks: {
-    async signIn({ user }) {
+    async signIn({ user, account }) {
       if (!user?.email) {
         console.warn("OAuth user has no email, skip Woo upsert");
         return true;
@@ -323,6 +330,7 @@ export const authOptions: AuthOptions = {
           user.email,
           user.name || undefined,
           user.image || undefined,
+          account?.provider || null,
         );
         if (customer) {
           try {
@@ -339,6 +347,9 @@ export const authOptions: AuthOptions = {
     },
 
     async jwt({ token, user, account, profile }) {
+      if (account?.provider) {
+        token.provider = account.provider;
+      }
       if (user?.email) {
         token.email = user.email;
         if (user.name) token.name = user.name;
@@ -373,6 +384,7 @@ export const authOptions: AuthOptions = {
       if (token?.name) session.user.name = token.name as string;
       if (token?.picture) session.user.image = token.picture as string;
       if (token?.customerId) (session as any).customerId = token.customerId;
+      if (token?.provider) (session as any).authProvider = token.provider;
       return session;
     },
   },

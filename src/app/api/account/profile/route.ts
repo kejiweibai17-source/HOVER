@@ -69,6 +69,56 @@ function resolveDisplayName(customer: any, sessionName?: string | null) {
   return customer?.email?.split("@")[0] || "會員";
 }
 
+function normalizeAuthProvider(raw: unknown): string | null {
+  const v = String(raw || "").trim().toLowerCase();
+  if (v === "google" || v === "facebook" || v === "line") return v;
+  return null;
+}
+
+function resolveAuthProviderFromMeta(customer: any): string | null {
+  const meta: any[] = Array.isArray(customer?.meta_data) ? customer.meta_data : [];
+  const fromKey = normalizeAuthProvider(
+    meta.find((m) => m.key === "oauth_provider")?.value,
+  );
+  if (fromKey) return fromKey;
+  if (meta.find((m) => m.key === "social_login_facebook_id")?.value) {
+    return "facebook";
+  }
+  if (meta.find((m) => m.key === "social_login_line_id")?.value) {
+    return "line";
+  }
+  return null;
+}
+
+async function resolveAuthProvider(
+  session: any,
+  customer: any,
+): Promise<string | null> {
+  const fromSession = normalizeAuthProvider(session?.authProvider);
+  if (fromSession) return fromSession;
+
+  const cookieStore = cookies();
+  const authToken = cookieStore.get("auth_token")?.value;
+  if (authToken) {
+    try {
+      const decoded = jwt.verify(authToken, JWT_SECRET) as any;
+      const fromToken = normalizeAuthProvider(decoded?.provider);
+      if (fromToken) return fromToken;
+    } catch {
+      // ignore invalid token
+    }
+  }
+
+  const fromMeta = resolveAuthProviderFromMeta(customer);
+  if (fromMeta) return fromMeta;
+
+  // NextAuth session 存在 = 社群登入（本站 Email 登入不走 NextAuth）
+  // 舊 session 可能尚未寫入 provider，預設標示為 Google
+  if (session?.user?.email) return "google";
+
+  return null;
+}
+
 /* ========= HOVER 會員制度（FRIENDS / EXCLUSIVE） ========= */
 // 提取並驗證用戶 Email 的輔助函式
 async function getAuthenticatedEmail() {
@@ -360,8 +410,16 @@ export async function GET() {
         avatar_url: session?.user?.image || null,
       };
 
+    const authProvider = await resolveAuthProvider(session, customer);
+
     return NextResponse.json(
-      { loggedIn: true, customer: customerPayload, membership: membershipPayload, isAdmin },
+      {
+        loggedIn: true,
+        customer: customerPayload,
+        membership: membershipPayload,
+        isAdmin,
+        authProvider,
+      },
       { headers: noCache }
     );
   } catch (e) {

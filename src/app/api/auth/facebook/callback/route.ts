@@ -128,6 +128,7 @@ async function upsertFacebookCustomer(profile: FacebookProfile) {
 
   const metaBase = [
     { key: "email_verified", value: "1" },
+    { key: "oauth_provider", value: "facebook" },
     { key: "social_login_facebook_id", value: facebookUserId },
   ];
   if (picture) metaBase.push({ key: "avatar_url", value: picture });

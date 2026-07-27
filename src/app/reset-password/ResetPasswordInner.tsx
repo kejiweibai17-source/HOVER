@@ -3,6 +3,7 @@
 
 import { useState, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { PasswordInput } from "@/components/hover/AuthField";
 
 export default function ResetPasswordInner() {
   const router = useRouter();
@@ -65,6 +66,9 @@ export default function ResetPasswordInner() {
     }
   }
 
+  const resetInputClass =
+    "w-full border p-2 rounded-md pr-10 focus:outline-none focus:ring-2 focus:ring-slate-300";
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-white px-4">
       <div className="bg-white p-8 rounded-xl shadow-md w-full max-w-md space-y-4">
@@ -89,21 +93,23 @@ export default function ResetPasswordInner() {
 
         {token && (
           <form onSubmit={handleSubmit} className="space-y-3">
-            <input
-              type="password"
+            <PasswordInput
               placeholder="新密碼（至少 6 碼）"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full border p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-slate-300"
+              onChange={setPassword}
+              valueMode="string"
               required
+              autoComplete="new-password"
+              inputClassName={resetInputClass}
             />
-            <input
-              type="password"
+            <PasswordInput
               placeholder="再次輸入新密碼"
               value={password2}
-              onChange={(e) => setPassword2(e.target.value)}
-              className="w-full border p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-slate-300"
+              onChange={setPassword2}
+              valueMode="string"
               required
+              autoComplete="new-password"
+              inputClassName={resetInputClass}
             />
             <button
               type="submit"
@@ -127,7 +133,7 @@ export default function ResetPasswordInner() {
             }
             className="text-slate-700 underline"
           >
-            返回登入
+            回到登入
           </button>
         </p>
       </div>

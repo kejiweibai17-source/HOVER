@@ -122,6 +122,7 @@ async function upsertLineCustomer(profile: LineProfile) {
 
   const metaBase = [
     { key: "email_verified", value: "1" },
+    { key: "oauth_provider", value: "line" },
     { key: "social_login_line_id", value: lineUserId },
   ];
   if (picture) metaBase.push({ key: "avatar_url", value: picture });

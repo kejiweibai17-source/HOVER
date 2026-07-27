@@ -1,9 +1,15 @@
 // app/api/auth/login/route.ts
 import { NextResponse } from "next/server";
+import jwt from "jsonwebtoken";
 
 const BASE = process.env.WC_API_BASE;
 const CK = process.env.WC_CONSUMER_KEY;
 const CS = process.env.WC_CONSUMER_SECRET;
+const JWT_SECRET =
+  process.env.RESET_TOKEN_SECRET ||
+  process.env.NEXTAUTH_SECRET ||
+  process.env.JWT_SECRET ||
+  "secret";
 
 const isProd = process.env.NODE_ENV === "production";
 const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;
@@ -11,9 +17,10 @@ const JWT_MAX_AGE_SECONDS = process.env.JWT_MAX_AGE_SECONDS
   ? Number(process.env.JWT_MAX_AGE_SECONDS)
   : 7 * 24 * 60 * 60;
 
-function cookieOpts(
-  extra?: Partial<Parameters<NextResponse["cookies"]["set"]>[1]>
-) {
+const UNVERIFIED_MESSAGE =
+  "此帳號尚未完成信箱驗證，請先至信箱點擊驗證連結後再登入。";
+
+function cookieOpts() {
   return {
     httpOnly: true,
     sameSite: "lax" as const,
@@ -21,7 +28,6 @@ function cookieOpts(
     path: "/",
     domain: COOKIE_DOMAIN,
     ...(JWT_MAX_AGE_SECONDS ? { maxAge: JWT_MAX_AGE_SECONDS } : {}),
- 
   };
 }
 
@@ -30,12 +36,155 @@ function basicAuth() {
   return "Basic " + Buffer.from(`${CK}:${CS}`).toString("base64");
 }
 
+function stripHtml(input: unknown) {
+  return String(input || "")
+    .replace(/<[^>]*>/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isUnverifiedCustomer(customer: any) {
+  const meta: any[] = Array.isArray(customer?.meta_data)
+    ? customer.meta_data
+    : [];
+  const verifyMeta = meta.find((m) => m?.key === "email_verified");
+  return Boolean(verifyMeta && String(verifyMeta.value) === "0");
+}
+
+async function findCustomerByLogin(login: string) {
+  const authHeader = basicAuth();
+  if (!authHeader || !BASE) return null;
+
+  const emailLike = login.includes("@") ? login.trim().toLowerCase() : "";
+  if (emailLike) {
+    const custRes = await fetch(
+      `${BASE}/wp-json/wc/v3/customers?email=${encodeURIComponent(emailLike)}&role=all`,
+      {
+        headers: { Authorization: authHeader },
+        cache: "no-store",
+      },
+    );
+    if (custRes.ok) {
+      const arr = (await custRes.json().catch(() => [])) as any[];
+      if (Array.isArray(arr) && arr.length > 0) return arr[0];
+    }
+  }
+  return null;
+}
+
+function friendlyAuthError(status: number, data: any) {
+  const raw = stripHtml(data?.message || data?.code || "");
+  const code = String(data?.code || "").toLowerCase();
+
+  if (
+    code.includes("rest_no_route") ||
+    raw.includes("找不到與網址") ||
+    raw.includes("No route was found")
+  ) {
+    return "登入服務尚未啟用，請確認 WordPress 已啟用 HOVER Email 登入 Snippet。";
+  }
+
+  if (
+    status === 403 ||
+    status === 401 ||
+    code.includes("invalid_login") ||
+    raw.includes("帳號或密碼錯誤")
+  ) {
+    return "帳號或密碼錯誤";
+  }
+
+  return raw || `登入失敗（${status}）`;
+}
+
+/** 優先使用自訂 hover/v1/login；若無則嘗試 jwt-auth 外掛 */
+async function authenticateWithWordPress(username: string, password: string) {
+  // 1) HOVER snippet
+  const hoverRes = await fetch(`${BASE}/wp-json/hover/v1/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+    cache: "no-store",
+  });
+  const hoverText = await hoverRes.text();
+  let hoverData: any = {};
+  try {
+    hoverData = JSON.parse(hoverText);
+  } catch {
+    hoverData = {};
+  }
+
+  if (hoverRes.ok && (hoverData?.ok || hoverData?.user_email)) {
+    return {
+      ok: true as const,
+      source: "hover" as const,
+      email: String(hoverData.user_email || "").trim(),
+      name: String(
+        hoverData.user_display_name ||
+          hoverData.user_nicename ||
+          hoverData.user_email ||
+          "",
+      ).trim(),
+      userId: Number(hoverData.user_id || 0) || undefined,
+      role: String(hoverData.role || "customer"),
+      wpJwt: null as string | null,
+    };
+  }
+
+  // hover 端點不存在 → 再試 jwt-auth
+  const hoverMissing =
+    hoverRes.status === 404 ||
+    String(hoverData?.code || "").includes("rest_no_route");
+
+  if (!hoverMissing && !hoverRes.ok) {
+    return {
+      ok: false as const,
+      status: hoverRes.status || 401,
+      data: hoverData,
+    };
+  }
+
+  // 2) JWT Auth plugin fallback
+  const wpRes = await fetch(`${BASE}/wp-json/jwt-auth/v1/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, password }),
+    cache: "no-store",
+  });
+  const text = await wpRes.text();
+  let data: any = {};
+  try {
+    data = JSON.parse(text);
+  } catch {
+    data = {};
+  }
+
+  if (wpRes.ok && data?.token) {
+    return {
+      ok: true as const,
+      source: "jwt-auth" as const,
+      email: String(data.user_email || "").trim(),
+      name: String(
+        data.user_display_name || data.user_nicename || data.user_email || "",
+      ).trim(),
+      userId: undefined,
+      role: "customer",
+      wpJwt: String(data.token),
+    };
+  }
+
+  return {
+    ok: false as const,
+    status: hoverMissing ? wpRes.status || 401 : hoverRes.status || 401,
+    data: hoverMissing ? data : hoverData,
+  };
+}
+
 export async function POST(req: Request) {
   try {
     if (!BASE) {
       return NextResponse.json(
         { message: "環境變數 WC_API_BASE 未設定" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -46,118 +195,110 @@ export async function POST(req: Request) {
     if (!username || !password) {
       return NextResponse.json(
         { message: "請輸入帳號/信箱與密碼" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
-    // 1) 先打 WordPress JWT 端點驗證帳密
-    const wpRes = await fetch(`${BASE}/wp-json/jwt-auth/v1/token`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ username, password }),
-      cache: "no-store",
-    });
-
-    const text = await wpRes.text();
-    let data: any = {};
+    // 先查會員（用於未驗證提示）
+    let customer: any = null;
     try {
-      data = JSON.parse(text);
-    } catch {
-      data = {};
+      customer = await findCustomerByLogin(username);
+    } catch (e) {
+      console.error("findCustomerByLogin error:", e);
     }
 
-    if (!wpRes.ok || !data?.token) {
-      const msg =
-        data?.message ||
-        (wpRes.status === 401 ? "帳號或密碼錯誤" : `登入失敗（${wpRes.status}）`);
+    const auth = await authenticateWithWordPress(username, password);
+    const unverified = isUnverifiedCustomer(customer);
+
+    if (!auth.ok) {
+      if (unverified) {
+        return NextResponse.json(
+          {
+            message: UNVERIFIED_MESSAGE,
+            code: "email_not_verified",
+          },
+          { status: 403 },
+        );
+      }
+
       return NextResponse.json(
-        { message: msg, code: data?.code || String(wpRes.status) },
-        { status: wpRes.status || 401 }
+        {
+          message: friendlyAuthError(auth.status, auth.data),
+          code: auth.data?.code || String(auth.status),
+        },
+        { status: auth.status || 401 },
       );
     }
 
-    const email = data.user_email || "";
+    const email = String(auth.email || customer?.email || "").trim();
+    const name = String(auth.name || email.split("@")[0] || "HOVER 會員").trim();
 
-  // 2) 檢查 Woo customer 是否已完成 email 驗證
-    let isBlocked = false; // 🌟 改為「預設不阻擋」
-    const authHeader = basicAuth();
+    // 擋未驗證帳號
+    if (unverified) {
+      return NextResponse.json(
+        {
+          message: UNVERIFIED_MESSAGE,
+          code: "email_not_verified",
+        },
+        { status: 403 },
+      );
+    }
 
-    if (authHeader && email) {
+    if (!customer && email) {
       try {
-        const custRes = await fetch(
-          `${BASE}/wp-json/wc/v3/customers?email=${encodeURIComponent(email)}`,
-          {
-            headers: { Authorization: authHeader },
-            cache: "no-store",
-          }
-        );
-
-        if (custRes.ok) {
-          const arr = (await custRes.json().catch(() => [])) as any[];
-          const customer = Array.isArray(arr) && arr.length > 0 ? arr[0] : null;
-
-          if (customer?.meta_data) {
-            // 尋找是否有 email_verified 標記
-            const verifyMeta = customer.meta_data.find(
-              (m: any) => m?.key === "email_verified"
-            );
-            
-            // 🌟 關鍵修正：只有當標記「明確存在」且值為 "0" 時，才進行阻擋
-            // 這樣沒有標記的管理員 (Admin) 與舊會員就能安全登入
-            if (verifyMeta && String(verifyMeta.value) === "0") {
-              isBlocked = true;
-            }
-          }
+        customer = await findCustomerByLogin(email);
+        if (isUnverifiedCustomer(customer)) {
+          return NextResponse.json(
+            {
+              message: UNVERIFIED_MESSAGE,
+              code: "email_not_verified",
+            },
+            { status: 403 },
+          );
         }
       } catch (e) {
         console.error("check email_verified error:", e);
       }
     }
 
-    if (isBlocked) {
-      return NextResponse.json(
-        {
-          message: "此帳號尚未完成信箱驗證，請先至信箱點擊驗證連結。",
-          code: "email_not_verified",
-        },
-        { status: 403 }
-      );
-    }
+    const customerId = Number(customer?.id || auth.userId || 0) || undefined;
 
-    // 3) 通過驗證 → 設 cookie
+    // 簽發與社群登入相同的 auth_token（不依賴 WP JWT 外掛）
+    const sessionToken = jwt.sign(
+      {
+        id: customerId,
+        email,
+        role: auth.role || customer?.role || "customer",
+        name,
+        provider: "email",
+      },
+      JWT_SECRET,
+      { expiresIn: "7d" },
+    );
+
     const res = NextResponse.json(
       {
         ok: true,
-        user: {
-          email: data.user_email || "",
-          name:
-            data.user_display_name ||
-            data.user_nicename ||
-            data.user_email ||
-            "",
-        },
+        user: { email, name },
       },
-      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
+      { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } },
     );
 
-    res.cookies.set("jwt", String(data.token), cookieOpts());
-    if (data.user_email) {
-      res.cookies.set("user_email", String(data.user_email), cookieOpts());
+    res.cookies.set("auth_token", sessionToken, cookieOpts());
+    if (auth.wpJwt) {
+      res.cookies.set("jwt", auth.wpJwt, cookieOpts());
     }
-    res.cookies.set(
-      "user_name",
-      String(
-        data.user_display_name || data.user_nicename || data.user_email || ""
-      ),
-      cookieOpts()
-    );
+    if (email) {
+      res.cookies.set("user_email", email, cookieOpts());
+    }
+    res.cookies.set("user_name", name, cookieOpts());
 
     return res;
   } catch (err: any) {
     console.error("login error:", err);
     return NextResponse.json(
       { message: err?.message || "登入例外錯誤" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

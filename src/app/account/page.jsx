@@ -17,6 +17,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { usePathname } from "next/navigation";
 import HoverIcon from "@/components/hover/HoverIcon";
 import WishlistIcon from "@/components/hover/WishlistIcon";
+import { PasswordInput } from "@/components/hover/AuthField";
 import {
   Home,
   Package,
@@ -650,6 +651,7 @@ export default function AccountPage() {
   const [passwordMessage, setPasswordMessage] = useState("");
   const [profileEditing, setProfileEditing] = useState(false);
   const [passwordEditing, setPasswordEditing] = useState(false);
+  const [authProvider, setAuthProvider] = useState(null);
 
   const loadProfile = useCallback(async () => {
     setLoading(true);
@@ -664,6 +666,7 @@ export default function AccountPage() {
         const nextCustomer = data.customer || {};
         setLoggedIn(true);
         setCustomer(nextCustomer);
+        setAuthProvider(data.authProvider || null);
         setProfileForm({
           name:
             String(nextCustomer.display_name || "").trim() ||
@@ -691,10 +694,12 @@ export default function AccountPage() {
         setCustomer(null);
         setMembership(null);
         setIsAdmin(false);
+        setAuthProvider(null);
       }
     } catch {
       setError("讀取會員資料失敗，請稍後再試。");
       setLoggedIn(false);
+      setAuthProvider(null);
     } finally {
       setLoading(false);
     }
@@ -1571,97 +1576,115 @@ export default function AccountPage() {
                     )}
                   </div>
                   <div>
-                    <HoverSectionAction
-                      onClick={handlePasswordAction}
-                      disabled={passwordSaving}
-                    >
-                      {passwordSaving
-                        ? "修改中..."
-                        : passwordEditing
-                          ? "確認修改"
-                          : "密碼修改"}
-                    </HoverSectionAction>
-                    <div className="space-y-0">
-                      <div className="pb-4">
-                        <input
-                          type="password"
-                          placeholder="請輸入舊密碼"
-                          autoComplete="current-password"
-                          readOnly={!passwordEditing}
-                          value={passwordForm.currentPassword}
-                          onChange={(e) =>
-                            setPasswordForm((prev) => ({
-                              ...prev,
-                              currentPassword: e.target.value,
-                            }))
-                          }
-                          className={cn(
-                            "w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none focus:border-[#2a514d]",
-                            !passwordEditing && "cursor-default opacity-70",
-                          )}
-                        />
-                      </div>
-                      <div className="pb-4">
-                        <input
-                          type="password"
-                          placeholder="新密碼"
-                          autoComplete="new-password"
-                          readOnly={!passwordEditing}
-                          value={passwordForm.newPassword}
-                          onChange={(e) =>
-                            setPasswordForm((prev) => ({
-                              ...prev,
-                              newPassword: e.target.value,
-                            }))
-                          }
-                          className={cn(
-                            "w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none focus:border-[#2a514d]",
-                            !passwordEditing && "cursor-default opacity-70",
-                          )}
-                        />
-                      </div>
-                      <div className="pb-4">
-                        <input
-                          type="password"
-                          placeholder="請再輸入一次新密碼"
-                          autoComplete="new-password"
-                          readOnly={!passwordEditing}
-                          value={passwordForm.confirmPassword}
-                          onChange={(e) =>
-                            setPasswordForm((prev) => ({
-                              ...prev,
-                              confirmPassword: e.target.value,
-                            }))
-                          }
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && passwordEditing) {
-                              handlePasswordAction();
-                            }
-                          }}
-                          className={cn(
-                            "w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none focus:border-[#2a514d]",
-                            !passwordEditing && "cursor-default opacity-70",
-                          )}
-                        />
-                      </div>
-                    </div>
-                    {passwordMessage && (
-                      <p
-                        className={`mt-3 text-[12px] ${
-                          passwordMessage.startsWith("錯誤：")
-                            ? "text-red-600"
-                            : "text-[#2a514d]"
-                        }`}
-                      >
-                        {passwordMessage}
-                      </p>
+                    {authProvider ? (
+                      <>
+                        <div className="mb-6 inline-block bg-[#2a514d] px-6 py-2.5 text-[13px] font-medium tracking-wide text-white">
+                          登入方式
+                        </div>
+                        <p className="text-[14px] leading-relaxed text-[#333]">
+                          您以{" "}
+                          {authProvider === "google"
+                            ? "Google"
+                            : authProvider === "facebook"
+                              ? "Facebook"
+                              : authProvider === "line"
+                                ? "LINE"
+                                : "社群帳號"}{" "}
+                          登入，無需設定或修改密碼。
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <HoverSectionAction
+                          onClick={handlePasswordAction}
+                          disabled={passwordSaving}
+                        >
+                          {passwordSaving
+                            ? "修改中..."
+                            : passwordEditing
+                              ? "確認修改"
+                              : "密碼修改"}
+                        </HoverSectionAction>
+                        <div className="space-y-0">
+                          <div className="pb-4">
+                            <PasswordInput
+                              placeholder="請輸入舊密碼"
+                              autoComplete="current-password"
+                              readOnly={!passwordEditing}
+                              value={passwordForm.currentPassword}
+                              onChange={(e) =>
+                                setPasswordForm((prev) => ({
+                                  ...prev,
+                                  currentPassword: e.target.value,
+                                }))
+                              }
+                              inputClassName={cn(
+                                "w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none focus:border-[#2a514d]",
+                                !passwordEditing && "cursor-default opacity-70",
+                              )}
+                            />
+                          </div>
+                          <div className="pb-4">
+                            <PasswordInput
+                              placeholder="新密碼"
+                              autoComplete="new-password"
+                              readOnly={!passwordEditing}
+                              value={passwordForm.newPassword}
+                              onChange={(e) =>
+                                setPasswordForm((prev) => ({
+                                  ...prev,
+                                  newPassword: e.target.value,
+                                }))
+                              }
+                              inputClassName={cn(
+                                "w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none focus:border-[#2a514d]",
+                                !passwordEditing && "cursor-default opacity-70",
+                              )}
+                            />
+                          </div>
+                          <div className="pb-4">
+                            <PasswordInput
+                              placeholder="請再輸入一次新密碼"
+                              autoComplete="new-password"
+                              readOnly={!passwordEditing}
+                              value={passwordForm.confirmPassword}
+                              onChange={(e) =>
+                                setPasswordForm((prev) => ({
+                                  ...prev,
+                                  confirmPassword: e.target.value,
+                                }))
+                              }
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" && passwordEditing) {
+                                  handlePasswordAction();
+                                }
+                              }}
+                              inputClassName={cn(
+                                "w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none focus:border-[#2a514d]",
+                                !passwordEditing && "cursor-default opacity-70",
+                              )}
+                            />
+                          </div>
+                        </div>
+                        {passwordMessage && (
+                          <p
+                            className={`mt-3 text-[12px] ${
+                              passwordMessage.startsWith("錯誤：")
+                                ? "text-red-600"
+                                : "text-[#2a514d]"
+                            }`}
+                          >
+                            {passwordMessage}
+                          </p>
+                        )}
+                        <Link
+                          href="/forgot-password"
+                          className="mt-4 inline-block text-[13px] text-[#2a514d] underline underline-offset-2 hover:opacity-70"
+                        >
+                          忘記密碼？前往重設
+                        </Link>
+                      </>
                     )}
-                    <Link
-                      href="/forgot-password"
-                      className="mt-4 inline-block text-[13px] text-[#2a514d] underline underline-offset-2 hover:opacity-70"
-                    >
-                      忘記密碼？前往重設
-                    </Link>
                   </div>
                 </div>
 

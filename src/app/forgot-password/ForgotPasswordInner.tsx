@@ -15,6 +15,7 @@ export default function ForgotPasswordInner() {
   const [sending, setSending] = useState(false);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
+  const [isSocial, setIsSocial] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -22,6 +23,7 @@ export default function ForgotPasswordInner() {
     setSending(true);
     setMsg("");
     setError("");
+    setIsSocial(false);
 
     try {
       const res = await fetch("/api/auth/forgot-password", {
@@ -34,8 +36,10 @@ export default function ForgotPasswordInner() {
       if (!res.ok || !data.ok) {
         setError(data.message || "發送重設密碼信件失敗，請稍後再試。");
       } else {
+        setIsSocial(Boolean(data.social));
         setMsg(
-          "如果此 Email 有註冊，我們已發送重設密碼連結。請於 30 分鐘內前往信箱操作。"
+          data.message ||
+            "如果此 Email 有註冊，我們已發送重設密碼連結。請於 30 分鐘內前往信箱操作。",
         );
       }
     } catch {
@@ -59,9 +63,26 @@ export default function ForgotPasswordInner() {
           </p>
         )}
         {msg && (
-          <p className="text-emerald-700 text-sm text-center bg-emerald-50 border border-emerald-200 rounded-md py-2">
-            {msg}
-          </p>
+          <div
+            className={`text-sm text-center rounded-md py-3 px-3 border ${
+              isSocial
+                ? "text-[#2a514d] bg-[#f3f6f5] border-[#c5d4d1]"
+                : "text-emerald-700 bg-emerald-50 border-emerald-200"
+            }`}
+          >
+            <p>{msg}</p>
+            {isSocial ? (
+              <button
+                type="button"
+                onClick={() =>
+                  router.push(`/login?next=${encodeURIComponent(next)}`)
+                }
+                className="mt-3 inline-block bg-[#2a514d] px-5 py-2 text-[13px] font-medium text-white hover:opacity-80"
+              >
+                前往社群登入
+              </button>
+            ) : null}
+          </div>
         )}
 
         <form onSubmit={handleSubmit} className="space-y-3">
