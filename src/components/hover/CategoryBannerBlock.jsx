@@ -52,11 +52,16 @@ export default function CategoryBannerBlock({ banner, viewportFill = false }) {
                 : "aspect-[4/1]"
           }`}
         >
+          {/*
+            unoptimized：略過 Vercel Image Optimization（額度用盡會回 402 破圖）。
+            圖檔直接走 WordPress CDN／主機，後台更新後前台可立刻顯示。
+          */}
           <Image
             src={imageUrl}
             alt={imageAlt}
             fill
             priority
+            unoptimized
             className="object-cover"
             sizes="100vw"
           />

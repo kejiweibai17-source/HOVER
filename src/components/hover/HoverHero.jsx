@@ -126,6 +126,7 @@ function HeroMedia({ slide, isActive, dragging }) {
         alt={slide.image.alt || "HOVER"}
         fill
         priority={isActive}
+        unoptimized
         sizes="100vw"
         className="object-cover object-top"
         draggable={false}

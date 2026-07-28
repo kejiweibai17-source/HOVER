@@ -272,6 +272,7 @@ export default function HoverPopup() {
               className="object-cover"
               sizes="(max-width: 768px) 100vw, 920px"
               priority
+              unoptimized
             />
           ) : (
             <div className="absolute inset-0 bg-[#2a514d]" />
@@ -342,6 +343,7 @@ export default function HoverPopup() {
             className="object-cover"
             sizes="(max-width: 768px) 100vw, 520px"
             priority
+            unoptimized
           />
         ) : null}
         {isMobile && (

@@ -108,6 +108,7 @@ export default function HoverMidVideo({ initialSettings = null }) {
           className="object-cover object-center"
           sizes="100vw"
           priority
+          unoptimized
         />
       ) : (
         <div className="absolute inset-0 bg-[#1a1a1a]" />

@@ -3,6 +3,9 @@ const nextConfig = {
   // experimental: { ... }, // 如果有其他實驗性功能可以加在這裡
 
   images: {
+    // Vercel Image Optimization 額度用盡會回 402 導致全站破圖。
+    // 關閉優化後直接載入原圖（WP／CDN），圖即可正常顯示。
+    unoptimized: true,
     remotePatterns: [
       {
         protocol: 'https',
