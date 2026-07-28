@@ -2,38 +2,7 @@
 const nextConfig = {
   // experimental: { ... }, // 如果有其他實驗性功能可以加在這裡
 
-  // 建置中：全站擋搜尋；政策頁必須可被 Facebook crawler 讀取（否則 Meta 判無效網址）
-  async headers() {
-    return [
-      {
-        // 排除隱私／條款／資料刪除（含靜態備援頁）
-        source:
-          "/:path((?!privacy$|terms$|data-deletion$|fb-data-deletion\\.html$).*)*",
-        headers: [
-          {
-            key: "X-Robots-Tag",
-            value: "noindex, nofollow, noarchive, nosnippet",
-          },
-        ],
-      },
-      {
-        source: "/privacy",
-        headers: [{ key: "X-Robots-Tag", value: "index, follow" }],
-      },
-      {
-        source: "/terms",
-        headers: [{ key: "X-Robots-Tag", value: "index, follow" }],
-      },
-      {
-        source: "/data-deletion",
-        headers: [{ key: "X-Robots-Tag", value: "index, follow" }],
-      },
-      {
-        source: "/fb-data-deletion.html",
-        headers: [{ key: "X-Robots-Tag", value: "index, follow" }],
-      },
-    ];
-  },
+  // X-Robots-Tag 改由 src/middleware.ts 控制（避免 headers 規則互相覆蓋）
 
   images: {
     // Vercel Image Optimization 額度用盡會回 402 導致全站破圖。
