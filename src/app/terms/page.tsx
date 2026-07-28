@@ -17,6 +17,8 @@ export const metadata: Metadata = {
   title: "服務條款｜HOVER",
   description: "查看 HOVER 網站服務條款與網站使用規範。",
   alternates: { canonical: "/terms" },
+  // Facebook App 審核需要可讀取；其餘頁面仍維持 noindex
+  robots: { index: true, follow: true },
 };
 
 export default function TermsPage() {

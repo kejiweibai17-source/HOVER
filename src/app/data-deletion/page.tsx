@@ -18,6 +18,8 @@ export const metadata: Metadata = {
   description:
     "說明如何申請刪除 HOVER 透過 Facebook 登入所取得的個人資料。",
   alternates: { canonical: "/data-deletion" },
+  // Facebook App 審核會驗證此網址；其餘頁面仍維持 noindex
+  robots: { index: true, follow: true },
 };
 
 export default function DataDeletionPage() {

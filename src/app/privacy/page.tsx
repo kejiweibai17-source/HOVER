@@ -18,6 +18,8 @@ export const metadata: Metadata = {
   description:
     "查看 HOVER 隱私權政策，了解個人資料蒐集、使用方式及資訊安全保護。",
   alternates: { canonical: "/privacy" },
+  // Facebook App 審核需要可讀取；其餘頁面仍維持 noindex
+  robots: { index: true, follow: true },
 };
 
 export default function PrivacyPage() {
