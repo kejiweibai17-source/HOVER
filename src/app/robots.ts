@@ -1,12 +1,32 @@
 import type { MetadataRoute } from "next";
 
 /**
- * 建置中：禁止搜尋引擎爬取與索引。
- * 僅開放 Facebook App 審核需要的政策頁。
+ * 建置中：搜尋引擎仍擋；Meta／Facebook crawler 必須全開。
+ * Sharing Debugger 的 403 常被誤標成 robots，但仍需明確 allowlist。
  */
 export default function robots(): MetadataRoute.Robots {
   return {
     rules: [
+      {
+        userAgent: "facebookexternalhit",
+        allow: "/",
+      },
+      {
+        userAgent: "Facebot",
+        allow: "/",
+      },
+      {
+        userAgent: "FacebookBot",
+        allow: "/",
+      },
+      {
+        userAgent: "meta-externalagent",
+        allow: "/",
+      },
+      {
+        userAgent: "meta-externalfetcher",
+        allow: "/",
+      },
       {
         userAgent: "*",
         allow: [
@@ -16,14 +36,6 @@ export default function robots(): MetadataRoute.Robots {
           "/fb-data-deletion.html",
         ],
         disallow: "/",
-      },
-      {
-        userAgent: "facebookexternalhit",
-        allow: "/",
-      },
-      {
-        userAgent: "Facebot",
-        allow: "/",
       },
     ],
   };

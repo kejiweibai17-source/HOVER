@@ -387,7 +387,7 @@ function WishlistHeart({ product }: { product: Product }) {
       aria-label={isSaved ? "取消收藏" : "加入收藏"}
       onClick={handleClick}
       disabled={pending}
-      className={`flex h-9 w-9 shrink-0 items-center justify-center transition-opacity hover:opacity-60 ${
+      className={`flex h-9 w-9 shrink-0 items-center justify-center overflow-visible transition-opacity hover:opacity-60 ${
         isSaved ? "opacity-100" : "opacity-80"
       }`}
     >

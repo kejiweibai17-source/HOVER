@@ -1,16 +1,3 @@
 # 建置中：禁止搜尋引擎收錄（網站仍可正常瀏覽）
-# Facebook crawler 與政策頁開放，供 App 審核驗證網址
-# 注意：public/robots.txt 會覆蓋 app/robots.ts，兩邊需同步
-
-User-agent: facebookexternalhit
-Allow: /
-
-User-agent: Facebot
-Allow: /
-
 User-agent: *
-Allow: /privacy
-Allow: /terms
-Allow: /data-deletion
-Allow: /fb-data-deletion.html
 Disallow: /
