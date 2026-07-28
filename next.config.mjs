@@ -2,6 +2,21 @@
 const nextConfig = {
   // experimental: { ... }, // 如果有其他實驗性功能可以加在這裡
 
+  // 建置中：全站 HTTP header 再擋一次搜尋引擎
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          {
+            key: "X-Robots-Tag",
+            value: "noindex, nofollow, noarchive, nosnippet",
+          },
+        ],
+      },
+    ];
+  },
+
   images: {
     // Vercel Image Optimization 額度用盡會回 402 導致全站破圖。
     // 關閉優化後直接載入原圖（WP／CDN），圖即可正常顯示。
