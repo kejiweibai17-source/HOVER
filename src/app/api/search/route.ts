@@ -3,6 +3,7 @@ import {
   searchMockProducts,
   type SearchProductResult,
 } from "@/lib/searchProducts";
+import { pickWpSizeUrl, toOptimizedImageUrl } from "@/lib/listImageUrl";
 
 export const dynamic = "force-dynamic";
 
@@ -31,18 +32,30 @@ async function searchWooProducts(
     slug: string;
     price?: string;
     regular_price?: string;
-    images?: Array<{ src?: string }>;
+    images?: Array<{
+      src?: string;
+      sizes?: Partial<Record<string, string | null>>;
+    }>;
   }>;
 
   if (!Array.isArray(data) || data.length === 0) return [];
 
-  return data.map((p) => ({
-    id: p.id,
-    slug: p.slug,
-    name: p.name,
-    price: p.price || p.regular_price || "0",
-    image: p.images?.[0]?.src,
-  }));
+  return data.map((p) => {
+    const img = p.images?.[0];
+    const src = img?.src || "";
+    const image = src
+      ? pickWpSizeUrl(img?.sizes, "card", "") ||
+        toOptimizedImageUrl(src, "card") ||
+        src
+      : undefined;
+    return {
+      id: p.id,
+      slug: p.slug,
+      name: p.name,
+      price: p.price || p.regular_price || "0",
+      image,
+    };
+  });
 }
 
 export async function GET(req: Request) {

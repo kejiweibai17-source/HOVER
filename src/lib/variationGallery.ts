@@ -10,9 +10,19 @@ export type ColorGalleries = Record<string, GalleryImage[]>;
 
 export type WooVariationRow = {
   attributes?: Array<{ name?: string; option?: string }>;
-  image?: { src?: string; alt?: string } | null;
+  image?: {
+    src?: string;
+    alt?: string;
+    sizes?: Partial<Record<string, string | null>>;
+  } | null;
   hover_variation_gallery?: GalleryImage[];
 };
+
+function optimizeGallerySrc(src: string): string {
+  // 顏色圖庫／內頁：保持原圖。臆造 -1024x1024 等後綴常 404。
+  // 列表縮圖請用 toOptimizedImageUrl(..., "card")。
+  return src;
+}
 
 export function normalizeColorGalleries(raw: unknown): ColorGalleries {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
@@ -29,7 +39,7 @@ export function normalizeColorGalleries(raw: unknown): ColorGalleries {
         if (!src) return null;
         return {
           id: row.id ? Number(row.id) : undefined,
-          src,
+          src: optimizeGallerySrc(src),
           alt: String(row.alt || "").trim() || undefined,
         };
       })
@@ -71,7 +81,7 @@ export function buildColorGalleriesFromVariations(
             if (!src) return null;
             return {
               id: image.id ? Number(image.id) : undefined,
-              src,
+              src: optimizeGallerySrc(src),
               alt: String(image.alt || "").trim() || undefined,
             };
           })
@@ -84,7 +94,7 @@ export function buildColorGalleriesFromVariations(
         : variation.image?.src
           ? [
               {
-                src: String(variation.image.src),
+                src: optimizeGallerySrc(String(variation.image.src)),
                 alt: String(variation.image.alt || "").trim() || undefined,
               },
             ]

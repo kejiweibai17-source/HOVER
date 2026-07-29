@@ -5,6 +5,7 @@ import ProductClient from "./Client";
 import { DEFAULT_SIZE_GUIDE } from "@/lib/sizeGuide";
 import { DEFAULT_WASHING_INSTRUCTIONS } from "@/lib/washingInstructions";
 import { DEFAULT_PRODUCT_COLORS } from "@/lib/productColors";
+import { pickWpSizeUrl } from "@/lib/listImageUrl";
 
 export const revalidate = 60;
 
@@ -223,9 +224,16 @@ export default async function ProductPage({ params }) {
     : defaultFallback;
 
   const productFAQs = woo ? getProductFAQs(woo.name) : [];
+  // 內頁大圖：只用 WP REST 真實 sizes；沒有就用原圖。
+  // 勿臆造 -1024x1024（本站多數商品沒有此尺寸 → 404 死圖）。
   const schemaImages =
     woo && Array.isArray(woo.images)
-      ? woo.images.map((i) => i?.src).filter(Boolean)
+      ? woo.images
+          .map((i) => {
+            if (!i?.src) return "";
+            return pickWpSizeUrl(i.sizes, "pdp", "") || i.src;
+          })
+          .filter(Boolean)
       : [];
 
   const pureDescription = woo

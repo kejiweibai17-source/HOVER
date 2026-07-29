@@ -9,13 +9,13 @@ import WishlistIcon from "@/components/hover/WishlistIcon";
 import HoverLogo from "@/components/hover/HoverLogo";
 import HoverIcon from "@/components/hover/HoverIcon";
 import CartIcon from "@/components/hover/CartIcon";
+import OptimizedImage from "@/components/hover/OptimizedImage";
 import { useWishlistStore } from "@/lib/wishlistStore";
 import { useAuthStore } from "@/lib/authStore";
 import { useSearchStore } from "@/lib/searchStore";
 import { useCartStore } from "@/lib/cartStore";
 import { MOCK_PRODUCTS } from "@/lib/mockProducts";
 import { guessColorHex } from "@/lib/productColors";
-import { toListImageUrl } from "@/lib/listImageUrl";
 import CategoryBannerBlock from "@/components/hover/CategoryBannerBlock";
 import type { CategoryBanner } from "@/lib/categoryBannerDefaults";
 /* ─── Types ─────────────────────────────────────────────────────────────── */
@@ -408,23 +408,18 @@ function ProductCardImage({
   priority?: boolean;
   className?: string;
 }) {
-  const thumb = toListImageUrl(fullSrc, 300);
-  const [src, setSrc] = useState(thumb);
-
   return (
-    <Image
-      src={src}
+    <OptimizedImage
+      src={fullSrc}
+      fullSrc={fullSrc}
+      role="card"
       alt={alt}
       fill
       sizes="(max-width: 768px) 50vw, 25vw"
-      unoptimized
       priority={priority}
       loading={priority ? "eager" : "lazy"}
       decoding="async"
       className={`object-cover ${className}`}
-      onError={() => {
-        if (src !== fullSrc) setSrc(fullSrc);
-      }}
     />
   );
 }

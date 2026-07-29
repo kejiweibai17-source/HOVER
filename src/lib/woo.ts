@@ -23,8 +23,25 @@ import {
   type ProductDefaultAttributes,
   type ProductVariation,
 } from "./productVariations";
+import { pickWpSizeUrl, toOptimizedImageUrl } from "./listImageUrl";
 
-export type WooImage = { id: number; src: string; alt?: string };
+export type WooImage = {
+  id: number;
+  src: string;
+  alt?: string;
+  sizes?: Partial<
+    Record<
+      | "thumbnail"
+      | "medium"
+      | "medium_large"
+      | "large"
+      | "woocommerce_thumbnail"
+      | "woocommerce_single"
+      | "full",
+      string | null
+    >
+  >;
+};
 export type WooCategoryRef = { id: number; name: string; slug: string };
 export type WooProduct = {
   id: number;
@@ -97,6 +114,18 @@ const mapWoo = (p: any): WooProduct => {
         id: im.id,
         src: im.src,
         alt: im.alt || p?.name || "",
+        sizes:
+          im.sizes && typeof im.sizes === "object"
+            ? {
+                thumbnail: im.sizes.thumbnail || null,
+                medium: im.sizes.medium || null,
+                medium_large: im.sizes.medium_large || null,
+                large: im.sizes.large || null,
+                woocommerce_thumbnail: im.sizes.woocommerce_thumbnail || null,
+                woocommerce_single: im.sizes.woocommerce_single || null,
+                full: im.sizes.full || im.src || null,
+              }
+            : undefined,
       }))
     : [];
   const attributes = p.attributes || [];
@@ -206,7 +235,9 @@ export function mapWooToListProduct(product: WooProduct): ListProduct {
     name: product.name,
     price: product.price,
     images: product.images.map((image) => ({
-      src: image.src,
+      src:
+        pickWpSizeUrl(image.sizes, "card", "") ||
+        toOptimizedImageUrl(image.src, "card"),
       alt: image.alt,
     })),
     category: primary?.name || undefined,

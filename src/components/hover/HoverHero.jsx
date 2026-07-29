@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Image from "next/image";
 import { Link } from "next-view-transitions";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { animate, motion, useMotionValue } from "framer-motion";
+import OptimizedImage from "@/components/hover/OptimizedImage";
 import {
   getActiveHeroSlides,
   normalizeHeroSettings,
@@ -121,12 +121,13 @@ function HeroMedia({ slide, isActive, dragging }) {
           : { duration: 0.8, ease: EASE }
       }
     >
-      <Image
+      <OptimizedImage
         src={slide.image.url}
+        fullSrc={slide.image.url}
+        role="banner"
         alt={slide.image.alt || "HOVER"}
         fill
         priority={isActive}
-        unoptimized
         sizes="100vw"
         className="object-cover object-top"
         draggable={false}

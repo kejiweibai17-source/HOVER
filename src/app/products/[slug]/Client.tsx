@@ -124,10 +124,13 @@ function ProductGallery({
   images,
   name,
   part = "all",
+  /** mobile：一排一張、不裁切；desktop：維持 3:4 雙欄網格 */
+  variant = "desktop",
 }: {
   images: string[];
   name: string;
   part?: "all" | "hero" | "rest";
+  variant?: "desktop" | "mobile";
 }) {
   const gallery = useMemo(() => normalizeGalleryImages(images), [images]);
   const [index] = useState(0);
@@ -135,6 +138,33 @@ function ProductGallery({
   const gridImages = gallery.slice(2, GALLERY_IMAGE_COUNT);
   const showHero = part === "all" || part === "hero";
   const showRest = part === "all" || part === "rest";
+  const isMobile = variant === "mobile";
+
+  if (isMobile) {
+    const mobileImages =
+      part === "hero"
+        ? gallery.slice(0, 1)
+        : part === "rest"
+          ? gallery.slice(1, GALLERY_IMAGE_COUNT)
+          : gallery.slice(0, GALLERY_IMAGE_COUNT);
+
+    return (
+      <div className="flex flex-col gap-2">
+        {mobileImages.map((src, i) => (
+          <div key={`m-${src}-${i}`} className="w-full bg-[#e8e6e2]">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={src}
+              alt={`${name} ${part === "rest" ? i + 2 : i + 1}`}
+              className="block h-auto w-full object-contain"
+              loading={i === 0 && part === "hero" ? "eager" : "lazy"}
+              decoding="async"
+            />
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-2">
@@ -156,6 +186,7 @@ function ProductGallery({
                 src={gallery[index]}
                 alt={`${name} ${index + 1}`}
                 fill
+                unoptimized
                 sizes="(max-width: 768px) 100vw, 50vw"
                 className="object-cover"
                 priority={index === 0}
@@ -174,6 +205,7 @@ function ProductGallery({
             src={secondLarge}
             alt={`${name} 2`}
             fill
+            unoptimized
             sizes="(max-width: 768px) 100vw, 50vw"
             className="object-cover"
           />
@@ -192,6 +224,7 @@ function ProductGallery({
                 src={src}
                 alt={`${name} ${i + 3}`}
                 fill
+                unoptimized
                 sizes="(max-width: 768px) 50vw, 25vw"
                 className="object-cover"
               />
@@ -605,7 +638,13 @@ export default function ProductClient({ product }: ProductProps) {
 
       {/* 手機 — 主圖 → 購買資訊 → 手風琴 → 下方圖片區 */}
       <div className="bg-white pb-16 md:hidden">
-        <ProductGallery key={`${selectedColor}-hero`} images={gallery} name={product.name} part="hero" />
+        <ProductGallery
+          key={`${selectedColor}-hero`}
+          images={gallery}
+          name={product.name}
+          part="hero"
+          variant="mobile"
+        />
 
         <div className="px-5 pt-5">
           <ProductPurchasePanel
@@ -639,12 +678,13 @@ export default function ProductClient({ product }: ProductProps) {
           />
         </div>
 
-        <div className="mt-6 px-5">
+        <div className="mt-6">
           <ProductGallery
             key={`${selectedColor}-rest`}
             images={gallery}
             name={product.name}
             part="rest"
+            variant="mobile"
           />
         </div>
       </div>

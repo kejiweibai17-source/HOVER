@@ -1,10 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import Image from "next/image";
 import { Link } from "next-view-transitions";
 import { useRouter } from "next/navigation";
 import WishlistIcon from "@/components/hover/WishlistIcon";
+import OptimizedImage from "@/components/hover/OptimizedImage";
 import { useWishlistStore } from "@/lib/wishlistStore";
 import { useAuthStore } from "@/lib/authStore";
 import InfiniteCarousel from "@/components/hover/InfiniteCarousel";
@@ -152,27 +152,39 @@ function ProductCard({ product }) {
 
   const hoverImage = product.gallery?.[1] ?? product.image;
   const hasHoverImage = hoverImage !== product.image;
+  const [hoverReady, setHoverReady] = useState(false);
 
   return (
     <article className="group relative flex min-w-0 w-full flex-col overflow-hidden">
       {/* Image + badges + wishlist */}
-      <div className="relative aspect-[404/479] overflow-hidden bg-white">
+      <div
+        className="relative aspect-[404/479] overflow-hidden bg-white"
+        onMouseEnter={() => {
+          if (hasHoverImage) setHoverReady(true);
+        }}
+      >
         <Link href={product.href} className="absolute inset-0 block">
-          <Image
+          <OptimizedImage
             src={product.image}
+            fullSrc={product.image}
+            role="card"
             alt={product.name}
             fill
-            className={`object-cover transition-opacity duration-500 ${
-              hasHoverImage ? "opacity-100 group-hover:opacity-0" : ""
+            className={`object-cover transition-opacity duration-300 ${
+              hasHoverImage && hoverReady
+                ? "opacity-100 group-hover:opacity-0"
+                : ""
             }`}
             sizes="(max-width: 768px) 50vw, 25vw"
           />
-          {hasHoverImage && (
-            <Image
+          {hasHoverImage && hoverReady && (
+            <OptimizedImage
               src={hoverImage}
+              fullSrc={hoverImage}
+              role="card"
               alt={`${product.name} alternate view`}
               fill
-              className="object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+              className="object-cover opacity-0 transition-opacity duration-300 group-hover:opacity-100"
               sizes="(max-width: 768px) 50vw, 25vw"
             />
           )}
@@ -267,8 +279,10 @@ function BrandStorySection({ slides }) {
         renderItem={(slide) => {
           const image = (
             <div className="relative aspect-[16/9] max-h-[100vh] w-full overflow-hidden">
-              <Image
+              <OptimizedImage
                 src={slide.src}
+                fullSrc={slide.src}
+                role="banner"
                 alt={slide.alt || "HOVER brand story"}
                 fill
                 className="object-cover"
@@ -303,8 +317,10 @@ function CategoryGrid({ tiles }) {
           className="group relative block overflow-hidden"
           style={{ aspectRatio: "482 / 554" }}
         >
-          <Image
+          <OptimizedImage
             src={cat.image}
+            fullSrc={cat.image}
+            role="banner"
             alt={cat.alt || cat.label}
             fill
             className="object-cover transition-transform duration-700 group-hover:scale-105"
@@ -354,8 +370,10 @@ function HoverPeopleSection({ slides }) {
       renderItem={(person, i) => {
         const image = (
           <div className="relative aspect-[481/550] overflow-hidden">
-            <Image
+            <OptimizedImage
               src={person.src}
+              fullSrc={person.src}
+              role="card"
               alt={person.alt || `HOVER PEOPLE ${(i % items.length) + 1}`}
               fill
               className="object-cover"
