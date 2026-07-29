@@ -286,7 +286,7 @@ function ProductPurchasePanel({
       <div className={`flex items-start justify-between gap-3 ${isMobile ? "mb-4" : "mb-5 gap-4"}`}>
         <h1
           className={`font-semibold uppercase leading-snug tracking-[0.02em] text-black ${
-            isMobile ? "text-[14px] leading-[1.45]" : "text-[17px] md:text-[20px]"
+            isMobile ? "text-[16px] leading-[1.45]" : "text-[17px] md:text-[20px]"
           }`}
         >
           {product.name}
@@ -296,11 +296,12 @@ function ProductPurchasePanel({
           aria-label={isSaved ? "取消收藏" : "加入收藏"}
           onClick={onToggleWishlist}
           disabled={wishlistPending}
-          className={`shrink-0 transition-opacity hover:opacity-70 ${
+          className={`mt-0.5 shrink-0 transition-opacity hover:opacity-70 ${
             wishlistPending ? "opacity-50" : "opacity-100"
           }`}
         >
-          <WishlistIcon active={isSaved} size={isMobile ? 36 : 34} />
+          {/* 對齊 Header 收藏／搜尋圖示：桌機 24、手機約 22 */}
+          <WishlistIcon active={isSaved} size={isMobile ? 22 : 24} />
         </button>
       </div>
 
