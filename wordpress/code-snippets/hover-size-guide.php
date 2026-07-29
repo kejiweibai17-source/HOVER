@@ -44,6 +44,11 @@ function hsg_defaults(): array
     ];
 }
 
+/**
+ * 正規化已存資料。
+ * 注意：不可在 rows/sizes 為空時自動灌入「衣服預設版型」，
+ * 否則帽子／襪子等自訂內容會在儲存或讀取時被覆蓋。
+ */
 function hsg_normalize(array $data): array
 {
     $d = hsg_defaults();
@@ -60,9 +65,6 @@ function hsg_normalize(array $data): array
             $sizes[] = $size;
         }
     }
-    if (empty($sizes)) {
-        $sizes = $d['sizes'];
-    }
 
     $rows = [];
     foreach (($data['rows'] ?? []) as $row) {
@@ -75,14 +77,19 @@ function hsg_normalize(array $data): array
         }
         $values = [];
         $raw_values = is_array($row['values'] ?? null) ? $row['values'] : [];
-        for ($i = 0; $i < count($sizes); $i++) {
+        $col_count = max(count($sizes), count($raw_values));
+        for ($i = 0; $i < $col_count; $i++) {
             $values[] = sanitize_text_field((string) ($raw_values[$i] ?? ''));
+        }
+        // 對齊 sizes 欄數
+        if (count($sizes) > 0) {
+            $values = array_slice(array_pad($values, count($sizes), ''), 0, count($sizes));
         }
         $rows[] = ['label' => $label, 'values' => $values];
     }
 
     $data['sizes'] = $sizes;
-    $data['rows'] = !empty($rows) ? $rows : $d['rows'];
+    $data['rows'] = $rows;
 
     return $data;
 }
@@ -99,7 +106,15 @@ function hsg_get_for_product(int $product_id): array
             return hsg_normalize($decoded);
         }
     }
-    return hsg_normalize(['enabled' => false]);
+    // 尚無設定：回空結構（後台編輯頁會另外帶入預設版型供參考，但不寫入 meta）
+    return [
+        'enabled'   => false,
+        'unitLabel' => hsg_defaults()['unitLabel'],
+        'sizes'     => [],
+        'rows'      => [],
+        'note'      => hsg_defaults()['note'],
+        'imageUrl'  => '',
+    ];
 }
 
 function hsg_is_visible(array $guide): bool
@@ -288,8 +303,22 @@ function hsg_admin_footer_script(): void
     <script>
     jQuery(function($){
         var defaults = <?php echo $defaults ?: '{}'; ?>;
-        var state = $.extend(true, {}, defaults, window.HSG_INIT || {});
-        if (!state.enabled && (!window.HSG_INIT || !window.HSG_INIT.enabled)) {
+        /**
+         * 不可用 $.extend(true) 合併 defaults 與已存資料：
+         * jQuery deep merge 會「按索引合併陣列」，導致自訂列（如筒高）後面
+         * 殘留衣服預設列（衣長／袖長），第二次開啟看起來像被蓋回預設。
+         */
+        var init = window.HSG_INIT && typeof window.HSG_INIT === 'object'
+            ? window.HSG_INIT
+            : null;
+        var hasSavedRows = !!(init && Array.isArray(init.rows) && init.rows.length);
+        var hasSavedSizes = !!(init && Array.isArray(init.sizes) && init.sizes.length);
+        var state = (hasSavedRows || hasSavedSizes)
+            ? JSON.parse(JSON.stringify(init))
+            : JSON.parse(JSON.stringify(defaults));
+        if (init && typeof init.enabled === 'boolean') {
+            state.enabled = init.enabled;
+        } else if (!hasSavedRows && !hasSavedSizes) {
             state.enabled = $('#hsg-enabled').is(':checked');
         }
 

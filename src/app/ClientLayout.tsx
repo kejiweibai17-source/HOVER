@@ -32,7 +32,8 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
     (pathname.startsWith("/products/") && pathname !== "/products");
 
   useEffect(() => {
-    AOS.init({ duration: 800, once: false });
+    // once: true — 避免捲動進出視野反覆觸發動畫造成卡頓
+    AOS.init({ duration: 800, once: true, disableMutationObserver: true });
   }, []);
 
   return (

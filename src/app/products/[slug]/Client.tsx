@@ -31,6 +31,8 @@ import {
 import {
   findMatchingVariation,
   getSizesForColor,
+  resolveInitialColorLabel,
+  type ProductDefaultAttributes,
   type ProductVariation,
 } from "@/lib/productVariations";
 
@@ -58,6 +60,7 @@ interface ProductProps {
     sizes?: string[];
     colorGalleries?: ColorGalleries;
     variations?: ProductVariation[];
+    defaultAttributes?: ProductDefaultAttributes;
   };
   faqs?: FAQ[];
 }
@@ -461,9 +464,17 @@ export default function ProductClient({ product }: ProductProps) {
   const colors = product.colors?.length ? product.colors : DEFAULT_PRODUCT_COLORS;
   const sizes = product.sizes?.length ? product.sizes : DEFAULT_SIZES;
   const variations = product.variations || [];
+  const defaultAttributes = product.defaultAttributes || {};
+  const defaultColorLabel = resolveInitialColorLabel(
+    colors,
+    defaultAttributes.color,
+  );
+  const defaultSizeLabel = String(defaultAttributes.size || "").trim();
 
-  const [selectedColor, setSelectedColor] = useState(colors[0]?.label || "");
-  const [selectedSize, setSelectedSize] = useState<string | null>(null);
+  const [selectedColor, setSelectedColor] = useState(defaultColorLabel);
+  const [selectedSize, setSelectedSize] = useState<string | null>(
+    defaultSizeLabel || null,
+  );
   const [qty, setQty] = useState(1);
   const [wishlistPending, setWishlistPending] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -477,9 +488,12 @@ export default function ProductClient({ product }: ProductProps) {
     setSelectedSize((prev) => {
       if (availableSizes.length === 1) return availableSizes[0];
       if (prev && availableSizes.includes(prev)) return prev;
+      if (defaultSizeLabel && availableSizes.includes(defaultSizeLabel)) {
+        return defaultSizeLabel;
+      }
       return null;
     });
-  }, [availableSizes, selectedColor]);
+  }, [availableSizes, selectedColor, defaultSizeLabel]);
 
   const matchedVariation = useMemo(
     () =>

@@ -49,11 +49,11 @@ export function normalizeWashingInstructions(raw: unknown): WashingInstructions 
     ? (parsed.items as string[])
         .map((item) => String(item || "").trim())
         .filter(Boolean)
-    : d.items;
+    : [];
 
   return {
-    enabled: parseBool(parsed.enabled, d.enabled),
-    items: items.length ? items : d.items,
+    enabled: parseBool(parsed.enabled, false),
+    items,
   };
 }
 

@@ -66,10 +66,9 @@ export function normalizeSizeGuide(raw: unknown): SizeGuide {
     ? (parsed.sizes as string[])
         .map((s) => String(s || "").trim())
         .filter(Boolean)
-    : d.sizes;
+    : [];
 
-  const sizeCount = sizes.length || d.sizes.length;
-  const finalSizes = sizes.length ? sizes : d.sizes;
+  const finalSizes = sizes;
 
   const rows = Array.isArray(parsed.rows)
     ? (parsed.rows as SizeGuideRow[])
@@ -79,18 +78,29 @@ export function normalizeSizeGuide(raw: unknown): SizeGuide {
             Array.isArray(row?.values)
               ? row.values.map((v) => String(v ?? "").trim())
               : [],
-            finalSizes.length,
+            Math.max(finalSizes.length, 1),
           ),
         }))
         .filter((row) => row.label)
-    : d.rows;
+    : [];
+
+  // 有 sizes 時對齊欄數；沒有 sizes 就保留列上的 values
+  const alignedRows =
+    finalSizes.length > 0
+      ? rows.map((row) => ({
+          ...row,
+          values: padValues(row.values, finalSizes.length),
+        }))
+      : rows;
 
   return {
-    enabled: parseBool(parsed.enabled, d.enabled),
-    unitLabel: String(parsed.unitLabel || parsed.unit_label || d.unitLabel).trim() || d.unitLabel,
+    enabled: parseBool(parsed.enabled, false),
+    unitLabel:
+      String(parsed.unitLabel || parsed.unit_label || d.unitLabel).trim() ||
+      d.unitLabel,
     sizes: finalSizes,
-    rows: rows.length ? rows : d.rows,
-    note: String(parsed.note || d.note).trim() || d.note,
+    rows: alignedRows,
+    note: String(parsed.note ?? d.note).trim(),
     imageUrl: String(
       parsed.imageUrl || parsed.image_url || d.imageUrl,
     ).trim() || d.imageUrl,

@@ -9,6 +9,46 @@ export type ProductVariation = {
   attributes: Record<string, string>;
 };
 
+/** WooCommerce「預設表單值」→ 前台初始選取 */
+export type ProductDefaultAttributes = {
+  color?: string;
+  size?: string;
+};
+
+export function parseDefaultAttributes(
+  raw: Array<{ name?: string; option?: string }> | undefined | null,
+): ProductDefaultAttributes {
+  const result: ProductDefaultAttributes = {};
+  for (const attr of raw || []) {
+    const name = String(attr?.name || "").trim();
+    const option = String(attr?.option || "").trim();
+    if (!name || !option) continue;
+    if (isColorAttributeName(name)) result.color = option;
+    else if (isSizeAttributeName(name)) result.size = option;
+  }
+  return result;
+}
+
+/** 在顏色清單中找到與預設值對應的 label（允許「粉」對「粉色」） */
+export function resolveInitialColorLabel(
+  colors: Array<{ label: string }>,
+  defaultColor?: string,
+): string {
+  if (!colors.length) return "";
+  const target = String(defaultColor || "").trim();
+  if (!target) return colors[0].label;
+
+  const exact = colors.find((c) => c.label === target);
+  if (exact) return exact.label;
+
+  const fuzzy = colors.find((c) => {
+    const a = c.label.trim().toLowerCase();
+    const b = target.toLowerCase();
+    return a === b || a.includes(b) || b.includes(a);
+  });
+  return fuzzy?.label || colors[0].label;
+}
+
 export function parseWooVariation(raw: {
   id?: number | string;
   price?: string;

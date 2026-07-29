@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useRef } from "react";
+import { useState, useMemo, useCallback, useRef, memo } from "react";
 import Image from "next/image";
 import { Link } from "next-view-transitions";
 import { useRouter } from "next/navigation";
@@ -15,6 +15,7 @@ import { useSearchStore } from "@/lib/searchStore";
 import { useCartStore } from "@/lib/cartStore";
 import { MOCK_PRODUCTS } from "@/lib/mockProducts";
 import { guessColorHex } from "@/lib/productColors";
+import { toListImageUrl } from "@/lib/listImageUrl";
 import CategoryBannerBlock from "@/components/hover/CategoryBannerBlock";
 import type { CategoryBanner } from "@/lib/categoryBannerDefaults";
 /* ─── Types ─────────────────────────────────────────────────────────────── */
@@ -396,37 +397,85 @@ function WishlistHeart({ product }: { product: Product }) {
   );
 }
 
-function ProductCard({ product }: { product: Product }) {
+function ProductCardImage({
+  fullSrc,
+  alt,
+  priority = false,
+  className = "",
+}: {
+  fullSrc: string;
+  alt: string;
+  priority?: boolean;
+  className?: string;
+}) {
+  const thumb = toListImageUrl(fullSrc, 300);
+  const [src, setSrc] = useState(thumb);
+
+  return (
+    <Image
+      src={src}
+      alt={alt}
+      fill
+      sizes="(max-width: 768px) 50vw, 25vw"
+      unoptimized
+      priority={priority}
+      loading={priority ? "eager" : "lazy"}
+      decoding="async"
+      className={`object-cover ${className}`}
+      onError={() => {
+        if (src !== fullSrc) setSrc(fullSrc);
+      }}
+    />
+  );
+}
+
+const ProductCard = memo(function ProductCard({
+  product,
+  priority = false,
+}: {
+  product: Product;
+  priority?: boolean;
+}) {
   const img = product.images?.[0]?.src || "/images/hover/product-1.jpg";
   const hoverImage = product.images
     ?.slice(1)
     .find((image) => image?.src && image.src !== img);
   const hoverImg = hoverImage?.src;
   const hasHoverImage = Boolean(hoverImg);
+  // 等滑過才掛第二張圖，避免一進頁就解碼 32 張原圖
+  const [hoverReady, setHoverReady] = useState(false);
 
   return (
-    <Link href={`/products/${product.slug}`} className="group block">
+    <Link
+      href={`/products/${product.slug}`}
+      className="group block"
+      onMouseEnter={() => {
+        if (hasHoverImage) setHoverReady(true);
+      }}
+      onFocus={() => {
+        if (hasHoverImage) setHoverReady(true);
+      }}
+    >
       {/* Image container */}
       <div
         className="relative mb-2 w-full overflow-hidden bg-white"
         style={{ aspectRatio: "1/1" }}
       >
-        <Image
-          src={img}
+        <ProductCardImage
+          fullSrc={img}
           alt={product.images?.[0]?.alt || product.name}
-          fill
-          sizes="(max-width: 768px) 50vw, 25vw"
-          className={`object-cover transition-opacity duration-500 ${
-            hasHoverImage ? "opacity-100 group-hover:opacity-0" : ""
-          }`}
+          priority={priority}
+          className={
+            hasHoverImage && hoverReady
+              ? "transition-opacity duration-300 opacity-100 group-hover:opacity-0"
+              : ""
+          }
         />
-        {hasHoverImage && (
-          <Image
-            src={hoverImg!}
+        {hasHoverImage && hoverReady && (
+          <ProductCardImage
+            fullSrc={hoverImg!}
             alt={hoverImage?.alt || `${product.name} alternate view`}
-            fill
-            sizes="(max-width: 768px) 50vw, 25vw"
-            className="object-cover opacity-0 transition-opacity duration-500 group-hover:opacity-100"
+            className="transition-opacity duration-300 opacity-0 group-hover:opacity-100"
           />
         )}
 
@@ -465,7 +514,7 @@ function ProductCard({ product }: { product: Product }) {
       </div>
     </Link>
   );
-}
+});
 
 function Pagination({
   current,
@@ -660,8 +709,12 @@ export default function Client({
                     ref={gridRef}
                     className="grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-3 md:grid-cols-4 md:gap-x-5 md:gap-y-10"
                   >
-                    {paginated.map((product) => (
-                      <ProductCard key={product.id} product={product} />
+                    {paginated.map((product, index) => (
+                      <ProductCard
+                        key={product.id}
+                        product={product}
+                        priority={index < 4}
+                      />
                     ))}
                   </div>
                 )}
@@ -737,8 +790,12 @@ export default function Client({
                   ref={gridRef}
                   className="grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-3 md:grid-cols-4 md:gap-x-5 md:gap-y-10"
                 >
-                  {paginated.map((product) => (
-                    <ProductCard key={product.id} product={product} />
+                  {paginated.map((product, index) => (
+                    <ProductCard
+                      key={product.id}
+                      product={product}
+                      priority={index < 4}
+                    />
                   ))}
                 </div>
               )}

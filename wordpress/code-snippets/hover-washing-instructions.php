@@ -41,9 +41,12 @@ function hwi_defaults(): array
     ];
 }
 
+/**
+ * 正規化已存資料。
+ * 不可在 items 為空時自動灌入衣服預設文案，否則自訂洗滌說明會被覆蓋。
+ */
 function hwi_normalize(array $data): array
 {
-    $d = hwi_defaults();
     $data['enabled'] = !empty($data['enabled']);
 
     $items = [];
@@ -54,7 +57,7 @@ function hwi_normalize(array $data): array
         }
     }
 
-    $data['items'] = !empty($items) ? $items : $d['items'];
+    $data['items'] = $items;
     return $data;
 }
 
@@ -70,7 +73,10 @@ function hwi_get_for_product(int $product_id): array
             return hwi_normalize($decoded);
         }
     }
-    return hwi_normalize(['enabled' => false]);
+    return [
+        'enabled' => false,
+        'items'   => [],
+    ];
 }
 
 add_action('add_meta_boxes', function () {
@@ -182,7 +188,20 @@ function hwi_admin_footer_script(): void
     <script>
     jQuery(function($){
         var defaults = <?php echo $defaults ?: '{}'; ?>;
-        var state = $.extend(true, {}, defaults, window.HWI_INIT || {});
+        /**
+         * 不可用 $.extend(true) 合併 defaults：陣列會按索引殘留舊預設句，
+         * 第二次開啟／儲存後看起來像又跑回「衣服」預設洗滌文案。
+         */
+        var init = window.HWI_INIT && typeof window.HWI_INIT === 'object'
+            ? window.HWI_INIT
+            : null;
+        var hasSavedItems = !!(init && Array.isArray(init.items) && init.items.length);
+        var state = hasSavedItems
+            ? JSON.parse(JSON.stringify(init))
+            : JSON.parse(JSON.stringify(defaults));
+        if (init && typeof init.enabled === 'boolean') {
+            state.enabled = init.enabled;
+        }
 
         function esc(s){ return $('<div/>').text(s || '').html(); }
 

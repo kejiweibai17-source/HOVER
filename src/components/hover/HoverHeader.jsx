@@ -207,7 +207,13 @@ export default function HoverHeader({
   });
 
   useEffect(() => {
-    setAtTop(window.scrollY <= SCROLL_TOP_THRESHOLD);
+    const onScroll = () => {
+      const next = window.scrollY <= SCROLL_TOP_THRESHOLD;
+      setAtTop((prev) => (prev === next ? prev : next));
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
   useEffect(() => {

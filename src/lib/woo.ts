@@ -18,7 +18,9 @@ import {
 } from "./variationGallery";
 import type { WooCategoryRaw } from "./categoryNav";
 import {
+  parseDefaultAttributes,
   parseWooVariation,
+  type ProductDefaultAttributes,
   type ProductVariation,
 } from "./productVariations";
 
@@ -46,6 +48,8 @@ export type WooProduct = {
   sizes: string[];
   colorGalleries: ColorGalleries;
   variations: ProductVariation[];
+  /** Woo「預設表單值」（顏色／尺寸） */
+  defaultAttributes: ProductDefaultAttributes;
 };
 
 /** 商品列表頁使用的精簡型別（與 products/Client 相容） */
@@ -165,6 +169,7 @@ const mapWoo = (p: any): WooProduct => {
     sizes,
     colorGalleries: extractColorGalleriesFromWooProduct(p),
     variations: [],
+    defaultAttributes: parseDefaultAttributes(p?.default_attributes),
   } as WooProduct;
 };
 
