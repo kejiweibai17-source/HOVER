@@ -14,6 +14,8 @@ import {
   fetchCategoryBannerSettings,
   resolveCategoryBanner,
 } from "@/lib/categoryBannerDefaults";
+import { buildProductFilterOptions } from "@/lib/productFilters";
+import type { WooCategoryRaw } from "@/lib/woo";
 
 const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
@@ -91,6 +93,7 @@ export default async function ProductsPage({ searchParams }: PageProps) {
 
   let items = MOCK_PRODUCTS;
   let categoryLabel = "ALL ITEMS";
+  let filterCategories: WooCategoryRaw[] = [];
 
   const [bannerSettings, productResult] = await Promise.all([
     fetchCategoryBannerSettings(),
@@ -128,18 +131,25 @@ export default async function ProductsPage({ searchParams }: PageProps) {
         return {
           items: filtered.map(mapWooToListProduct),
           categoryLabel: label,
+          categories,
         };
       } catch (error) {
         console.error("❌ 商品列表抓取失敗，使用 mock 資料:", error);
-        return { items: MOCK_PRODUCTS, categoryLabel: "ALL ITEMS" };
+        return {
+          items: MOCK_PRODUCTS,
+          categoryLabel: "ALL ITEMS",
+          categories: [] as WooCategoryRaw[],
+        };
       }
     })(),
   ]);
 
   items = productResult.items;
   categoryLabel = productResult.categoryLabel;
+  filterCategories = productResult.categories;
 
   const banner = resolveCategoryBanner(bannerSettings, categorySlug || "all");
+  const filterOptions = buildProductFilterOptions(filterCategories, items);
 
   const jsonLd = {
     "@context": "https://schema.org",
@@ -171,6 +181,7 @@ export default async function ProductsPage({ searchParams }: PageProps) {
         categoryLabel={categoryLabel}
         categorySlug={categorySlug || "all"}
         banner={banner}
+        filterOptions={filterOptions}
       />
     </>
   );

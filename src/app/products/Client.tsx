@@ -15,9 +15,12 @@ import { useAuthStore } from "@/lib/authStore";
 import { useSearchStore } from "@/lib/searchStore";
 import { useCartStore } from "@/lib/cartStore";
 import { MOCK_PRODUCTS } from "@/lib/mockProducts";
-import { guessColorHex } from "@/lib/productColors";
 import CategoryBannerBlock from "@/components/hover/CategoryBannerBlock";
 import type { CategoryBanner } from "@/lib/categoryBannerDefaults";
+import {
+  EMPTY_PRODUCT_FILTER_OPTIONS,
+  type ProductFilterOptions,
+} from "@/lib/productFilters";
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 
 export type Product = {
@@ -35,29 +38,10 @@ export type Product = {
   sizes?: string[];
 };
 
-/* ─── Filter config ─────────────────────────────────────────────────────── */
-
-const FILTER_CATEGORIES: Record<string, Record<string, string[]> | string[]> = {
-  商品類型: {
-    上身服飾: ["短袖上衣", "長袖上衣", "罩衣", "帽T"],
-    帽子: ["老帽", "漁夫帽", "毛帽"],
-    褲子: ["中間褲", "短褲"],
-    包袋: ["托特包", "帆布袋", "側背包"],
-  } as Record<string, string[]>,
-  顏色: ["黑", "白", "綠", "藍", "粉", "紅"],
-  尺寸: ["S", "M", "L", "XL"],
-};
-
 const SORT_OPTIONS = ["最新上架", "人氣排序", "價格: 低至高", "價格: 高至低"];
 const ITEMS_PER_PAGE = 16;
 
 /* ─── Filter matching ───────────────────────────────────────────────────── */
-
-const TYPE_FILTER_VALUES = new Set(
-  Object.values(FILTER_CATEGORIES["商品類型"] as Record<string, string[]>).flat(),
-);
-const COLOR_FILTER_VALUES = new Set(FILTER_CATEGORIES["顏色"] as string[]);
-const SIZE_FILTER_VALUES = new Set(FILTER_CATEGORIES["尺寸"] as string[]);
 
 /** 模糊比對：任一字串包含目標（如「黑色」符合「黑」）。 */
 function fuzzyIncludes(values: string[], target: string): boolean {
@@ -68,16 +52,26 @@ function fuzzyIncludes(values: string[], target: string): boolean {
   });
 }
 
-function matchesFilters(product: Product, selected: Set<string>): boolean {
+function matchesFilters(
+  product: Product,
+  selected: Set<string>,
+  filterOptions: ProductFilterOptions,
+): boolean {
   if (selected.size === 0) return true;
+
+  const typeValues = new Set(
+    filterOptions.typeGroups.flatMap((group) => group.items),
+  );
+  const colorValues = new Set(filterOptions.colors.map((c) => c.label));
+  const sizeValues = new Set(filterOptions.sizes);
 
   const types: string[] = [];
   const colors: string[] = [];
   const sizes: string[] = [];
   selected.forEach((val) => {
-    if (TYPE_FILTER_VALUES.has(val)) types.push(val);
-    else if (COLOR_FILTER_VALUES.has(val)) colors.push(val);
-    else if (SIZE_FILTER_VALUES.has(val)) sizes.push(val);
+    if (typeValues.has(val)) types.push(val);
+    else if (colorValues.has(val)) colors.push(val);
+    else if (sizeValues.has(val)) sizes.push(val);
   });
 
   // 各維度之間為 AND，同維度內為 OR
@@ -111,16 +105,21 @@ function FilterSidebar({
   onApply,
   selected,
   onToggle,
+  filterOptions,
 }: {
   open: boolean;
   onClose: () => void;
   onApply: () => void;
   selected: Set<string>;
   onToggle: (val: string) => void;
+  filterOptions: ProductFilterOptions;
 }) {
   const openSearch = useSearchStore((s) => s.openSearch);
   const cartItems = useCartStore((s) => s.items);
   const cartCount = cartItems.reduce((t, i) => t + (i.qty || 0), 0);
+  const { typeGroups, colors, sizes } = filterOptions;
+  const hasAnyFilter =
+    typeGroups.length > 0 || colors.length > 0 || sizes.length > 0;
 
   return (
     <>
@@ -199,94 +198,104 @@ function FilterSidebar({
             </button>
           </div>
 
+          {!hasAnyFilter && (
+            <p className="text-[13px] text-[#888]">目前沒有可篩選的條件。</p>
+          )}
+
           {/* 商品類型 */}
-          <div className="mb-8">
-            <p className="mb-3 text-[13px] font-semibold tracking-widest text-[#333]">
-              商品類型
-            </p>
-            {Object.entries(
-              FILTER_CATEGORIES["商品類型"] as Record<string, string[]>,
-            ).map(([group, items]) => (
-              <div key={group} className="mb-4">
-                <p className="mb-2 text-[12px] text-[#999]">{group}</p>
-                <div className="space-y-2.5">
-                  {items.map((item) => (
-                    <label
-                      key={item}
-                      className="flex cursor-pointer items-center gap-2.5"
-                    >
-                      <span
-                        className={`flex h-4 w-4 shrink-0 rounded-sm border-2 transition-colors ${
-                          selected.has(item)
-                            ? "border-[#2a514d] bg-[#2a514d]"
-                            : "border-[#ccc] bg-white"
-                        }`}
-                        onClick={() => onToggle(item)}
-                      />
-                      <span className="text-[13px] text-[#333]">{item}</span>
-                    </label>
-                  ))}
+          {typeGroups.length > 0 && (
+            <div className="mb-8">
+              <p className="mb-3 text-[13px] font-semibold tracking-widest text-[#333]">
+                商品類型
+              </p>
+              {typeGroups.map((group) => (
+                <div key={group.group} className="mb-4">
+                  <p className="mb-2 text-[12px] text-[#999]">{group.group}</p>
+                  <div className="space-y-2.5">
+                    {group.items.map((item) => (
+                      <label
+                        key={item}
+                        className="flex cursor-pointer items-center gap-2.5"
+                      >
+                        <span
+                          className={`flex h-4 w-4 shrink-0 rounded-sm border-2 transition-colors ${
+                            selected.has(item)
+                              ? "border-[#2a514d] bg-[#2a514d]"
+                              : "border-[#ccc] bg-white"
+                          }`}
+                          onClick={() => onToggle(item)}
+                        />
+                        <span className="text-[13px] text-[#333]">{item}</span>
+                      </label>
+                    ))}
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
 
           {/* 顏色 */}
-          <div className="mb-8">
-            <p className="mb-3 text-[13px] font-semibold tracking-widest text-[#333]">
-              顏色
-            </p>
-            <div className="flex flex-wrap gap-x-6 gap-y-3">
-              {(FILTER_CATEGORIES["顏色"] as string[]).map((color) => {
-                const active = selected.has(color);
-                return (
-                  <button
-                    key={color}
-                    type="button"
-                    aria-label={color}
-                    onClick={() => onToggle(color)}
-                    className="flex items-center gap-2 hover:opacity-70"
-                  >
-                    <span
-                      className={`h-[22px] w-[22px] border transition-all ${
-                        active
-                          ? "border-black ring-1 ring-black ring-offset-1"
-                          : "border-[#ccc]"
-                      }`}
-                      style={{ backgroundColor: guessColorHex(color) }}
-                    />
-                    <span className="text-[12px] text-[#333]">{color}</span>
-                  </button>
-                );
-              })}
+          {colors.length > 0 && (
+            <div className="mb-8">
+              <p className="mb-3 text-[13px] font-semibold tracking-widest text-[#333]">
+                顏色
+              </p>
+              <div className="flex flex-wrap gap-x-6 gap-y-3">
+                {colors.map((color) => {
+                  const active = selected.has(color.label);
+                  return (
+                    <button
+                      key={color.label}
+                      type="button"
+                      aria-label={color.label}
+                      onClick={() => onToggle(color.label)}
+                      className="flex items-center gap-2 hover:opacity-70"
+                    >
+                      <span
+                        className={`h-[22px] w-[22px] border transition-all ${
+                          active
+                            ? "border-black ring-1 ring-black ring-offset-1"
+                            : "border-[#ccc]"
+                        }`}
+                        style={{ backgroundColor: color.hex }}
+                      />
+                      <span className="text-[12px] text-[#333]">
+                        {color.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* 尺寸 */}
-          <div>
-            <p className="mb-3 text-[13px] font-semibold tracking-widest text-[#333]">
-              尺寸
-            </p>
-            <div className="flex flex-wrap gap-2.5">
-              {(FILTER_CATEGORIES["尺寸"] as string[]).map((size) => {
-                const active = selected.has(size);
-                return (
-                  <button
-                    key={size}
-                    type="button"
-                    onClick={() => onToggle(size)}
-                    className={`flex h-[30px] min-w-[30px] items-center justify-center border px-2 text-[12px] font-bold transition-all ${
-                      active
-                        ? "border-[#8b8b8b] bg-[#8b8b8b] text-white"
-                        : "border-[#ccc] bg-white text-black hover:border-[#888]"
-                    }`}
-                  >
-                    {size}
-                  </button>
-                );
-              })}
+          {sizes.length > 0 && (
+            <div>
+              <p className="mb-3 text-[13px] font-semibold tracking-widest text-[#333]">
+                尺寸
+              </p>
+              <div className="flex flex-wrap gap-2.5">
+                {sizes.map((size) => {
+                  const active = selected.has(size);
+                  return (
+                    <button
+                      key={size}
+                      type="button"
+                      onClick={() => onToggle(size)}
+                      className={`flex h-[30px] min-w-[30px] items-center justify-center border px-2 text-[12px] font-bold transition-all ${
+                        active
+                          ? "border-[#8b8b8b] bg-[#8b8b8b] text-white"
+                          : "border-[#ccc] bg-white text-black hover:border-[#888]"
+                      }`}
+                    >
+                      {size}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* 底部固定：套用篩選 */}
@@ -574,11 +583,13 @@ export default function Client({
   categoryLabel = "ALL ITEMS",
   categorySlug = "all",
   banner = null,
+  filterOptions = EMPTY_PRODUCT_FILTER_OPTIONS,
 }: {
   items: Product[];
   categoryLabel?: string;
   categorySlug?: string;
   banner?: CategoryBanner | null;
+  filterOptions?: ProductFilterOptions;
 }) {
   const products: Product[] = items?.length > 0 ? items : MOCK_PRODUCTS;
 
@@ -615,13 +626,15 @@ export default function Client({
   }, [draftFilters]);
 
   const sorted = useMemo(() => {
-    const list = products.filter((p) => matchesFilters(p, selectedFilters));
+    const list = products.filter((p) =>
+      matchesFilters(p, selectedFilters, filterOptions),
+    );
     if (sortBy === "價格: 低至高")
       list.sort((a, b) => Number(a.price) - Number(b.price));
     else if (sortBy === "價格: 高至低")
       list.sort((a, b) => Number(b.price) - Number(a.price));
     return list;
-  }, [products, sortBy, selectedFilters]);
+  }, [products, sortBy, selectedFilters, filterOptions]);
 
   const totalPages = Math.ceil(sorted.length / ITEMS_PER_PAGE);
   const paginated = sorted.slice(
@@ -640,6 +653,7 @@ export default function Client({
         onApply={applyFilters}
         selected={draftFilters}
         onToggle={toggleFilter}
+        filterOptions={filterOptions}
       />
 
       {/* Page content */}
