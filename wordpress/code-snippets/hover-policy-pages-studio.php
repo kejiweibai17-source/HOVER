@@ -1,19 +1,19 @@
 <?php
 /**
- * HOVER — 說明頁內容管理（如何購買 / 申請退貨 / 常見問題）
+ * HOVER — 說明頁內容管理（如何購買 / 申請退貨 / 常見問題 / 服務條款 / 隱私權保護）
  *
  * 使用方式：
  * 1. Code Snippets → Add New → 貼上本檔 → Run Everywhere
  * 2. 左側選單「HOVER 說明頁」
  *
  * 結構：
- * - Tab：如何購買 / 申請退貨 / 常見問題
+ * - Tab：如何購買 / 申請退貨 / 常見問題 / 服務條款 / 隱私權保護
  * - 大標題項目（01/02/03…）：強制收折、可選顏色、可新增
  * - 內層項目：可選是否收折、可選標題顏色、內容編輯器（文字色／連結）
  *
  * REST：
  * GET /wp-json/hover/v1/policy-pages
- * GET /wp-json/hover/v1/policy-pages/{how-to-buy|returns|faq}
+ * GET /wp-json/hover/v1/policy-pages/{how-to-buy|returns|faq|terms|privacy}
  */
 
 if (!defined('ABSPATH')) { exit; }
@@ -21,7 +21,7 @@ if (defined('HPOL_LOADED')) { return; }
 define('HPOL_LOADED', true);
 
 const HPOL_OPTION = 'hover_policy_pages_v1';
-const HPOL_PAGE_KEYS = ['how-to-buy', 'returns', 'faq'];
+const HPOL_PAGE_KEYS = ['how-to-buy', 'returns', 'faq', 'terms', 'privacy'];
 
 function hpol_defaults_raw(): array {
     static $cached = null;
@@ -31,6 +31,19 @@ function hpol_defaults_raw(): array {
 HPOL_DEFAULTS_JSON;
     $decoded = json_decode($json, true);
     $cached = is_array($decoded) ? $decoded : [];
+
+    $legal_json = <<<'HPOL_LEGAL_DEFAULTS_JSON'
+{"terms":{"pageTitle":"服務條款","intro":"歡迎使用 HOVER 官方網站。\n當您瀏覽本網站、註冊會員或於本網站完成訂購，即表示您已閱讀、瞭解並同意遵守本服務條款、隱私權保護政策、申請退貨及其他相關購物規範。\nHOVER 將持續提供安心、清楚且順暢的購物體驗。若您對本服務條款或購物流程有任何疑問，歡迎透過官方客服與我們聯繫。","contentColor":"#555555","sections":[{"num":"01","title":"網站服務說明","titleColor":"#2a514d","items":[{"title":"","collapsible":false,"contentHtml":"<p>HOVER 官方網站提供商品瀏覽、會員註冊、線上購物、訂單查詢、客服聯繫及相關品牌服務。</p><p>本網站所提供之商品資訊、價格、尺寸、顏色、材質、庫存狀態、活動內容與配送方式，將以各商品頁面、結帳頁面及本網站公告內容為準。</p>","titleColor":"#0f172a"}]},{"num":"02","title":"會員註冊與帳號安全","titleColor":"#2a514d","items":[{"title":"","collapsible":false,"contentHtml":"<p>使用者得依本網站流程註冊成為 HOVER 會員，並應提供正確、完整且即時更新的個人資料。</p><p>會員應妥善保管帳號與密碼，不得將帳號轉讓、出借或提供他人使用。若發現帳號遭盜用、異常登入或有其他安全疑慮，請立即通知 HOVER 官方客服協助處理。</p><p>若因會員未妥善保管帳號密碼或提供錯誤資料，導致訂單、配送、退款或會員權益受到影響，相關責任將由會員自行承擔。但 HOVER 於知悉帳號可能遭冒用時，將依合理方式協助暫停相關交易或服務處理。</p>","titleColor":"#0f172a"}]},{"num":"03","title":"商品資訊與價格","titleColor":"#2a514d","items":[{"title":"","collapsible":false,"contentHtml":"<p>HOVER 將盡力確保網站上商品資訊、價格、庫存與活動內容正確無誤。</p><p>商品圖片可能因拍攝光線、螢幕顯示設定或瀏覽裝置不同，而與實際商品產生些微色差；商品尺寸如為人工平量，亦可能存在合理誤差，實際商品狀態請以收到實品為準。</p><p>若因系統異常、標價錯誤、庫存異常或其他不可歸責於消費者之情形，導致訂單內容需調整或無法成立，HOVER 將主動與您聯繫說明，並協助取消訂單或辦理退款。</p>","titleColor":"#0f172a"}]},{"num":"04","title":"訂單成立與付款","titleColor":"#2a514d","items":[{"title":"","collapsible":false,"contentHtml":"<p>當您於本網站完成訂購流程後，系統將寄送訂單確認通知至您所留存的 Email 或會員帳號資訊中。</p><p>訂單成立仍須以付款完成、資料確認及庫存狀態為準。若訂單資料不完整、付款失敗、商品缺貨、價格標示錯誤、系統異常或其他無法完成交易之情形，HOVER 保留取消或不接受該筆訂單之權利，並將主動通知消費者。</p><p>本網站可提供之付款方式，將以結帳頁面顯示為準，包含但不限於信用卡、ATM 虛擬帳號或其他 HOVER 日後開放之付款方式。</p>","titleColor":"#0f172a"}]},{"num":"05","title":"配送方式與訂單出貨","titleColor":"#2a514d","items":[{"title":"","collapsible":false,"contentHtml":"<p>HOVER 將依您於結帳時選擇之配送方式安排出貨。實際配送方式、配送地區、運費、免運活動及出貨時間，將以本網站公告或結帳頁面顯示為準。</p><p>若因天災、物流異常、節慶檔期、系統維護、不可抗力或其他非 HOVER 可合理控制之因素，導致配送時間延遲，HOVER 將盡力協助追蹤並提供相關資訊。</p>","titleColor":"#0f172a"}]},{"num":"06","title":"退貨與退款","titleColor":"#2a514d","items":[{"title":"","collapsible":false,"contentHtml":"<p>HOVER 目前提供退貨服務，暫不提供換貨。若需更換尺寸、顏色或款式，請重新下單選購。</p><p>退貨申請期限、退貨商品狀態、無法退貨情形、退款方式與處理時間，請詳閱本網站「申請退貨」頁面說明。</p>","titleColor":"#0f172a"}]},{"num":"07","title":"優惠活動與折扣碼","titleColor":"#2a514d","items":[{"title":"","collapsible":false,"contentHtml":"<p>HOVER 可能不定期推出會員優惠、折扣碼、滿額活動、贈品活動或其他行銷活動。</p><p>各活動之適用條件、使用期限、折抵方式、排除商品與注意事項，將以活動頁面或結帳頁面公告為準。優惠活動不得要求折換現金、找零、轉讓或與其他優惠合併使用，除非活動頁面另有說明。</p><p>若訂單取消、退貨或未達活動條件，HOVER 得依活動規則調整優惠、贈品或退款金額。</p>","titleColor":"#0f172a"}]},{"num":"08","title":"智慧財產權","titleColor":"#2a514d","items":[{"title":"","collapsible":false,"contentHtml":"<p>本網站所使用之品牌名稱、商標、Logo、文字、圖片、影像、商品設計、網頁設計、版面配置及其他內容，均屬 HOVER 或合法授權人所有。</p><p>未經 HOVER 事前書面同意，任何人不得擅自重製、修改、轉載、下載、散布、公開展示、商業使用或以其他方式侵害相關智慧財產權。</p>","titleColor":"#0f172a"}]},{"num":"09","title":"禁止行為","titleColor":"#2a514d","items":[{"title":"","collapsible":false,"contentHtml":"<p>使用本網站時，您不得從事以下行為：</p><ul><li>使用不實資料註冊會員或下單。</li><li>冒用他人名義、帳號或付款資訊。</li><li>干擾網站系統、資安機制或正常交易流程。</li><li>大量下單後無故取消、未取貨、拒收或惡意退貨。</li><li>散布不實、誹謗、侵害他人權益或違反法令之內容。</li><li>未經授權使用 HOVER 之品牌、圖片、文字或網站內容。</li></ul><p>若發現帳號有異常交易、違反服務條款或影響其他消費者權益之情形，HOVER 得視情況暫停部分會員服務、取消異常訂單，或保留接受後續訂單之權利。</p>","titleColor":"#0f172a"}]},{"num":"10","title":"服務暫停與系統維護","titleColor":"#2a514d","items":[{"title":"","collapsible":false,"contentHtml":"<p>HOVER 將盡力維持本網站正常運作。但因系統維護、設備更新、第三方服務異常、資安事件、天災或其他不可抗力因素，可能造成網站服務暫停、中斷或資料傳輸延遲。</p><p>若發生上述情形，HOVER 將盡力於合理範圍內恢復服務，並視情況公告或通知消費者。</p>","titleColor":"#0f172a"}]},{"num":"11","title":"消費爭議處理","titleColor":"#2a514d","items":[{"title":"","collapsible":false,"contentHtml":"<p>若您對商品、訂單、付款、配送、退貨或本網站服務有任何疑問，請先透過 HOVER 官方客服與我們聯繫，我們將盡力協助確認並處理。</p><p>客服信箱：service@hoverofficial.com</p><p>客服時間：MON.–FRI. 10:00–19:00</p><p>官方 LINE：@HOVER</p><p>若因本服務條款或網路交易產生爭議，雙方應本於誠信原則協商解決。若仍有訴訟必要，依相關法律規定處理。</p>","titleColor":"#0f172a"}]},{"num":"12","title":"條款修改","titleColor":"#2a514d","items":[{"title":"","collapsible":false,"contentHtml":"<p>HOVER 保留依營運需求、服務調整或法令變更修改本服務條款之權利。</p><p>修改後之內容將公告於本網站，並自公告日起生效。建議您定期查閱本服務條款，以保障自身權益。</p>","titleColor":"#0f172a"}]}]},"privacy":{"pageTitle":"隱私權保護","intro":"HOVER 重視每一位會員與顧客的個人資料與隱私權。\n為提供您安心、順暢的購物體驗，我們將依據個人資料保護相關法令，妥善蒐集、處理及利用您的個人資料，並採取合理安全措施保護您的資料。\n當您使用 HOVER 官方網站、註冊會員、訂購商品、聯繫客服或參與品牌活動時，即表示您已閱讀並瞭解本隱私權保護政策。","contentColor":"#555555","sections":[{"num":"01","title":"適用範圍","titleColor":"#2a514d","items":[{"title":"","collapsible":false,"contentHtml":"<p>本隱私權保護政策適用於 HOVER 官方網站所提供之會員註冊、商品訂購、付款、配送、客服、行銷活動及其他相關服務。</p><p>本政策不適用於非 HOVER 所有或控制之第三方網站、外部連結、社群平台或第三方服務。當您點選外部連結或使用第三方服務時，請另行參閱該第三方之隱私權政策。</p>","titleColor":"#0f172a"}]},{"num":"02","title":"個人資料之蒐集目的","titleColor":"#2a514d","items":[{"title":"","collapsible":false,"contentHtml":"<p>HOVER 蒐集、處理及利用您的個人資料，主要基於以下目的：</p><ul><li>會員註冊、身分確認與會員管理。</li><li>商品訂購、付款確認、配送與退貨退款處理。</li><li>電子發票開立、交易紀錄保存與帳務管理。</li><li>客服聯繫、售後服務、爭議處理與權益通知。</li><li>行銷活動、優惠通知、會員服務與品牌資訊提供。</li><li>網站功能優化、流量分析、系統安全與服務改善。</li><li>依法令規定、主管機關要求或其他合法必要用途。</li></ul>","titleColor":"#0f172a"}]},{"num":"03","title":"蒐集之個人資料類別","titleColor":"#2a514d","items":[{"title":"","collapsible":false,"contentHtml":"<p>依您使用服務的情況，HOVER 可能蒐集以下資料：</p><ul><li>會員與聯絡資料：姓名、電話、Email、生日、會員帳號、LINE ID 或其他聯絡資訊。</li><li>訂單與配送資料：收件人姓名、收件電話、配送地址、訂單內容、購買紀錄、付款方式、發票資訊、退貨退款資料。</li><li>客服與互動紀錄：客服對話內容、退貨申請資料、商品問題照片或影片、問卷回覆、活動參與紀錄。</li><li>網站與裝置資訊：IP 位址、瀏覽器類型、裝置資訊、瀏覽紀錄、Cookie、網站使用行為及系統紀錄。</li></ul><p>HOVER 不會主動要求您提供與購物服務無關之敏感個人資料。</p>","titleColor":"#0f172a"}]},{"num":"04","title":"個人資料之利用期間、地區、對象及方式","titleColor":"#2a514d","items":[{"title":"利用期間","collapsible":true,"contentHtml":"<p>HOVER 將於會員關係存續期間、交易或服務處理期間、法令規定保存期間，或為完成蒐集目的所必要之期間內利用您的個人資料。</p>","titleColor":"#0f172a"},{"title":"利用地區","collapsible":true,"contentHtml":"<p>您的個人資料將主要於台灣地區使用。若因系統、雲端服務、金流、物流或其他合作服務涉及跨境資料處理，HOVER 將於必要範圍內妥善處理。</p>","titleColor":"#0f172a"},{"title":"利用對象","collapsible":true,"contentHtml":"<p>HOVER、受 HOVER 委託或合作之網站系統商、金流服務商、物流業者、電子發票服務商、客服系統、簡訊或 Email 通知服務商、行銷服務合作單位，以及依法有權調閱資料之主管機關或司法機關。</p>","titleColor":"#0f172a"},{"title":"利用方式","collapsible":true,"contentHtml":"<p>包含但不限於會員管理、訂單處理、付款確認、商品配送、退貨退款、客服聯繫、電子發票開立、活動通知、系統維護、資料分析及法令要求之必要處理。</p>","titleColor":"#0f172a"}]},{"num":"05","title":"第三方服務與資料提供","titleColor":"#2a514d","items":[{"title":"","collapsible":false,"contentHtml":"<p>為完成您的訂單、付款、配送、發票、客服與網站服務，HOVER 可能於必要範圍內，將您的個人資料提供予合作之第三方服務商。例如金流服務商、物流配送業者、電子發票平台、網站系統服務商、Email 或簡訊通知服務商等。</p><p>HOVER 不會任意出售、交換或出租您的個人資料予第三方。除非取得您的同意、為完成交易服務所必要，或依法令規定及主管機關要求，否則不會將您的個人資料用於與原蒐集目的無關之用途。</p>","titleColor":"#0f172a"}]},{"num":"06","title":"Cookie 使用說明","titleColor":"#2a514d","items":[{"title":"","collapsible":false,"contentHtml":"<p>為提供更好的網站體驗，HOVER 官方網站可能使用 Cookie 或類似技術，以記錄您的瀏覽偏好、會員登入狀態、購物車內容及網站使用情形，作為網站功能維持與服務優化之用途。</p><p>您可透過瀏覽器設定拒絕或刪除 Cookie。惟若停用 Cookie，部分功能可能無法正常使用，例如會員登入、購物車保存或結帳流程。</p>","titleColor":"#0f172a"}]},{"num":"07","title":"個人資料安全維護","titleColor":"#2a514d","items":[{"title":"","collapsible":false,"contentHtml":"<p>HOVER 將採取合理且必要之安全措施，保護您的個人資料免於遺失、遭竊、未經授權存取、竄改、洩漏或不當使用。</p><p>惟網路資料傳輸無法保證百分之百安全，請您妥善保管會員帳號、密碼及個人裝置，並避免於公共電腦或不安全網路環境中登入會員帳號或進行付款操作。</p>","titleColor":"#0f172a"}]},{"num":"08","title":"當事人權利","titleColor":"#2a514d","items":[{"title":"","collapsible":false,"contentHtml":"<p>依個人資料保護法規定，您得就 HOVER 所保有之個人資料，向我們行使以下權利：</p><ul><li>查詢或請求閱覽。</li><li>請求製給複製本。</li><li>請求補充或更正。</li><li>請求停止蒐集、處理或利用。</li><li>請求刪除。</li></ul><p>若您欲行使上述權利，可透過 HOVER 官方客服與我們聯繫。HOVER 將依相關法令及內部作業程序協助處理。</p>","titleColor":"#0f172a"}]},{"num":"09","title":"不提供資料之影響","titleColor":"#2a514d","items":[{"title":"","collapsible":false,"contentHtml":"<p>您可自由選擇是否提供個人資料。惟若您拒絕提供完成會員註冊、訂單成立、付款確認、商品配送、退貨退款、客服處理或電子發票開立所必要之資料，HOVER 可能無法提供相關服務或完成交易流程。</p>","titleColor":"#0f172a"}]},{"num":"10","title":"未成年人保護","titleColor":"#2a514d","items":[{"title":"","collapsible":false,"contentHtml":"<p>若您為未成年人，請於法定代理人閱讀、瞭解並同意本隱私權保護政策後，再使用本網站服務或進行購物。</p><p>若您已使用本網站服務或完成訂購，HOVER 將視為您已取得法定代理人之同意。</p>","titleColor":"#0f172a"}]},{"num":"11","title":"政策修改","titleColor":"#2a514d","items":[{"title":"","collapsible":false,"contentHtml":"<p>HOVER 保留依服務內容、營運需求或法令變更修改本隱私權保護政策之權利。</p><p>修改後之內容將公告於本網站，並自公告日起生效。建議您定期查閱本政策，以了解 HOVER 如何保護您的個人資料與隱私權。</p>","titleColor":"#0f172a"}]}]}}
+HPOL_LEGAL_DEFAULTS_JSON;
+    $legal = json_decode($legal_json, true);
+    if (is_array($legal)) {
+        foreach (['terms', 'privacy'] as $legal_key) {
+            if (!empty($legal[$legal_key]) && is_array($legal[$legal_key])) {
+                $cached[$legal_key] = $legal[$legal_key];
+            }
+        }
+    }
+
     return $cached;
 }
 
@@ -39,6 +52,8 @@ function hpol_page_labels(): array {
         'how-to-buy' => '如何購買',
         'returns'    => '申請退貨',
         'faq'        => '常見問題',
+        'terms'      => '服務條款',
+        'privacy'    => '隱私權保護',
     ];
 }
 
@@ -241,7 +256,7 @@ add_action('rest_api_init', function () {
     register_rest_route('hover/v1', '/policy-pages', [
         'methods' => 'GET', 'callback' => 'hpol_rest_all', 'permission_callback' => '__return_true',
     ]);
-    register_rest_route('hover/v1', '/policy-pages/(?P<page>how-to-buy|returns|faq)', [
+    register_rest_route('hover/v1', '/policy-pages/(?P<page>how-to-buy|returns|faq|terms|privacy)', [
         'methods' => 'GET', 'callback' => 'hpol_rest_one', 'permission_callback' => '__return_true',
     ]);
 });
@@ -305,7 +320,7 @@ function hpol_render_page(): void {
             <div id="hpol-editor"></div>
             <div class="hpol-foot"><?php submit_button('儲存設定', 'primary large', 'submit', false); ?></div>
         </form>
-        <form method="post" class="hpol-reset-form" onsubmit="return confirm('確定還原三頁為預設內容？');">
+        <form method="post" class="hpol-reset-form" onsubmit="return confirm('確定還原全部說明頁為預設內容？');">
             <?php wp_nonce_field('hpol_save', 'hpol_nonce'); ?>
             <input type="hidden" name="hpol_act" value="reset">
             <button type="submit" class="button-link-delete">還原預設</button>

@@ -894,28 +894,40 @@ function CartStep({
 
                   {/* Qty + subtotal */}
                   <div className="flex items-center justify-between">
-                    <div className="flex h-8 items-center border border-black bg-white">
-                      <button
-                        type="button"
-                        className="flex h-full w-8 items-center justify-center text-black transition-colors hover:bg-[#f0f0f0]"
-                        onClick={() =>
-                          onUpdateQty(it.id || it.wcProductId, it.qty - 1)
-                        }
-                      >
-                        <Minus className="h-3 w-3" />
-                      </button>
-                      <span className="w-8 text-center text-[13px] font-medium">
-                        {it.qty}
-                      </span>
-                      <button
-                        type="button"
-                        className="flex h-full w-8 items-center justify-center text-black transition-colors hover:bg-[#f0f0f0]"
-                        onClick={() =>
-                          onUpdateQty(it.id || it.wcProductId, it.qty + 1)
-                        }
-                      >
-                        <Plus className="h-3 w-3" />
-                      </button>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex h-8 items-center border border-black bg-white">
+                        <button
+                          type="button"
+                          className="flex h-full w-8 items-center justify-center text-black transition-colors hover:bg-[#f0f0f0]"
+                          onClick={() =>
+                            onUpdateQty(it.id || it.wcProductId, it.qty - 1)
+                          }
+                        >
+                          <Minus className="h-3 w-3" />
+                        </button>
+                        <span className="w-8 text-center text-[13px] font-medium">
+                          {it.qty}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={
+                            it.maxQty != null && it.qty >= it.maxQty
+                          }
+                          className={`flex h-full w-8 items-center justify-center text-black transition-colors ${
+                            it.maxQty != null && it.qty >= it.maxQty
+                              ? "cursor-not-allowed opacity-40"
+                              : "hover:bg-[#f0f0f0]"
+                          }`}
+                          onClick={() =>
+                            onUpdateQty(it.id || it.wcProductId, it.qty + 1)
+                          }
+                        >
+                          <Plus className="h-3 w-3" />
+                        </button>
+                      </div>
+                      {it.maxQty != null && it.qty >= it.maxQty && (
+                        <p className="text-[11px] text-[#c90000]">已達庫存上限</p>
+                      )}
                     </div>
                     <p className="text-[12px] text-[#555]">
                       小計 {currency(Number(it.price) * it.qty)}
@@ -1760,6 +1772,7 @@ function CartContent() {
   const storeUpdateQty = useCartStore((state) => state.updateQty);
   const storeRemoveItem = useCartStore((state) => state.removeItem);
   const storeClearCart = useCartStore((state) => state.clearCart);
+  const storeSyncStock = useCartStore((state) => state.syncStock);
 
   const [items, setItems] = useState([]);
   const [itemsLoaded, setItemsLoaded] = useState(false);
@@ -1901,6 +1914,64 @@ function CartContent() {
       setItems(storeItems);
     }
   }, [storeItems, itemsLoaded]);
+
+  // 對齊 WooCommerce 即時庫存（含禁止無庫存下單）
+  useEffect(() => {
+    if (!itemsLoaded || !storeItems?.length) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const res = await fetch("/api/stock/check", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            items: storeItems.map((it) => ({
+              wcProductId: it.wcProductId || it.id,
+              wcVariationId: it.wcVariationId,
+              qty: it.qty,
+              name: it.name,
+            })),
+          }),
+        });
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (!data?.results?.length || cancelled) return;
+
+        for (const r of data.results) {
+          const match = storeItems.find(
+            (it) =>
+              Number(it.wcProductId || it.id) === Number(r.productId) &&
+              Number(it.wcVariationId || 0) === Number(r.variationId || 0),
+          );
+          if (!match) continue;
+          storeSyncStock(match.id, {
+            manageStock: r.manageStock,
+            stockQuantity: r.stockQuantity,
+            stockStatus: r.stockStatus,
+            backorders: r.backorders,
+            maxQty: r.maxQty,
+          });
+          if (r.maxQty != null && match.qty > r.maxQty && r.maxQty > 0) {
+            storeUpdateQty(match.id, r.maxQty);
+          }
+        }
+      } catch (e) {
+        console.error("stock sync failed", e);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // 只在購物車載入／品項組成變化時重查（不跟 qty，避免每次加減都打 API）
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    itemsLoaded,
+    storeItems
+      .map((it) => `${it.wcProductId || it.id}:${it.wcVariationId || 0}`)
+      .join("|"),
+  ]);
 
   // 🚨 【護城河 3】：任何輸入狀態改變，立刻同步至 SessionStorage
   useEffect(() => {

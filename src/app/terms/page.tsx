@@ -1,7 +1,8 @@
 import { Metadata } from "next";
-import Client from "./client";
+import TermsClient from "./client";
+import { fetchPolicyPage } from "@/lib/fetchPolicyPage";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 const getSiteUrl = () => {
   if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
@@ -17,10 +18,10 @@ export const metadata: Metadata = {
   title: "服務條款｜HOVER",
   description: "查看 HOVER 網站服務條款與網站使用規範。",
   alternates: { canonical: "/terms" },
-  // Facebook App 審核需要可讀取；其餘頁面仍維持 noindex
   robots: { index: true, follow: true },
 };
 
-export default function TermsPage() {
-  return <Client />;
+export default async function TermsPage() {
+  const { data } = await fetchPolicyPage("terms");
+  return <TermsClient initial={data} />;
 }

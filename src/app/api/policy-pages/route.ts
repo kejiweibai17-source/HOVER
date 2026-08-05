@@ -8,7 +8,13 @@ import {
 
 export const dynamic = "force-dynamic";
 
-const PAGE_KEYS: PolicyPageKey[] = ["how-to-buy", "returns", "faq"];
+const PAGE_KEYS: PolicyPageKey[] = [
+  "how-to-buy",
+  "returns",
+  "faq",
+  "terms",
+  "privacy",
+];
 
 function getWordPressBase(): string {
   const base = process.env.WC_API_BASE || process.env.WORDPRESS_API_URL || "";

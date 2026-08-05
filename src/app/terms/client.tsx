@@ -1,110 +1,74 @@
 "use client";
 
-import { useState } from "react";
-import { TERMS_INTRO, TERMS_SECTIONS, type TermsSection } from "./terms-data";
+import { useEffect, useState } from "react";
+import PolicyAccordion from "@/components/hover/PolicyAccordion";
+import {
+  normalizePolicyPage,
+  type PolicyPageSettings,
+} from "@/lib/policyPagesDefaults";
 
-function AccordionItem({
-  section,
-  open,
-  onToggle,
-}: {
-  section: TermsSection;
-  open: boolean;
-  onToggle: () => void;
-}) {
+function IntroBlocks({ intro }: { intro: string }) {
+  const lines = intro
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (!lines.length) return null;
+
   return (
-    <div className="border-b border-[#d8d8d8]">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={open}
-        className="flex w-full items-center justify-between gap-4 py-5 text-left md:py-6"
-      >
-        <span className="flex items-baseline gap-3 md:gap-4">
-          <span className="text-[13px] font-light tracking-[0.08em] text-[#999] md:text-[14px]">
-            {section.num}
-          </span>
-          <span className="text-[15px] font-medium tracking-[0.06em] text-[#2a514d] md:text-[16px]">
-            {section.title}
-          </span>
-        </span>
-        <span
-          className="shrink-0 text-[22px] font-light leading-none text-[#2a514d] transition-transform duration-300"
-          aria-hidden
+    <div className="mx-auto mt-6 max-w-[640px] space-y-3 text-center md:mt-8">
+      {lines.map((p, idx) => (
+        <p
+          key={`${idx}-${p.slice(0, 24)}`}
+          className={`text-[12px] leading-[2] tracking-[0.04em] text-[#555] md:text-[13px] ${
+            idx === 1 ? "font-medium text-[#333]" : ""
+          }`}
         >
-          {open ? "−" : "+"}
-        </span>
-      </button>
-      <div
-        className={`overflow-hidden transition-all duration-300 ${
-          open ? "max-h-[3000px] pb-6 opacity-100" : "max-h-0 opacity-0"
-        }`}
-      >
-        <div className="space-y-3 bg-[#f5f5f5] px-5 py-5 md:px-6 md:py-6">
-          {section.paragraphs.slice(0, section.list ? 1 : undefined).map((p, idx) => (
-            <p
-              key={`${section.num}-p-${idx}`}
-              className="text-[12px] leading-[2] tracking-[0.04em] text-[#555] md:text-[13px]"
-            >
-              {p}
-            </p>
-          ))}
-          {section.list && (
-            <ul className="list-none space-y-2 pl-0">
-              {section.list.map((item) => (
-                <li key={item} className="flex gap-2 text-[12px] leading-[2] tracking-[0.04em] text-[#555] md:text-[13px]">
-                  <span className="shrink-0 text-[#2a514d]">・</span>
-                  <span>{item}</span>
-                </li>
-              ))}
-            </ul>
-          )}
-          {(section.list ? section.paragraphs.slice(1) : section.paragraphs).map((p, idx) => (
-            <p
-              key={`${section.num}-p-rest-${idx}`}
-              className="text-[12px] leading-[2] tracking-[0.04em] text-[#555] md:text-[13px]"
-            >
-              {p}
-            </p>
-          ))}
-        </div>
-      </div>
+          {p}
+        </p>
+      ))}
     </div>
   );
 }
 
-export default function TermsClient() {
-  const [openIndex, setOpenIndex] = useState<number | null>(null);
+export default function TermsClient({
+  initial,
+}: {
+  initial: PolicyPageSettings;
+}) {
+  const [page, setPage] = useState<PolicyPageSettings>(initial);
+
+  useEffect(() => {
+    setPage(initial);
+  }, [initial]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/policy-pages?page=terms", { cache: "no-store" })
+      .then((res) => res.json())
+      .then((json) => {
+        if (cancelled || !json?.data || json.fallback) return;
+        setPage(normalizePolicyPage(json.data, "terms"));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="relative bg-white pb-24">
       <header className="px-4 pb-8 pt-14 text-center md:pb-10 md:pt-20">
         <h1 className="font-serif text-[28px] font-medium tracking-[0.12em] text-[#2a514d] md:text-[32px]">
-          服務條款
+          {page.pageTitle || "服務條款"}
         </h1>
-        <div className="mx-auto mt-6 max-w-[640px] space-y-3 text-center md:mt-8">
-          {TERMS_INTRO.map((p, idx) => (
-            <p
-              key={p}
-              className={`text-[12px] leading-[2] tracking-[0.04em] text-[#555] md:text-[13px] ${
-                idx === 1 ? "font-medium text-[#333]" : ""
-              }`}
-            >
-              {p}
-            </p>
-          ))}
-        </div>
+        <IntroBlocks intro={page.intro || ""} />
       </header>
 
       <div className="mx-auto max-w-[760px] border-t border-[#d8d8d8] px-4 md:px-6">
-        {TERMS_SECTIONS.map((section, i) => (
-          <AccordionItem
-            key={section.num}
-            section={section}
-            open={openIndex === i}
-            onToggle={() => setOpenIndex(openIndex === i ? null : i)}
-          />
-        ))}
+        <PolicyAccordion
+          sections={page.sections}
+          contentColor={page.contentColor}
+        />
       </div>
     </div>
   );

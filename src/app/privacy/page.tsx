@@ -1,7 +1,8 @@
 import { Metadata } from "next";
-import Client from "./client";
+import PrivacyClient from "./client";
+import { fetchPolicyPage } from "@/lib/fetchPolicyPage";
 
-export const revalidate = 60;
+export const dynamic = "force-dynamic";
 
 const getSiteUrl = () => {
   if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
@@ -18,10 +19,10 @@ export const metadata: Metadata = {
   description:
     "查看 HOVER 隱私權政策，了解個人資料蒐集、使用方式及資訊安全保護。",
   alternates: { canonical: "/privacy" },
-  // Facebook App 審核需要可讀取；其餘頁面仍維持 noindex
   robots: { index: true, follow: true },
 };
 
-export default function PrivacyPage() {
-  return <Client />;
+export default async function PrivacyPage() {
+  const { data } = await fetchPolicyPage("privacy");
+  return <PrivacyClient initial={data} />;
 }

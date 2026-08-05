@@ -23,6 +23,7 @@ import {
   type ProductDefaultAttributes,
   type ProductVariation,
 } from "./productVariations";
+import { parseWooStock, type ProductStock, isInStock } from "./productStock";
 import { pickWpSizeUrl, toOptimizedImageUrl } from "./listImageUrl";
 
 export type WooImage = {
@@ -67,6 +68,9 @@ export type WooProduct = {
   variations: ProductVariation[];
   /** Woo「預設表單值」（顏色／尺寸） */
   defaultAttributes: ProductDefaultAttributes;
+  /** 簡易商品庫存（可變商品以各 variation.stock 為準） */
+  stock: ProductStock;
+  stock_status: string;
 };
 
 /** 商品列表頁使用的精簡型別（與 products/Client 相容） */
@@ -86,6 +90,8 @@ export type ListProduct = {
   colorLabels?: string[];
   /** 尺寸選項（供列表頁篩選用） */
   sizes?: string[];
+  /** 是否售完（依 Woo 庫存） */
+  soldOut?: boolean;
 };
 
 const getEnv = () => {
@@ -199,6 +205,8 @@ const mapWoo = (p: any): WooProduct => {
     colorGalleries: extractColorGalleriesFromWooProduct(p),
     variations: [],
     defaultAttributes: parseDefaultAttributes(p?.default_attributes),
+    stock: parseWooStock(p),
+    stock_status: String(p?.stock_status || "instock"),
   } as WooProduct;
 };
 
@@ -229,6 +237,10 @@ export async function fetchAllProducts() {
 export function mapWooToListProduct(product: WooProduct): ListProduct {
   const primary =
     product.categories[product.categories.length - 1] || product.categories[0];
+  const soldOut =
+    product.variations.length > 0
+      ? product.variations.every((v) => !isInStock(v.stock))
+      : !isInStock(product.stock);
   return {
     id: product.id,
     slug: product.slug,
@@ -245,6 +257,7 @@ export function mapWooToListProduct(product: WooProduct): ListProduct {
     categories: product.categories.map((c) => c.name).filter(Boolean),
     colorLabels: product.colors.map((color) => color.label).filter(Boolean),
     sizes: product.sizes,
+    soldOut,
   };
 }
 

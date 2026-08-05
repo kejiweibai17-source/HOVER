@@ -36,6 +36,15 @@ import {
   type ProductDefaultAttributes,
   type ProductVariation,
 } from "@/lib/productVariations";
+import {
+  clampAddQty,
+  getMaxOrderQty,
+  isInStock,
+  STOCK_INSUFFICIENT_MSG,
+  STOCK_SOLD_OUT_MSG,
+  type ProductStock,
+} from "@/lib/productStock";
+import { useToastStore } from "@/lib/toastStore";
 
 interface FAQ {
   question: string;
@@ -62,6 +71,7 @@ interface ProductProps {
     colorGalleries?: ColorGalleries;
     variations?: ProductVariation[];
     defaultAttributes?: ProductDefaultAttributes;
+    stock?: ProductStock;
   };
   faqs?: FAQ[];
 }
@@ -255,6 +265,9 @@ function ProductPurchasePanel({
   hasDiscount,
   adding,
   onAddToCart,
+  maxQty = null,
+  sizeStockMap = {},
+  soldOut = false,
   isMobile = false,
 }: {
   product: ProductProps["product"];
@@ -274,6 +287,11 @@ function ProductPurchasePanel({
   hasDiscount: boolean;
   adding: boolean;
   onAddToCart: () => void;
+  /** null = 不限量 */
+  maxQty?: number | null;
+  /** 各尺寸是否有庫存 */
+  sizeStockMap?: Record<string, boolean>;
+  soldOut?: boolean;
   isMobile?: boolean;
 }) {
   const sizeOptions = sizes.length
@@ -281,6 +299,10 @@ function ProductPurchasePanel({
     : isMobile
       ? MOBILE_DEFAULT_SIZES
       : DEFAULT_SIZES;
+
+  const canIncrease =
+    maxQty === null || maxQty === undefined || qty < maxQty;
+  const canAdd = Boolean(selectedSize) && !soldOut;
 
   return (
     <>
@@ -364,19 +386,23 @@ function ProductPurchasePanel({
           {sizeOptions.map((s) => {
             const active = selectedSize === s;
             const isLongLabel = s.length > 2;
+            const sizeSoldOut = sizeStockMap[s] === false;
             return (
               <button
                 key={s}
                 type="button"
-                onClick={() => setSelectedSize(s)}
-                className={`flex h-9 items-center justify-center border text-[13px] font-bold transition-all md:h-[35px] ${
+                disabled={sizeSoldOut}
+                onClick={() => !sizeSoldOut && setSelectedSize(s)}
+                className={`relative flex h-9 items-center justify-center border text-[13px] font-bold transition-all md:h-[35px] ${
                   isLongLabel
                     ? "min-w-[72px] px-3"
                     : "h-9 w-9 md:h-[35px] md:w-[35px]"
                 } ${
-                  active
-                    ? "border-[#8b8b8b] bg-[#8b8b8b] text-white"
-                    : "border-[#ccc] bg-white text-black hover:border-[#888]"
+                  sizeSoldOut
+                    ? "cursor-not-allowed border-[#ddd] bg-[#f5f5f5] text-[#aaa] line-through"
+                    : active
+                      ? "border-[#8b8b8b] bg-[#8b8b8b] text-white"
+                      : "border-[#ccc] bg-white text-black hover:border-[#888]"
                 }`}
               >
                 {s}
@@ -386,6 +412,9 @@ function ProductPurchasePanel({
         </div>
         {!selectedSize && (
           <p className="mt-2.5 text-[12px] text-[#c90000]">請選擇尺寸</p>
+        )}
+        {soldOut && selectedSize && (
+          <p className="mt-2.5 text-[12px] text-[#c90000]">{STOCK_SOLD_OUT_MSG}</p>
         )}
       </div>
 
@@ -407,27 +436,45 @@ function ProductPurchasePanel({
           </span>
           <button
             type="button"
-            onClick={() => setQty((q) => q + 1)}
-            className="flex h-full w-10 items-center justify-center text-black transition-colors hover:bg-black/5"
+            disabled={!canIncrease || soldOut}
+            onClick={() => {
+              if (!canIncrease) {
+                useToastStore.getState().show(STOCK_INSUFFICIENT_MSG);
+                return;
+              }
+              setQty((q) => q + 1);
+            }}
+            className={`flex h-full w-10 items-center justify-center text-black transition-colors ${
+              !canIncrease || soldOut
+                ? "cursor-not-allowed opacity-40"
+                : "hover:bg-black/5"
+            }`}
           >
             <Plus size={14} />
           </button>
         </div>
+        {maxQty != null && maxQty > 0 && (
+          <p className="mt-2 text-[12px] text-[#666]">庫存剩餘 {maxQty}</p>
+        )}
       </div>
 
       <button
         type="button"
         onClick={onAddToCart}
-        disabled={!selectedSize}
+        disabled={!canAdd}
         className={`flex h-10 w-full items-center justify-center text-[15px] text-white transition-all ${
           isMobile ? "mb-0" : "mb-10"
         } ${
-          selectedSize
+          canAdd
             ? "cursor-pointer bg-[#2a514d] hover:bg-[#1e3d3a]"
             : "cursor-not-allowed bg-[#9a9a9a]"
         } ${adding ? "scale-[0.98]" : ""}`}
       >
-        {adding ? "已加入購物車 ✓" : "加入購物車"}
+        {soldOut
+          ? "已售完"
+          : adding
+            ? "已加入購物車 ✓"
+            : "加入購物車"}
       </button>
     </>
   );
@@ -565,6 +612,33 @@ export default function ProductClient({ product }: ProductProps) {
     [variations, selectedColor, selectedSize],
   );
 
+  const activeStock: ProductStock | null | undefined = matchedVariation
+    ? matchedVariation.stock
+    : product.stock;
+
+  const maxQty = getMaxOrderQty(activeStock);
+  const soldOut = Boolean(selectedSize) && !isInStock(activeStock);
+
+  const sizeStockMap = useMemo(() => {
+    const map: Record<string, boolean> = {};
+    for (const size of availableSizes) {
+      if (!variations.length) {
+        map[size] = isInStock(product.stock);
+        continue;
+      }
+      const v = findMatchingVariation(variations, selectedColor, size);
+      map[size] = v ? isInStock(v.stock) : isInStock(product.stock);
+    }
+    return map;
+  }, [availableSizes, variations, selectedColor, product.stock]);
+
+  // 切換規格時把數量壓回庫存上限
+  useEffect(() => {
+    if (maxQty != null && qty > maxQty) {
+      setQty(Math.max(1, maxQty));
+    }
+  }, [maxQty, qty]);
+
   const gallery = useMemo(
     () => resolveGalleryForColor(selectedColor, colorGalleries, baseGallery),
     [selectedColor, colorGalleries, baseGallery],
@@ -602,20 +676,42 @@ export default function ProductClient({ product }: ProductProps) {
   };
 
   const handleAddToCart = () => {
-    if (!selectedSize) return;
+    if (!selectedSize || soldOut) return;
+    const cartId = `${product.id}-${selectedColor}-${selectedSize}`;
+    const existing = useCartStore
+      .getState()
+      .items.find((x) => x.id === cartId);
+    const already = existing?.qty || 0;
+    const { qty: allowed, limited, remaining } = clampAddQty(
+      qty,
+      activeStock,
+      already,
+    );
+    if (remaining <= 0 || allowed <= 0) {
+      useToastStore.getState().show(STOCK_SOLD_OUT_MSG);
+      return;
+    }
+    if (limited) {
+      useToastStore.getState().show(STOCK_INSUFFICIENT_MSG);
+    }
     setAdding(true);
     addItem({
-      id: `${product.id}-${selectedColor}-${selectedSize}`,
+      id: cartId,
       wcProductId: Number(product.id),
       wcVariationId: matchedVariation?.id,
       name: product.name,
       price: displayPrice,
       regularPrice: hasDiscount ? regularPrice : undefined,
       onSale: hasDiscount,
-      qty,
+      qty: allowed,
       image: gallery[0] || "",
       slug: productSlug,
       options: { 顏色: selectedColor, 尺寸: selectedSize },
+      manageStock: activeStock?.manageStock,
+      stockQuantity: activeStock?.stockQuantity ?? null,
+      stockStatus: activeStock?.stockStatus,
+      backorders: activeStock?.backorders,
+      maxQty,
     });
     setTimeout(() => setAdding(false), 1000);
   };
@@ -654,6 +750,9 @@ export default function ProductClient({ product }: ProductProps) {
             hasDiscount={hasDiscount}
             adding={adding}
             onAddToCart={handleAddToCart}
+            maxQty={maxQty}
+            sizeStockMap={sizeStockMap}
+            soldOut={soldOut}
           />
           <ProductDetailAccordions
             descriptionHtml={descriptionHtml}
@@ -692,6 +791,9 @@ export default function ProductClient({ product }: ProductProps) {
             hasDiscount={hasDiscount}
             adding={adding}
             onAddToCart={handleAddToCart}
+            maxQty={maxQty}
+            sizeStockMap={sizeStockMap}
+            soldOut={soldOut}
             isMobile
           />
         </div>

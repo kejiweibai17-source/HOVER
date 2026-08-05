@@ -197,13 +197,25 @@ export default function CartSheet() {
                           </span>
                           <button
                             type="button"
-                            className="flex h-full w-[32px] items-center justify-center text-black transition-colors hover:bg-black/5"
+                            disabled={
+                              it.maxQty != null && it.qty >= it.maxQty
+                            }
+                            className={`flex h-full w-[32px] items-center justify-center text-black transition-colors ${
+                              it.maxQty != null && it.qty >= it.maxQty
+                                ? "cursor-not-allowed opacity-40"
+                                : "hover:bg-black/5"
+                            }`}
                             onClick={() => inc(k)}
                             aria-label="增加數量"
                           >
                             <Plus size={12} />
                           </button>
                         </div>
+                        {it.maxQty != null && it.qty >= it.maxQty && (
+                          <p className="mt-1.5 text-[11px] text-[#c90000]">
+                            已達庫存上限
+                          </p>
+                        )}
                       </div>
                     </div>
                   </div>

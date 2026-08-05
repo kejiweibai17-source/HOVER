@@ -8,6 +8,7 @@ import {
   computeMembership,
   mapWcOrdersToLite,
 } from "@/lib/membership";
+import { checkCartStock } from "@/lib/validateCartStock";
 
 export const runtime = "nodejs";
 
@@ -158,6 +159,17 @@ export async function POST(req: Request) {
         if (!onSale) regularSubtotal += lineTotal;
       } else {
         regularSubtotal += lineTotal;
+      }
+    }
+
+    // 庫存對齊 WooCommerce（禁止無庫存下單 / 數量上限）
+    if (auth && BASE && items?.length) {
+      const stockCheck = await checkCartStock(BASE, auth, items);
+      if (!stockCheck.ok) {
+        return NextResponse.json(
+          { ok: false, message: stockCheck.message || "庫存不足" },
+          { status: 409 },
+        );
       }
     }
 
@@ -361,6 +373,23 @@ export async function POST(req: Request) {
           body: JSON.stringify(wcOrderPayload),
         });
         const wcData = await wcRes.json();
+        if (!wcRes.ok) {
+          const wcMsg = String(
+            wcData?.message || wcData?.code || "建立訂單失敗",
+          );
+          const looksLikeStock =
+            /stock|inventory|庫存|out of stock|insufficient/i.test(wcMsg) ||
+            /out_of_stock|insufficient_stock/i.test(String(wcData?.code || ""));
+          return NextResponse.json(
+            {
+              ok: false,
+              message: looksLikeStock
+                ? "庫存不足，請調整購物車數量後再試"
+                : wcMsg,
+            },
+            { status: looksLikeStock ? 409 : 400 },
+          );
+        }
         if (wcData.id) orderId = wcData.id;
       } catch (wcErr) {
         console.error("WC 訂單建立失敗", wcErr);

@@ -75,7 +75,6 @@ export function buildProductFilterOptions(
   };
 
   const parents = visible.filter(isTopLevel);
-  const listed = new Set<string>();
   const typeGroups: FilterTypeGroup[] = [];
 
   for (const parent of parents) {
@@ -95,15 +94,7 @@ export function buildProductFilterOptions(
     }
 
     if (items.length === 0) continue;
-    items.forEach((name) => listed.add(name));
     typeGroups.push({ group: parent.name.trim(), items });
-  }
-
-  const orphans = Array.from(productCatNames)
-    .filter((name) => !listed.has(name))
-    .sort((a, b) => a.localeCompare(b, "zh-Hant"));
-  if (orphans.length > 0) {
-    typeGroups.push({ group: "其他", items: orphans });
   }
 
   const colorMap = new Map<string, string>();

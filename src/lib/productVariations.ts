@@ -1,4 +1,5 @@
 import { isColorAttributeName, isSizeAttributeName } from "./productColors";
+import { parseWooStock, type ProductStock } from "./productStock";
 
 export type ProductVariation = {
   id: number;
@@ -6,6 +7,7 @@ export type ProductVariation = {
   regularPrice: number;
   salePrice: number | null;
   stockStatus: string;
+  stock: ProductStock;
   attributes: Record<string, string>;
 };
 
@@ -55,6 +57,10 @@ export function parseWooVariation(raw: {
   regular_price?: string;
   sale_price?: string;
   stock_status?: string;
+  manage_stock?: boolean | string;
+  stock_quantity?: number | string | null;
+  backorders?: string;
+  purchasable?: boolean;
   attributes?: Array<{ name?: string; option?: string }>;
 }): ProductVariation {
   const attributes: Record<string, string> = {};
@@ -69,13 +75,15 @@ export function parseWooVariation(raw: {
   const salePrice =
     saleRaw && saleRaw > 0 && saleRaw < regularPrice ? saleRaw : null;
   const price = salePrice ?? Number(raw.price || regularPrice || 0);
+  const stock = parseWooStock(raw);
 
   return {
     id: Number(raw.id),
     price,
     regularPrice,
     salePrice,
-    stockStatus: String(raw.stock_status || "instock"),
+    stockStatus: stock.stockStatus,
+    stock,
     attributes,
   };
 }
