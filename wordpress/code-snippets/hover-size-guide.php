@@ -2,16 +2,19 @@
 /**
  * HOVER — 商品尺寸指南（Size Guide）
  *
- * 使用方式（WordPress 後台）：
- * 1. 安裝並啟用插件「Code Snippets」
- * 2. Snippets → Add New → 貼上本檔內容
- * 3. Run snippet：Everywhere
+ * 使用方式（WordPress 後台 WPCode / Code Snippets）：
+ * 1. 若已有「HOVER 尺寸指南」snippet：請「編輯」舊的那筆，整份覆蓋貼上本檔 → 儲存
+ * 2. 不要再「新增」第二份同名 snippet（會造成函式重複宣告錯誤）
+ * 3. Run snippet：Everywhere → 啟用
  *
  * 後台位置：商品 → 編輯商品 → 下方「HOVER 尺寸指南」區塊
+ * （含尺寸表、量測圖、Model 實穿參考）
  *
  * REST API（給 Next.js）：
  * GET /wp-json/wc/v3/products?slug=xxx
  * 每筆商品會多欄位：hover_size_guide (object)
+ *   - models[]：{ label, height, weight, size }
+ *   - modelNote：Model 區塊備註
  *
  * Meta key：hover_size_guide（JSON）
  */
@@ -20,13 +23,24 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+/** 已載入則整段略過（函式宣告必須包在條件內，否則 WPCode 兩份 snippet 會 redeclare fatal） */
 if (defined('HSG_LOADED')) {
     return;
 }
 define('HSG_LOADED', true);
 
-const HSG_META = 'hover_size_guide';
+if (!defined('HSG_META')) {
+    define('HSG_META', 'hover_size_guide');
+}
 
+if (!function_exists('hsg_default_model_note')) :
+function hsg_default_model_note(): string
+{
+    return '※ 因個人體型、身形比例及穿著習慣不同，實際穿著效果可能有所差異，以上資訊僅供尺寸選購參考。';
+}
+endif;
+
+if (!function_exists('hsg_defaults')) :
 function hsg_defaults(): array
 {
     return [
@@ -39,16 +53,23 @@ function hsg_defaults(): array
             ['label' => '衣長', 'values' => ['65', '69.5', '72', '76.5']],
             ['label' => '袖長', 'values' => ['18.5', '20', '21.5', '24']],
         ],
-        'note'     => '※為平放測量，±2cm誤差範圍屬於製作標準範圍內。',
-        'imageUrl' => '',
+        'note'      => '※為平放測量，±2cm誤差範圍屬於製作標準範圍內。',
+        'imageUrl'  => '',
+        'models'    => [
+            ['label' => '女模 Mina', 'height' => '168 cm', 'weight' => '50 kg', 'size' => 'M'],
+            ['label' => '男模 Wilson', 'height' => '185 cm', 'weight' => '90 kg', 'size' => 'XL'],
+        ],
+        'modelNote' => hsg_default_model_note(),
     ];
 }
+endif;
 
 /**
  * 正規化已存資料。
  * 注意：不可在 rows/sizes 為空時自動灌入「衣服預設版型」，
  * 否則帽子／襪子等自訂內容會在儲存或讀取時被覆蓋。
  */
+if (!function_exists('hsg_normalize')) :
 function hsg_normalize(array $data): array
 {
     $d = hsg_defaults();
@@ -57,6 +78,12 @@ function hsg_normalize(array $data): array
     $data['unitLabel'] = sanitize_text_field($data['unitLabel'] ?? $d['unitLabel']) ?: $d['unitLabel'];
     $data['note'] = sanitize_textarea_field($data['note'] ?? $d['note']);
     $data['imageUrl'] = esc_url_raw((string) ($data['imageUrl'] ?? $data['image_url'] ?? $d['imageUrl']));
+
+    if (array_key_exists('modelNote', $data) || array_key_exists('model_note', $data)) {
+        $data['modelNote'] = sanitize_textarea_field((string) ($data['modelNote'] ?? $data['model_note'] ?? ''));
+    } else {
+        $data['modelNote'] = $d['modelNote'];
+    }
 
     $sizes = [];
     foreach (($data['sizes'] ?? []) as $size) {
@@ -88,12 +115,35 @@ function hsg_normalize(array $data): array
         $rows[] = ['label' => $label, 'values' => $values];
     }
 
+    $models = [];
+    foreach (($data['models'] ?? []) as $model) {
+        if (!is_array($model)) {
+            continue;
+        }
+        $label = sanitize_text_field((string) ($model['label'] ?? ''));
+        $height = sanitize_text_field((string) ($model['height'] ?? ''));
+        $weight = sanitize_text_field((string) ($model['weight'] ?? ''));
+        $wear_size = sanitize_text_field((string) ($model['size'] ?? ''));
+        if ($label === '' && $height === '' && $weight === '' && $wear_size === '') {
+            continue;
+        }
+        $models[] = [
+            'label'  => $label,
+            'height' => $height,
+            'weight' => $weight,
+            'size'   => $wear_size,
+        ];
+    }
+
     $data['sizes'] = $sizes;
     $data['rows'] = $rows;
+    $data['models'] = $models;
 
     return $data;
 }
+endif;
 
+if (!function_exists('hsg_get_for_product')) :
 function hsg_get_for_product(int $product_id): array
 {
     $raw = get_post_meta($product_id, HSG_META, true);
@@ -114,9 +164,13 @@ function hsg_get_for_product(int $product_id): array
         'rows'      => [],
         'note'      => hsg_defaults()['note'],
         'imageUrl'  => '',
+        'models'    => [],
+        'modelNote' => hsg_default_model_note(),
     ];
 }
+endif;
 
+if (!function_exists('hsg_is_visible')) :
 function hsg_is_visible(array $guide): bool
 {
     if (empty($guide['enabled'])) {
@@ -127,6 +181,7 @@ function hsg_is_visible(array $guide): bool
     }
     return true;
 }
+endif;
 
 /** 商品編輯頁 Meta Box */
 add_action('add_meta_boxes', function () {
@@ -148,6 +203,7 @@ add_action('admin_enqueue_scripts', function () {
     }
 });
 
+if (!function_exists('hsg_render_meta_box')) :
 function hsg_render_meta_box($post): void
 {
     $guide = hsg_get_for_product((int) $post->ID);
@@ -210,6 +266,21 @@ function hsg_render_meta_box($post): void
             </table>
         </div>
 
+        <div class="hsg-models-section">
+            <div class="hsg-models-head">
+                <div>
+                    <h4 style="margin:0 0 4px">Model 實穿參考</h4>
+                    <p class="description" style="margin:0">顯示於尺寸表下方。前台格式：女模 Mina｜168 cm／50 kg｜M</p>
+                </div>
+                <button type="button" class="button button-secondary" id="hsg-add-model">＋ 新增模特</button>
+            </div>
+            <div id="hsg-models-list" class="hsg-models-list"></div>
+            <div class="hsg-field" style="margin-top:12px">
+                <label class="hsg-label" for="hsg-model-note">Model 備註說明</label>
+                <textarea id="hsg-model-note" class="large-text" rows="2"><?php echo esc_textarea($guide['modelNote'] ?? hsg_default_model_note()); ?></textarea>
+            </div>
+        </div>
+
         <div class="hsg-preview-wrap">
             <h4 style="margin:16px 0 8px">前台預覽</h4>
             <div id="hsg-preview" class="hsg-preview"></div>
@@ -222,7 +293,9 @@ function hsg_render_meta_box($post): void
     <?php
     hsg_print_admin_styles();
 }
+endif;
 
+if (!function_exists('hsg_print_admin_styles')) :
 function hsg_print_admin_styles(): void
 {
     static $printed = false;
@@ -280,18 +353,42 @@ function hsg_print_admin_styles(): void
         .hsg-admin .hsg-preview th, .hsg-admin .hsg-preview td {
             padding: 8px 12px 8px 0; border-bottom: 1px solid #eee; text-align: left;
         }
-        .hsg-admin .hsg-preview-note { margin-top: 10px; font-size: 11px; color: #888; }
+        .hsg-admin .hsg-preview-note { margin-top: 10px; font-size: 13px; color: #555; }
+        .hsg-admin .hsg-models-section {
+            margin: 18px 0 0; padding: 14px; border: 1px solid #dcdcde;
+            border-radius: 8px; background: #fafafa;
+        }
+        .hsg-admin .hsg-models-head {
+            display: flex; align-items: flex-start; justify-content: space-between;
+            gap: 12px; margin-bottom: 12px;
+        }
+        .hsg-admin .hsg-models-list { display: flex; flex-direction: column; gap: 10px; }
+        .hsg-admin .hsg-model-row {
+            display: grid; grid-template-columns: 1.4fr 1fr 1fr 0.7fr auto;
+            gap: 8px; align-items: end; padding: 10px; border: 1px solid #e2e2e2;
+            border-radius: 6px; background: #fff;
+        }
+        .hsg-admin .hsg-model-row .hsg-field { gap: 4px; }
+        .hsg-admin .hsg-model-row .hsg-label { font-size: 12px; font-weight: 600; color: #50575e; }
+        .hsg-admin .hsg-preview-models { margin-top: 16px; padding-top: 14px; border-top: 1px solid #e5e5e5; }
+        .hsg-admin .hsg-preview-models h5 { margin: 0 0 8px; font-size: 14px; }
+        .hsg-admin .hsg-preview-models ul { margin: 0; padding: 0; list-style: none; }
+        .hsg-admin .hsg-preview-models li { margin: 0 0 6px; font-size: 13px; color: #555; }
         .hsg-admin .hsg-muted { color: #888; font-size: 12px; padding: 16px; }
         @media (max-width: 782px) {
             .hsg-admin .hsg-grid-2 { grid-template-columns: 1fr; }
             .hsg-admin .hsg-image-controls { grid-template-columns: 1fr; }
+            .hsg-admin .hsg-model-row { grid-template-columns: 1fr 1fr; }
+            .hsg-admin .hsg-models-head { flex-direction: column; }
         }
     </style>
     <?php
 }
+endif;
 
 add_action('admin_footer', 'hsg_admin_footer_script');
 
+if (!function_exists('hsg_admin_footer_script')) :
 function hsg_admin_footer_script(): void
 {
     $screen = function_exists('get_current_screen') ? get_current_screen() : null;
@@ -321,8 +418,24 @@ function hsg_admin_footer_script(): void
         } else if (!hasSavedRows && !hasSavedSizes) {
             state.enabled = $('#hsg-enabled').is(':checked');
         }
+        if (!Array.isArray(state.models)) state.models = [];
+        if (typeof state.modelNote !== 'string') {
+            state.modelNote = defaults.modelNote || '';
+        }
+        if (!$('#hsg-model-note').val() && state.modelNote) {
+            $('#hsg-model-note').val(state.modelNote);
+        }
 
         function esc(s){ return $('<div/>').text(s || '').html(); }
+
+        function formatModelLine(model){
+            var parts = [];
+            if (model.label) parts.push(model.label);
+            var hw = [model.height, model.weight].filter(Boolean).join('／');
+            if (hw) parts.push(hw);
+            if (model.size) parts.push(model.size);
+            return parts.join('｜');
+        }
 
         function renderImagePreview(){
             var url = String($('#hsg-image-url').val() || '').trim();
@@ -334,11 +447,34 @@ function hsg_admin_footer_script(): void
             $preview.html('<img src="'+esc(url)+'" alt="尺寸量測圖片預覽">').show();
         }
 
+        function renderModels(){
+            var $list = $('#hsg-models-list').empty();
+            if (!state.models || !state.models.length) {
+                $list.html('<p class="description" style="margin:0">尚未新增模特。點「＋ 新增模特」開始填寫。</p>');
+                return;
+            }
+            state.models.forEach(function(model, i){
+                var html = '<div class="hsg-model-row" data-model-index="'+i+'">';
+                html += '<div class="hsg-field"><label class="hsg-label">名稱</label>';
+                html += '<input type="text" class="regular-text hsg-model-label" data-index="'+i+'" value="'+esc(model.label)+'" placeholder="女模 Mina"></div>';
+                html += '<div class="hsg-field"><label class="hsg-label">身高</label>';
+                html += '<input type="text" class="regular-text hsg-model-height" data-index="'+i+'" value="'+esc(model.height)+'" placeholder="168 cm"></div>';
+                html += '<div class="hsg-field"><label class="hsg-label">體重</label>';
+                html += '<input type="text" class="regular-text hsg-model-weight" data-index="'+i+'" value="'+esc(model.weight)+'" placeholder="50 kg"></div>';
+                html += '<div class="hsg-field"><label class="hsg-label">穿著尺寸</label>';
+                html += '<input type="text" class="regular-text hsg-model-size" data-index="'+i+'" value="'+esc(model.size)+'" placeholder="M"></div>';
+                html += '<button type="button" class="button-link-delete hsg-remove-model" data-index="'+i+'">刪除</button>';
+                html += '</div>';
+                $list.append(html);
+            });
+        }
+
         function syncPayload(){
             state.enabled = $('#hsg-enabled').is(':checked');
             state.unitLabel = $('#hsg-unit-label').val();
             state.note = $('#hsg-note').val();
             state.imageUrl = $('#hsg-image-url').val();
+            state.modelNote = $('#hsg-model-note').val();
             $('#hsg-payload').val(JSON.stringify(state));
             renderPreview();
             renderImagePreview();
@@ -371,6 +507,7 @@ function hsg_admin_footer_script(): void
                 $tbody.append(tr);
             });
 
+            renderModels();
             syncPayload();
         }
 
@@ -399,6 +536,21 @@ function hsg_admin_footer_script(): void
             if (state.note) {
                 html += '<p class="hsg-preview-note">'+esc(state.note)+'</p>';
             }
+            var models = (state.models || []).filter(function(m){
+                return m && (m.label || m.height || m.weight || m.size);
+            });
+            if (models.length) {
+                html += '<div class="hsg-preview-models">';
+                html += '<h5>Model 實穿參考</h5><ul>';
+                models.forEach(function(m){
+                    html += '<li>'+esc(formatModelLine(m))+'</li>';
+                });
+                html += '</ul>';
+                if (state.modelNote) {
+                    html += '<p class="hsg-preview-note">'+esc(state.modelNote)+'</p>';
+                }
+                html += '</div>';
+            }
             if (state.imageUrl) {
                 html += '<div style="margin-top:12px;text-align:center">';
                 html += '<img src="'+esc(state.imageUrl)+'" alt="尺寸量測圖片" style="max-width:100%;max-height:260px;width:auto;height:auto">';
@@ -412,6 +564,7 @@ function hsg_admin_footer_script(): void
             state.unitLabel = $('#hsg-unit-label').val();
             state.note = $('#hsg-note').val();
             state.imageUrl = $('#hsg-image-url').val();
+            state.modelNote = $('#hsg-model-note').val();
 
             var sizes = [];
             $('.hsg-size-input').each(function(){
@@ -421,7 +574,6 @@ function hsg_admin_footer_script(): void
 
             var rows = [];
             $('#hsg-tbody tr').each(function(){
-                var rowIndex = $(this).data('row-index');
                 var label = $(this).find('.hsg-row-label').val();
                 var values = [];
                 $(this).find('.hsg-cell').each(function(){
@@ -430,26 +582,38 @@ function hsg_admin_footer_script(): void
                 rows.push({ label: label, values: values });
             });
             state.rows = rows;
+
+            var models = [];
+            $('.hsg-model-row').each(function(){
+                models.push({
+                    label: $(this).find('.hsg-model-label').val() || '',
+                    height: $(this).find('.hsg-model-height').val() || '',
+                    weight: $(this).find('.hsg-model-weight').val() || '',
+                    size: $(this).find('.hsg-model-size').val() || ''
+                });
+            });
+            state.models = models;
         }
 
-        $('#hsg-enabled, #hsg-unit-label, #hsg-note, #hsg-image-url').on('change input', function(){
+        $('#hsg-enabled, #hsg-unit-label, #hsg-note, #hsg-image-url, #hsg-model-note').on('change input', function(){
             readFromDom();
             syncPayload();
         });
 
-        $(document).on('input change', '.hsg-size-input, .hsg-row-label, .hsg-cell', function(){
+        $(document).on('input change', '.hsg-size-input, .hsg-row-label, .hsg-cell, .hsg-model-label, .hsg-model-height, .hsg-model-weight, .hsg-model-size', function(){
             readFromDom();
             syncPayload();
         });
 
         $('#hsg-apply-template').on('click', function(){
-            if (!confirm('套用預設版型會覆蓋目前表格內容，確定繼續？')) return;
+            if (!confirm('套用預設版型會覆蓋目前表格與 Model 內容，確定繼續？')) return;
             state = $.extend(true, {}, defaults);
             state.enabled = true;
             $('#hsg-enabled').prop('checked', true);
             $('#hsg-unit-label').val(state.unitLabel);
             $('#hsg-note').val(state.note);
             $('#hsg-image-url').val(state.imageUrl || '');
+            $('#hsg-model-note').val(state.modelNote || '');
             renderTable();
         });
 
@@ -492,6 +656,22 @@ function hsg_admin_footer_script(): void
             renderTable();
         });
 
+        $('#hsg-add-model').on('click', function(){
+            readFromDom();
+            if (!Array.isArray(state.models)) state.models = [];
+            state.models.push({ label: '', height: '', weight: '', size: '' });
+            renderModels();
+            syncPayload();
+        });
+
+        $(document).on('click', '.hsg-remove-model', function(){
+            var idx = parseInt($(this).data('index'), 10);
+            readFromDom();
+            state.models.splice(idx, 1);
+            renderModels();
+            syncPayload();
+        });
+
         $(document).on('click', '.hsg-remove-size', function(){
             var idx = parseInt($(this).data('size-index'), 10);
             readFromDom();
@@ -523,6 +703,7 @@ function hsg_admin_footer_script(): void
     </script>
     <?php
 }
+endif;
 
 /** 儲存商品 Meta */
 add_action('woocommerce_process_product_meta', function ($post_id) {

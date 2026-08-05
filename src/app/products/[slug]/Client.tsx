@@ -20,6 +20,7 @@ import {
   DEFAULT_PRODUCT_COLORS,
   type ProductColor,
 } from "@/lib/productColors";
+import { hasRichHtmlContent, sanitizeRichHtml } from "@/lib/utils";
 import {
   resolveGalleryForColor,
   type ColorGalleries,
@@ -433,26 +434,51 @@ function ProductPurchasePanel({
 }
 
 function ProductDetailAccordions({
-  cleanDescription,
+  descriptionHtml,
   sizeGuide,
   washingInstructions,
   isMobile = false,
 }: {
-  cleanDescription: string;
+  descriptionHtml: string;
   sizeGuide?: SizeGuide;
   washingInstructions?: WashingInstructions;
   isMobile?: boolean;
 }) {
+  const hasDescription = hasRichHtmlContent(descriptionHtml);
+
   return (
     <div className={isMobile ? "border-b border-[#d8d8d8]" : undefined}>
       <Accordion title="商品詳情" defaultOpen>
-        <div className="space-y-3 text-[14px] leading-[1.7] tracking-[0.06em] text-black">
-          {cleanDescription ? (
-            cleanDescription.split("\n").map((line, i) => <p key={i}>{line}</p>)
-          ) : (
-            <p className="text-[#888]">尚無商品說明，請於 WooCommerce 商品「描述」欄位填寫。</p>
-          )}
-        </div>
+        {hasDescription ? (
+          <div
+            className={[
+              "product-description text-[14px] leading-[1.7] tracking-[0.06em] text-black",
+              "[&_p]:mb-3 [&_p:last-child]:mb-0",
+              // 後台連續 Enter 的空白段：保留行高，看起來像空行
+              "[&_p:has(>br:only-child)]:mb-0 [&_p:has(>br:only-child)]:min-h-[1.7em]",
+              "[&_br]:block",
+              "[&_strong]:font-bold [&_b]:font-bold",
+              "[&_em]:italic [&_i]:italic",
+              "[&_ul]:my-3 [&_ul]:list-disc [&_ul]:space-y-1.5 [&_ul]:pl-5",
+              "[&_ol]:my-3 [&_ol]:list-decimal [&_ol]:space-y-1.5 [&_ol]:pl-5",
+              "[&_li]:leading-[1.7]",
+              "[&_h1]:mb-3 [&_h1]:mt-4 [&_h1]:text-[22px] [&_h1]:font-bold [&_h1]:leading-snug [&_h1]:tracking-[0.04em] [&_h1]:text-[#111]",
+              "[&_h2]:mb-3 [&_h2]:mt-4 [&_h2]:text-[18px] [&_h2]:font-bold [&_h2]:leading-snug [&_h2]:tracking-[0.04em] [&_h2]:text-[#111]",
+              "[&_h3]:mb-2 [&_h3]:mt-3 [&_h3]:text-[16px] [&_h3]:font-bold [&_h3]:leading-snug [&_h3]:tracking-[0.04em] [&_h3]:text-[#222]",
+              "[&_h4]:mb-2 [&_h4]:mt-3 [&_h4]:text-[15px] [&_h4]:font-bold [&_h4]:text-[#222]",
+              "[&_h5]:mb-2 [&_h5]:mt-2 [&_h5]:text-[14px] [&_h5]:font-bold [&_h5]:text-[#333]",
+              "[&_h6]:mb-2 [&_h6]:mt-2 [&_h6]:text-[13px] [&_h6]:font-bold [&_h6]:text-[#333]",
+              "[&_blockquote]:my-3 [&_blockquote]:border-l-2 [&_blockquote]:border-[#ccc] [&_blockquote]:pl-3 [&_blockquote]:text-[#555]",
+              "[&_a]:underline [&_a]:underline-offset-2 [&_a]:transition-opacity hover:[&_a]:opacity-70",
+              "[&_hr]:my-4 [&_hr]:border-[#e5e5e5]",
+            ].join(" ")}
+            dangerouslySetInnerHTML={{ __html: descriptionHtml }}
+          />
+        ) : (
+          <p className="text-[14px] text-[#888]">
+            尚無商品說明，請於 WooCommerce 商品「描述」欄位填寫。
+          </p>
+        )}
       </Accordion>
 
       {washingInstructions && isWashingInstructionsVisible(washingInstructions) && (
@@ -594,9 +620,9 @@ export default function ProductClient({ product }: ProductProps) {
     setTimeout(() => setAdding(false), 1000);
   };
 
-  const cleanDescription = product.description
-    ? product.description.replace(/<[^>]+>/g, "").trim()
-    : product.shortDescription?.replace(/<[^>]+>/g, "").trim() || "";
+  const descriptionHtml = sanitizeRichHtml(
+    product.description || product.shortDescription || "",
+  );
 
   const sizeGuide = product.sizeGuide;
   const washingInstructions = product.washingInstructions;
@@ -630,7 +656,7 @@ export default function ProductClient({ product }: ProductProps) {
             onAddToCart={handleAddToCart}
           />
           <ProductDetailAccordions
-            cleanDescription={cleanDescription}
+            descriptionHtml={descriptionHtml}
             sizeGuide={sizeGuide}
             washingInstructions={washingInstructions}
           />
@@ -672,7 +698,7 @@ export default function ProductClient({ product }: ProductProps) {
 
         <div className="mt-6 px-5">
           <ProductDetailAccordions
-            cleanDescription={cleanDescription}
+            descriptionHtml={descriptionHtml}
             sizeGuide={sizeGuide}
             washingInstructions={washingInstructions}
             isMobile

@@ -3,6 +3,17 @@ export type SizeGuideRow = {
   values: string[];
 };
 
+export type SizeGuideModel = {
+  /** 顯示名稱，如「女模 Mina」 */
+  label: string;
+  /** 身高，如「168 cm」 */
+  height: string;
+  /** 體重，如「50 kg」 */
+  weight: string;
+  /** 穿著尺寸，如「M」 */
+  size: string;
+};
+
 export type SizeGuide = {
   enabled: boolean;
   unitLabel: string;
@@ -10,7 +21,14 @@ export type SizeGuide = {
   rows: SizeGuideRow[];
   note: string;
   imageUrl: string;
+  /** Model 實穿參考 */
+  models: SizeGuideModel[];
+  /** Model 區塊備註 */
+  modelNote: string;
 };
+
+export const DEFAULT_MODEL_NOTE =
+  "※ 因個人體型、身形比例及穿著習慣不同，實際穿著效果可能有所差異，以上資訊僅供尺寸選購參考。";
 
 export const DEFAULT_SIZE_GUIDE: SizeGuide = {
   enabled: true,
@@ -24,6 +42,11 @@ export const DEFAULT_SIZE_GUIDE: SizeGuide = {
   ],
   note: "※為平放測量，±2cm誤差範圍屬於製作標準範圍內。",
   imageUrl: "/images/量測.png",
+  models: [
+    { label: "女模 Mina", height: "168 cm", weight: "50 kg", size: "M" },
+    { label: "男模 Wilson", height: "185 cm", weight: "90 kg", size: "XL" },
+  ],
+  modelNote: DEFAULT_MODEL_NOTE,
 };
 
 function parseBool(value: unknown, fallback = false): boolean {
@@ -39,28 +62,60 @@ function padValues(values: string[], sizeCount: number): string[] {
   return next.slice(0, sizeCount);
 }
 
+function normalizeModels(raw: unknown): SizeGuideModel[] {
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item) => {
+      if (!item || typeof item !== "object") return null;
+      const o = item as Record<string, unknown>;
+      const label = String(o.label || "").trim();
+      const height = String(o.height || "").trim();
+      const weight = String(o.weight || "").trim();
+      const size = String(o.size || "").trim();
+      if (!label && !height && !weight && !size) return null;
+      return { label, height, weight, size };
+    })
+    .filter((m): m is SizeGuideModel => !!m);
+}
+
 export function isSizeGuideVisible(guide: SizeGuide | null | undefined): boolean {
   if (!guide?.enabled) return false;
   if (!guide.sizes.length || !guide.rows.length) return false;
   return guide.rows.some((row) => row.label.trim());
 }
 
+export function hasModelReferences(guide: SizeGuide | null | undefined): boolean {
+  return !!guide?.models?.some(
+    (m) => m.label.trim() || m.height.trim() || m.weight.trim() || m.size.trim(),
+  );
+}
+
+/** 前台顯示：女模 Mina｜168 cm／50 kg｜M */
+export function formatModelLine(model: SizeGuideModel): string {
+  const parts = [
+    model.label.trim(),
+    [model.height, model.weight].filter(Boolean).join("／"),
+    model.size.trim(),
+  ].filter(Boolean);
+  return parts.join("｜");
+}
+
 export function normalizeSizeGuide(raw: unknown): SizeGuide {
   const d = DEFAULT_SIZE_GUIDE;
-  if (!raw) return { ...d, enabled: false };
+  if (!raw) return { ...d, enabled: false, models: [], modelNote: d.modelNote };
 
   let parsed: Record<string, unknown> | null = null;
   if (typeof raw === "string") {
     try {
       parsed = JSON.parse(raw) as Record<string, unknown>;
     } catch {
-      return { ...d, enabled: false };
+      return { ...d, enabled: false, models: [], modelNote: d.modelNote };
     }
   } else if (typeof raw === "object") {
     parsed = raw as Record<string, unknown>;
   }
 
-  if (!parsed) return { ...d, enabled: false };
+  if (!parsed) return { ...d, enabled: false, models: [], modelNote: d.modelNote };
 
   const sizes = Array.isArray(parsed.sizes)
     ? (parsed.sizes as string[])
@@ -93,6 +148,13 @@ export function normalizeSizeGuide(raw: unknown): SizeGuide {
         }))
       : rows;
 
+  const models = normalizeModels(parsed.models);
+  const modelNoteRaw = parsed.modelNote ?? parsed.model_note;
+  const modelNote =
+    modelNoteRaw === undefined || modelNoteRaw === null
+      ? d.modelNote
+      : String(modelNoteRaw).trim();
+
   return {
     enabled: parseBool(parsed.enabled, false),
     unitLabel:
@@ -104,6 +166,8 @@ export function normalizeSizeGuide(raw: unknown): SizeGuide {
     imageUrl: String(
       parsed.imageUrl || parsed.image_url || d.imageUrl,
     ).trim() || d.imageUrl,
+    models,
+    modelNote,
   };
 }
 
@@ -120,5 +184,5 @@ export function extractSizeGuideFromWooProduct(product: {
     return normalizeSizeGuide(meta.value);
   }
 
-  return { ...DEFAULT_SIZE_GUIDE, enabled: false };
+  return { ...DEFAULT_SIZE_GUIDE, enabled: false, models: [] };
 }

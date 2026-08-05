@@ -6,6 +6,7 @@ import { DEFAULT_SIZE_GUIDE } from "@/lib/sizeGuide";
 import { DEFAULT_WASHING_INSTRUCTIONS } from "@/lib/washingInstructions";
 import { DEFAULT_PRODUCT_COLORS } from "@/lib/productColors";
 import { pickWpSizeUrl } from "@/lib/listImageUrl";
+import { stripHtmlToText } from "@/lib/utils";
 
 export const revalidate = 60;
 
@@ -116,11 +117,7 @@ export async function generateMetadata({ params }) {
     categories.length > 0 ? categories.slice(0, 2).join("、") : "服飾";
 
   const rawDesc = p.short_description || p.description || "";
-  const cleanDesc = rawDesc
-    .replace(/<[^>]+>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 150);
+  const cleanDesc = stripHtmlToText(rawDesc).replace(/\s+/g, " ").slice(0, 150);
   const title =
     resolveSeoTemplate(p.seoTitle, p.name) || `${p.name}｜HOVER`;
   const descText =
@@ -237,9 +234,7 @@ export default async function ProductPage({ params }) {
       : [];
 
   const pureDescription = woo
-    ? (woo.short_description || woo.description || "")
-        .replace(/<[^>]+>/g, " ")
-        .trim()
+    ? stripHtmlToText(woo.short_description || woo.description || "")
     : "";
   const finalPrice = woo ? Number(woo.price || 0) : 0;
   const availability =
