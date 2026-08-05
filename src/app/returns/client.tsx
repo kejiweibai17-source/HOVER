@@ -32,16 +32,28 @@ export default function ReturnsClient({
     };
   }, []);
 
+  const introLines = (page.intro || "")
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
   return (
     <div className="relative bg-white pb-24">
       <header className="px-4 pb-8 pt-14 text-center md:pb-10 md:pt-20">
         <h1 className="font-serif text-[28px] font-medium tracking-[0.12em] text-[#2a514d] md:text-[32px]">
           {page.pageTitle || "申請退貨"}
         </h1>
-        {page.intro ? (
-          <p className="mx-auto mt-6 max-w-[560px] text-[12px] leading-[2] tracking-[0.04em] text-[#374151] md:text-[13px]">
-            {page.intro}
-          </p>
+        {introLines.length > 0 ? (
+          <div className="mx-auto mt-6 max-w-[560px] space-y-3">
+            {introLines.map((line, idx) => (
+              <p
+                key={`${idx}-${line.slice(0, 24)}`}
+                className="text-[12px] leading-[2] tracking-[0.04em] text-[#374151] md:text-[13px]"
+              >
+                {line}
+              </p>
+            ))}
+          </div>
         ) : null}
       </header>
 

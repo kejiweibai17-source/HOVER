@@ -103,12 +103,27 @@ const RICH_HTML_ALLOWED = new Set([
   "div",
 ]);
 
-function escapeHtmlText(text: string): string {
+const BLOCK_TAG_START =
+  /^<(p|div|ul|ol|li|table|thead|tbody|tfoot|tr|td|th|h[1-6]|blockquote|pre|figure|figcaption|section|article|address|dl|dt|dd|hr)\b/i;
+
+/**
+ * 仿 WordPress wpautop：空行 → 段落、單一換行 → <br />。
+ * 後台編輯器存回的內容常是「段落已被還原成換行」的格式，直接輸出會整段黏在一起。
+ */
+export function autoParagraphHtml(html: string | null | undefined): string {
+  const text = String(html || "").replace(/\r\n?/g, "\n");
+  if (!text.trim()) return "";
+
   return text
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
+    .split(/\n{2,}/)
+    .map((chunk) => {
+      const trimmed = chunk.trim();
+      if (!trimmed) return "";
+      if (BLOCK_TAG_START.test(trimmed)) return trimmed;
+      return `<p>${trimmed.replace(/\n/g, "<br />")}</p>`;
+    })
+    .filter(Boolean)
+    .join("");
 }
 
 /**
@@ -180,16 +195,8 @@ export function sanitizeRichHtml(html: string | null | undefined): string {
     "",
   );
 
-  // 純文字（無任何區塊標籤）但有換行 → 轉成段落，避免前台黏成一行
-  const hasBlock = /<(p|div|ul|ol|li|h[1-6]|br)\b/i.test(out);
-  if (!hasBlock && /[\n\r]/.test(out)) {
-    out = out
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line && !/^(&nbsp;|&#160;|\u00a0)+$/i.test(line))
-      .map((line) => `<p>${escapeHtmlText(line)}</p>`)
-      .join("");
-  }
+  // 後台存回的換行式段落 → 還原成 <p>，避免前台黏成一整段
+  out = autoParagraphHtml(out);
 
   return out.trim();
 }

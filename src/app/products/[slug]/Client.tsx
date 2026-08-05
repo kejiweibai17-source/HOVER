@@ -453,9 +453,6 @@ function ProductPurchasePanel({
             <Plus size={14} />
           </button>
         </div>
-        {maxQty != null && maxQty > 0 && (
-          <p className="mt-2 text-[12px] text-[#666]">庫存剩餘 {maxQty}</p>
-        )}
       </div>
 
       <button

@@ -216,25 +216,72 @@ function hop_phone(WC_Order $order): string
 }
 
 /**
- * 配送方式：優先取訂單 shipping_lines 的 method_title（即結帳寫入的標題），
- * 若有超商門市名稱一併附上。
+ * 依結帳選擇的物流代碼／標題，判斷超商品牌。
+ * 回傳前台一致的說法（7-11超商僅取貨／全家超商僅取貨…），不顯示金流商名稱。
  */
-function hop_shipping_label(WC_Order $order): string
+function hop_cvs_label(string $method_id, string $title, string $store): ?string
 {
-    $titles = [];
+    $brands = [
+        '7-11超商僅取貨'   => ['cvs_711', '7-eleven', '7-11', '統一超商'],
+        '全家超商僅取貨'   => ['cvs_family', 'familymart', '全家'],
+        '萊爾富超商僅取貨' => ['cvs_hilife', 'hilife', 'hi-life', '萊爾富'],
+        'OK超商僅取貨'     => ['cvs_ok', 'okmart', 'ok超商'],
+    ];
+
+    // 物流代碼最可靠，其次是訂單標題，最後才看門市名稱（門市代號可能誤判）
+    foreach ([$method_id, $title, $store] as $source) {
+        $haystack = strtolower(trim($source));
+        if ($haystack === '') {
+            continue;
+        }
+        foreach ($brands as $label => $needles) {
+            foreach ($needles as $needle) {
+                if (str_contains($haystack, $needle)) {
+                    return $label;
+                }
+            }
+        }
+    }
+
+    return null;
+}
+
+/**
+ * 配送方式：自動對應結帳時選擇的運送方式。
+ * 超商取貨統一顯示「◯◯超商僅取貨」，宅配則沿用訂單標題（去掉物流商前綴）。
+ *
+ * @param bool $with_store 是否附上取貨門市（揀貨單用）
+ */
+function hop_shipping_label(WC_Order $order, bool $with_store = false): string
+{
+    $method_id = '';
+    $titles    = [];
     foreach ($order->get_shipping_methods() as $ship) {
         $title = trim((string) $ship->get_method_title());
         if ($title !== '') {
             $titles[] = $title;
         }
+        if ($method_id === '') {
+            $method_id = (string) $ship->get_method_id();
+        }
     }
-    $label = $titles ? implode('、', $titles) : trim((string) $order->get_shipping_method());
+    $title = $titles ? implode('、', $titles) : trim((string) $order->get_shipping_method());
 
     $store = (string) $order->get_meta('_shipping_cvs_store_name');
     if ($store === '') {
         $store = (string) $order->get_meta('_shipping_cvs_store_ID');
     }
-    if ($store !== '' && $label !== '' && !str_contains($label, $store)) {
+
+    $label = hop_cvs_label($method_id, $title, $store);
+    if ($label === null) {
+        // 宅配等其他方式：去掉「綠界物流／綠界科技」之類的物流商前綴
+        $label = trim((string) preg_replace('/^(綠界(物流|科技)?|ECPay|ecpay)\s*/u', '', $title));
+        if ($label === '') {
+            $label = $title;
+        }
+    }
+
+    if ($with_store && $store !== '' && !str_contains($label, $store)) {
         $label .= '（' . $store . '）';
     }
 
@@ -279,7 +326,8 @@ function hop_output_document(WC_Order $order, string $doc): void
 
     $receiver = hop_receiver_name($order);
     $phone    = hop_phone($order);
-    $shipping = hop_shipping_label($order);
+    // 訂單明細與揀貨單都顯示超商品牌及取貨門市
+    $shipping = hop_shipping_label($order, true);
     $total_amount = wp_strip_all_tags(wc_price($order->get_total(), [
         'currency' => $order->get_currency(),
     ]));
@@ -412,8 +460,8 @@ function hop_output_document(WC_Order $order, string $doc): void
     }
     .doc-footer .brand-logo {
         display: block;
-        width: 220px;
-        max-width: 48%;
+        width: 132px;
+        max-width: 30%;
         height: auto;
         margin: 0 auto;
     }

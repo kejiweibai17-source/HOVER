@@ -90,7 +90,10 @@ function hpol_kses_content(string $content): string {
 
 function hpol_normalize_item(array $item): ?array {
     $title = sanitize_text_field($item['title'] ?? '');
-    $content = hpol_kses_content((string) ($item['contentHtml'] ?? $item['content'] ?? ''));
+    // 編輯器回傳的段落是空行格式（wp.editor.getContent 會把 <p> 還原成換行），
+    // 先 wpautop 還原段落，前台才不會整段黏在一起。
+    $raw_content = (string) ($item['contentHtml'] ?? $item['content'] ?? '');
+    $content = hpol_kses_content(wpautop($raw_content));
 
     // legacy paragraphs
     if ($content === '' && (isset($item['paragraphs']) || isset($item['list']))) {
@@ -400,7 +403,8 @@ function hpol_admin_footer_script(): void {
             editorIds.forEach(function(id){
                 wp.editor.initialize(id, {
                     tinymce: {
-                        wpautop: true,
+                        // 關閉 wpautop：存檔前不跑 removep，按 Enter 的空行才不會被吃掉
+                        wpautop: false,
                         plugins: 'lists,link,paste,textcolor,colorpicker,wordpress,wplink',
                         toolbar1: 'formatselect,bold,italic,forecolor,bullist,numlist,link,unlink,undo,redo,removeformat',
                         height: 180

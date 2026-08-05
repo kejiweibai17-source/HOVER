@@ -1,6 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+
+import { sanitizeRichHtml } from "@/lib/utils";
 
 export type PolicyInnerItem = {
   title: string;
@@ -17,8 +19,21 @@ export type PolicySection = {
   items: PolicyInnerItem[];
 };
 
-const richClass =
-  "policy-rich-content space-y-3 text-[12px] leading-[2] tracking-[0.04em] md:text-[13px] [&_a]:underline [&_a]:underline-offset-2 [&_li]:my-1 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:m-0 [&_strong]:font-bold [&_ul]:list-disc [&_ul]:pl-5";
+const richClass = [
+  "policy-rich-content text-[12px] leading-[2] tracking-[0.04em] md:text-[13px]",
+  "[&_p]:mb-3 [&_p:last-child]:mb-0",
+  // 後台連續 Enter 的空白段：保留高度當作空行
+  "[&_p:has(>br:only-child)]:mb-0 [&_p:has(>br:only-child)]:min-h-[1.6em]",
+  "[&_a]:underline [&_a]:underline-offset-2",
+  "[&_strong]:font-bold [&_em]:italic",
+  "[&_ul]:my-3 [&_ul]:list-disc [&_ul]:pl-5",
+  "[&_ol]:my-3 [&_ol]:list-decimal [&_ol]:pl-5",
+  "[&_li]:my-1",
+  "[&_h1]:mb-2 [&_h1]:mt-3 [&_h1]:text-[15px] [&_h1]:font-bold",
+  "[&_h2]:mb-2 [&_h2]:mt-3 [&_h2]:text-[14px] [&_h2]:font-bold",
+  "[&_h3]:mb-2 [&_h3]:mt-3 [&_h3]:text-[13px] [&_h3]:font-bold",
+  "[&_*:last-child]:mb-0",
+].join(" ");
 
 function hasHtmlText(html?: string): boolean {
   return Boolean(html && html.replace(/<[^>]+>/g, "").trim());
@@ -31,12 +46,13 @@ function RichHtml({
   html: string;
   contentColor: string;
 }) {
-  if (!hasHtmlText(html)) return null;
+  const safeHtml = useMemo(() => sanitizeRichHtml(html), [html]);
+  if (!hasHtmlText(safeHtml)) return null;
   return (
     <div
       className={richClass}
       style={{ color: contentColor }}
-      dangerouslySetInnerHTML={{ __html: html }}
+      dangerouslySetInnerHTML={{ __html: safeHtml }}
     />
   );
 }
@@ -98,7 +114,7 @@ function InnerItemBlock({
       </button>
       <div
         className={`overflow-hidden bg-[#ececec] transition-all duration-300 ${
-          open ? "max-h-[1200px] opacity-100" : "max-h-0 opacity-0"
+          open ? "max-h-[4000px] opacity-100" : "max-h-0 opacity-0"
         }`}
       >
         <div className="px-4 pb-4 pt-1 md:px-5 md:pb-5">
