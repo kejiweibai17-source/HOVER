@@ -73,7 +73,7 @@ export default function CategoryBannerBlock({ banner, viewportFill = false }) {
         >
           {showTitle ? (
             <h1
-              className="font-semibold uppercase"
+              className="font-semibold"
               style={{
                 color: banner.title.color,
                 fontSize: `${banner.title.fontSize}px`,

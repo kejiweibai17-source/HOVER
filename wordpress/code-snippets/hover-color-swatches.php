@@ -96,7 +96,8 @@ function hcsw_is_color_attribute_name(string $name): bool
 function hcsw_sanitize_hex(string $hex, string $fallback = '#cccccc'): string
 {
     $hex = trim($hex);
-    if (preg_match('/^#[0-9a-f]{3,8}$/i', $hex)) {
+    // 只接受標準 3 / 4 / 6 / 8 碼，拒絕 #fb20000 這類非法值
+    if (preg_match('/^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i', $hex)) {
         return strtolower($hex);
     }
     return $fallback;
@@ -235,19 +236,120 @@ function hcsw_get_attribute_color_payload($attribute, int $product_id): array
     ];
 }
 
+function hcsw_build_swatches_from_post_attributes(int $product_id = 0): array
+{
+    $swatches = [];
+    $existing = $product_id > 0 ? hcsw_get_product_swatches($product_id) : [];
+    $names = isset($_POST['attribute_names']) && is_array($_POST['attribute_names'])
+        ? $_POST['attribute_names']
+        : [];
+    $values = isset($_POST['attribute_values']) && is_array($_POST['attribute_values'])
+        ? $_POST['attribute_values']
+        : [];
+
+    foreach ($names as $i => $name) {
+        if (!hcsw_is_color_attribute_name((string) $name)) {
+            continue;
+        }
+        if (!isset($values[$i])) {
+            continue;
+        }
+        $raw = wp_unslash($values[$i]);
+        if (is_array($raw)) {
+            // 全域屬性（taxonomy）多為陣列 term id／slug，改由 resolved 處理
+            continue;
+        }
+        foreach (wc_get_text_attributes((string) $raw) as $label) {
+            $label = sanitize_text_field((string) $label);
+            if ($label === '') {
+                continue;
+            }
+            // 已有商品層級色碼就保留，不要用全域／預設色蓋掉
+            $swatches[$label] = $existing[$label] ?? hcsw_get_term_hex($label);
+        }
+    }
+
+    return hcsw_normalize_swatches($swatches);
+}
+
+/**
+ * 寫入商品色票。
+ * $from_post：後台色票 UI 送出的值，優先級最高。
+ * 沒有 UI 資料時（例如後續 hook），只補新顏色、不覆寫既有色碼。
+ */
 function hcsw_persist_swatches_for_product(int $product_id, array $from_post = []): void
 {
     if ($product_id <= 0) {
         return;
     }
 
-    $from_attrs = hcsw_build_swatches_from_post_attributes();
     $existing = hcsw_get_product_swatches($product_id);
+    $from_attrs = hcsw_build_swatches_from_post_attributes($product_id);
     $resolved = hcsw_get_resolved_swatches_for_product($product_id);
-    $merged = array_merge($existing, $resolved, $from_attrs, $from_post);
+
+    if (!empty($from_post)) {
+        // 後台 UI 明確送出 → 以 UI 為準；其餘只補尚未出現的標籤
+        $merged = $from_post;
+        foreach ([$existing, $resolved, $from_attrs] as $layer) {
+            foreach ($layer as $label => $hex) {
+                if (!isset($merged[$label])) {
+                    $merged[$label] = $hex;
+                }
+            }
+        }
+        // 屬性若已可解析，清掉已不存在的舊顏色名稱（但一定保留 UI 剛送出的）
+        if (!empty($resolved)) {
+            $keep = array_fill_keys(
+                array_unique(array_merge(array_keys($resolved), array_keys($from_post))),
+                true
+            );
+            $merged = array_filter(
+                $merged,
+                static function ($label) use ($keep) {
+                    return isset($keep[$label]);
+                },
+                ARRAY_FILTER_USE_KEY
+            );
+        }
+    } else {
+        // 無 UI payload：保留既有色碼，只為新出現的顏色補預設值
+        $merged = $existing;
+        foreach ([$resolved, $from_attrs] as $layer) {
+            foreach ($layer as $label => $hex) {
+                if (!isset($merged[$label])) {
+                    $merged[$label] = $hex;
+                }
+            }
+        }
+        if (!empty($resolved)) {
+            $active = array_fill_keys(array_keys($resolved), true);
+            $merged = array_filter(
+                $merged,
+                static function ($label) use ($active) {
+                    return isset($active[$label]);
+                },
+                ARRAY_FILTER_USE_KEY
+            );
+            foreach (array_keys($resolved) as $label) {
+                if (!isset($merged[$label])) {
+                    $merged[$label] = $resolved[$label];
+                }
+            }
+        }
+    }
 
     if (!empty($merged)) {
-        update_post_meta($product_id, HCSW_META, hcsw_normalize_swatches($merged));
+        // 統一存 JSON 字串，REST / meta_data 讀取較穩定
+        update_post_meta(
+            $product_id,
+            HCSW_META,
+            wp_json_encode(
+                hcsw_normalize_swatches($merged),
+                JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+            )
+        );
+    } else {
+        delete_post_meta($product_id, HCSW_META);
     }
 }
 
@@ -304,66 +406,46 @@ function hcsw_save_term_hex(int $term_id): void
     update_term_meta($term_id, HCSW_TERM_META, hcsw_sanitize_hex((string) $hex));
 }
 
-function hcsw_build_swatches_from_post_attributes(): array
-{
-    $swatches = [];
-    $names = isset($_POST['attribute_names']) && is_array($_POST['attribute_names'])
-        ? $_POST['attribute_names']
-        : [];
-    $values = isset($_POST['attribute_values']) && is_array($_POST['attribute_values'])
-        ? $_POST['attribute_values']
-        : [];
-
-    foreach ($names as $i => $name) {
-        if (!hcsw_is_color_attribute_name((string) $name)) {
-            continue;
-        }
-        if (!isset($values[$i])) {
-            continue;
-        }
-        $raw = wp_unslash($values[$i]);
-        if (is_array($raw)) {
-            continue;
-        }
-        foreach (wc_get_text_attributes((string) $raw) as $label) {
-            $label = sanitize_text_field((string) $label);
-            if ($label === '') {
-                continue;
-            }
-            $swatches[$label] = hcsw_get_term_hex($label);
-        }
-    }
-
-    return hcsw_normalize_swatches($swatches);
-}
-
-/** 商品儲存 */
+/** 商品儲存：以色票 UI 送出的值為準 */
 add_action('woocommerce_process_product_meta', function ($post_id) {
     if (!current_user_can('edit_post', $post_id)) {
         return;
     }
 
-    $from_post = [];
-    if (isset($_POST['hcsw_swatches_json'])) {
-        $decoded = json_decode(wp_unslash($_POST['hcsw_swatches_json']), true);
-        if (is_array($decoded)) {
-            $from_post = hcsw_normalize_swatches($decoded);
-        }
-    }
-
+    $from_post = hcsw_swatches_from_request();
     hcsw_persist_swatches_for_product((int) $post_id, $from_post);
 }, 20, 1);
 
-/** 商品更新後再同步一次（確保屬性已寫入） */
+/**
+ * 屬性寫入後只補「新出現、尚未有色碼」的顏色。
+ * 不可再覆寫使用者剛存的色碼。
+ */
 add_action('woocommerce_update_product', function ($product_id) {
     if (!current_user_can('edit_post', $product_id)) {
         return;
     }
-    hcsw_persist_swatches_for_product((int) $product_id);
+    // 若這次請求有帶 UI 色票，優先寫入（避免被空 payload 的同步蓋過時機問題）
+    $from_post = hcsw_swatches_from_request();
+    hcsw_persist_swatches_for_product((int) $product_id, $from_post);
 }, 99);
 
-/** WooCommerce「儲存屬性」AJAX 時一併寫入色票 meta */
-add_action('wp_ajax_woocommerce_save_attributes', function () {
+/**
+ * 「儲存屬性」AJAX：必須在 WooCommerce 預設 handler（priority 10）之前執行。
+ * WC 會 wp_send_json_success → wp_die，priority 99 根本跑不到。
+ */
+add_action('wp_ajax_woocommerce_save_attributes', 'hcsw_ajax_save_attributes_swatches', 1);
+
+function hcsw_swatches_from_request(): array
+{
+    if (!isset($_POST['hcsw_swatches_json'])) {
+        return [];
+    }
+    $decoded = json_decode(wp_unslash((string) $_POST['hcsw_swatches_json']), true);
+    return is_array($decoded) ? hcsw_normalize_swatches($decoded) : [];
+}
+
+function hcsw_ajax_save_attributes_swatches(): void
+{
     if (!current_user_can('edit_products')) {
         return;
     }
@@ -373,16 +455,13 @@ add_action('wp_ajax_woocommerce_save_attributes', function () {
         return;
     }
 
-    $from_post = [];
-    if (isset($_POST['hcsw_swatches_json'])) {
-        $decoded = json_decode(wp_unslash($_POST['hcsw_swatches_json']), true);
-        if (is_array($decoded)) {
-            $from_post = hcsw_normalize_swatches($decoded);
-        }
+    $from_post = hcsw_swatches_from_request();
+    if (empty($from_post)) {
+        return;
     }
 
     hcsw_persist_swatches_for_product($product_id, $from_post);
-}, 99);
+}
 
 /** REST API */
 add_filter('woocommerce_rest_prepare_product_object', function ($response, $object, $request) {
@@ -672,7 +751,7 @@ function hcsw_admin_js(): string
         $builder.find('.hcs-color-item').each(function(){
             var label = $.trim($(this).find('.hcs-name-input').val());
             var hex = $.trim($(this).find('.hcs-hex-input').val()) || $(this).find('.hcs-color-input').val();
-            if (!label || !/^#[0-9a-f]{3,8}$/i.test(hex)) return;
+            if (!label || !/^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(hex)) return;
             previewHtml += '<span class="hcs-preview-chip" title="'+escHtml(label)+'">';
             previewHtml += '<span class="hcs-preview-chip-color" style="background:'+escHtml(hex)+'"></span>';
             previewHtml += '<span class="hcs-preview-chip-label">'+escHtml(label)+'</span>';
@@ -734,7 +813,7 @@ function hcsw_admin_js(): string
             var label = $.trim($(this).find('.hcs-name-input').val());
             var hex = $.trim($(this).find('.hcs-hex-input').val()) || $(this).find('.hcs-color-input').val();
             if (!label) return;
-            if (!/^#[0-9a-f]{3,8}$/i.test(hex)) hex = guessHex(label);
+            if (!/^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(hex)) hex = guessHex(label);
             next[label] = hex.toLowerCase();
         });
         rowState[key] = next;
@@ -877,7 +956,7 @@ function hcsw_admin_js(): string
 
         if ($(this).hasClass('hcs-hex-input')) {
             var manual = $(this).val();
-            if (/^#[0-9a-f]{3,8}$/i.test(manual)) {
+            if (/^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(manual)) {
                 $item.find('.hcs-color-input').val(manual);
                 $item.find('.hcs-swatch-face').css('background', manual);
             }

@@ -8,7 +8,7 @@ import { DEFAULT_PRODUCT_COLORS } from "@/lib/productColors";
 import { pickWpSizeUrl } from "@/lib/listImageUrl";
 import { stripHtmlToText } from "@/lib/utils";
 
-export const revalidate = 60;
+export const revalidate = 10;
 
 // 🌟 動態獲取網址：本地端會顯示 localhost，正式上線設定變數後自動轉為正式網址
 const getSiteUrl = () => {

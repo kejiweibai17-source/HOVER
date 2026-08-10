@@ -363,7 +363,7 @@ export async function fetchProductBySlug(slug: string) {
       slug
     )}&status=publish`
   );
-  const res = await fetch(url, { next: { revalidate: 60 } });
+  const res = await fetch(url, { next: { revalidate: 10 } });
   if (!res.ok) return null;
   const arr = (await res.json()) as any[];
   if (!Array.isArray(arr) || arr.length === 0) return null;

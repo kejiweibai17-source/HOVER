@@ -102,6 +102,26 @@ export function guessColorHex(label: string): string {
   return "#cccccc";
 }
 
+/** 從色票表找色碼：精確 → trim → 不分大小寫 */
+function resolveSwatchHex(
+  label: string,
+  swatches: Record<string, string>,
+): string | null {
+  if (!label || !swatches || !Object.keys(swatches).length) return null;
+  if (swatches[label]) return swatches[label];
+
+  const trimmed = label.trim();
+  if (swatches[trimmed]) return swatches[trimmed];
+
+  const lower = trimmed.toLowerCase();
+  for (const [key, hex] of Object.entries(swatches)) {
+    if (key.trim() === trimmed || key.trim().toLowerCase() === lower) {
+      return hex;
+    }
+  }
+  return null;
+}
+
 function findAttribute(
   attributes: Array<{ name: string; options: string[] }> | undefined,
   matcher: (name: string) => boolean,
@@ -114,8 +134,18 @@ export function extractProductColors(product: {
   hover_color_swatches?: Record<string, string> | null;
   colors?: ProductColor[];
 }): ProductColor[] {
+  // 已帶好 hex 的 colors 仍要以 swatches 覆寫（避免舊快取／猜測色）
+  const swatches = product.hover_color_swatches || {};
+
   if (Array.isArray(product.colors) && product.colors.length > 0) {
-    return product.colors;
+    return product.colors.map((c) => {
+      const label = String(c.label || "").trim();
+      const fromSwatch = resolveSwatchHex(label, swatches);
+      return {
+        label,
+        hex: fromSwatch || c.hex || guessColorHex(label),
+      };
+    });
   }
 
   const colorAttr = findAttribute(product.attributes, isColorAttributeName);
@@ -123,13 +153,12 @@ export function extractProductColors(product: {
     return DEFAULT_PRODUCT_COLORS;
   }
 
-  const swatches = product.hover_color_swatches || {};
   return colorAttr.options
     .map((label) => String(label || "").trim())
     .filter(Boolean)
     .map((label) => ({
       label,
-      hex: swatches[label] || guessColorHex(label),
+      hex: resolveSwatchHex(label, swatches) || guessColorHex(label),
     }));
 }
 
@@ -147,13 +176,24 @@ export function extractProductSizes(
 export function normalizeColorSwatches(
   raw: unknown,
 ): Record<string, string> {
-  if (!raw || typeof raw !== "object") return {};
+  let data: unknown = raw;
+  if (typeof data === "string" && data.trim()) {
+    try {
+      data = JSON.parse(data);
+    } catch {
+      return {};
+    }
+  }
+  if (!data || typeof data !== "object") return {};
   const out: Record<string, string> = {};
-  for (const [label, hex] of Object.entries(raw as Record<string, unknown>)) {
+  for (const [label, hex] of Object.entries(data as Record<string, unknown>)) {
     const key = String(label || "").trim();
     const value = String(hex || "").trim();
-    if (!key || !/^#[0-9a-f]{3,8}$/i.test(value)) continue;
-    out[key] = value;
+    // 只接受標準 3 / 4 / 6 / 8 碼色碼，避免 #fb20000 這類非法值進前台
+    if (!key || !/^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value)) {
+      continue;
+    }
+    out[key] = value.toLowerCase();
   }
   return out;
 }
@@ -163,10 +203,11 @@ export function extractColorSwatchesFromWooProduct(product: {
   meta_data?: Array<{ key?: string; value?: unknown }>;
 }): Record<string, string> {
   if (product.hover_color_swatches) {
-    return normalizeColorSwatches(product.hover_color_swatches);
+    const fromField = normalizeColorSwatches(product.hover_color_swatches);
+    if (Object.keys(fromField).length) return fromField;
   }
   const meta = product.meta_data?.find((m) => m.key === "hover_color_swatches");
-  if (meta?.value) {
+  if (meta?.value !== undefined && meta?.value !== null && meta?.value !== "") {
     return normalizeColorSwatches(meta.value);
   }
   return {};
