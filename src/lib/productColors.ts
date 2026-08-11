@@ -1,7 +1,100 @@
 export type ProductColor = {
   label: string;
   hex: string;
+  /** 有值時：點色票導向該獨立商品頁（同款分色） */
+  slug?: string;
+  productId?: number;
+  image?: string;
 };
+
+export type ColorSibling = {
+  id: number;
+  slug: string;
+  name?: string;
+  color: string;
+  hex: string;
+  image?: string;
+};
+
+/** 同款多色獨立商品 → 色票清單（優先於變體顏色） */
+export function buildColorsFromSiblings(
+  siblings: ColorSibling[] | undefined | null,
+  swatches: Record<string, string> = {},
+): ProductColor[] {
+  if (!Array.isArray(siblings) || siblings.length === 0) return [];
+
+  const seen = new Set<string>();
+  const out: ProductColor[] = [];
+  for (const row of siblings) {
+    const label = String(row?.color || "").trim();
+    const slug = String(row?.slug || "").trim();
+    if (!label || !slug || seen.has(label)) continue;
+    seen.add(label);
+    out.push({
+      label,
+      hex:
+        resolveSwatchHex(label, swatches) ||
+        String(row.hex || "").trim() ||
+        guessColorHex(label),
+      slug,
+      productId: Number(row.id) || undefined,
+      image: String(row.image || "").trim() || undefined,
+    });
+  }
+  return out;
+}
+
+/** 從 slug 猜顏色（classic-...-white → 白） */
+export function guessColorLabelFromSlug(slug: string): string {
+  const s = String(slug || "").toLowerCase();
+  const map: Array<[RegExp, string]> = [
+    [/(?:^|[-_])white(?:$|[-_])/, "白"],
+    [/(?:^|[-_])black(?:$|[-_])/, "黑"],
+    [/(?:^|[-_])red(?:$|[-_])/, "紅"],
+    [/(?:^|[-_])pink(?:$|[-_])/, "粉"],
+    [/(?:^|[-_])blue(?:$|[-_])/, "藍"],
+    [/(?:^|[-_])green(?:$|[-_])/, "綠"],
+  ];
+  for (const [re, label] of map) {
+    if (re.test(s)) return label;
+  }
+  return "";
+}
+
+/**
+ * 確保目前商品一定出現在色票裡（避免白色漏掉時當頁沒有自己的色票）
+ */
+export function ensureCurrentColorInList(
+  colors: ProductColor[],
+  current: {
+    id?: number | string;
+    slug?: string;
+    color?: string;
+    hex?: string;
+    image?: string;
+  },
+): ProductColor[] {
+  const slug = String(current.slug || "").trim();
+  if (!slug) return colors;
+
+  if (colors.some((c) => c.slug === slug)) return colors;
+
+  const label =
+    String(current.color || "").trim() ||
+    guessColorLabelFromSlug(slug) ||
+    "本色";
+  const withoutDupLabel = colors.filter((c) => c.label !== label);
+  return [
+    {
+      label,
+      hex: current.hex || guessColorHex(label),
+      slug,
+      productId: current.id ? Number(current.id) : undefined,
+      image: current.image,
+    },
+    ...withoutDupLabel,
+  ];
+}
 
 export const DEFAULT_PRODUCT_COLORS: ProductColor[] = [
   { label: "紅", hex: "#b20000" },
@@ -150,7 +243,8 @@ export function extractProductColors(product: {
 
   const colorAttr = findAttribute(product.attributes, isColorAttributeName);
   if (!colorAttr?.options?.length) {
-    return DEFAULT_PRODUCT_COLORS;
+    // 無顏色屬性時不灌預設四色（避免單色獨立商品誤顯示可切換色票）
+    return [];
   }
 
   return colorAttr.options

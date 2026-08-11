@@ -141,6 +141,13 @@ export function findMatchingVariation(
   );
 }
 
+/** 變體是否帶有顏色屬性（無則代表「單色商品，變體僅尺寸」） */
+export function variationsHaveColorAttribute(
+  variations: ProductVariation[],
+): boolean {
+  return variations.some((variation) => Boolean(getVariationColor(variation)));
+}
+
 /** 依所選顏色，從變體列出可選尺寸 */
 export function getSizesForColor(
   variations: ProductVariation[],
@@ -149,11 +156,18 @@ export function getSizesForColor(
 ): string[] {
   if (!variations.length) return sortProductSizes(fallback);
 
+  const filterByColor = variationsHaveColorAttribute(variations);
   const sizes: string[] = [];
   const seen = new Set<string>();
 
   for (const variation of variations) {
-    if (color && getVariationColor(variation) !== color) continue;
+    if (
+      filterByColor &&
+      color &&
+      getVariationColor(variation) !== color
+    ) {
+      continue;
+    }
     const size = getVariationSize(variation);
     if (!size || seen.has(size)) continue;
     seen.add(size);

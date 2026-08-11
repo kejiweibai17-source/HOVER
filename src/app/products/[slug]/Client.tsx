@@ -33,6 +33,7 @@ import {
   findMatchingVariation,
   getSizesForColor,
   resolveInitialColorLabel,
+  variationsHaveColorAttribute,
   type ProductDefaultAttributes,
   type ProductVariation,
 } from "@/lib/productVariations";
@@ -71,6 +72,8 @@ interface ProductProps {
     colorGalleries?: ColorGalleries;
     variations?: ProductVariation[];
     defaultAttributes?: ProductDefaultAttributes;
+    /** 本商品顏色（同款分色獨立商品） */
+    productColor?: string;
     stock?: ProductStock;
   };
   faqs?: FAQ[];
@@ -253,7 +256,7 @@ function ProductPurchasePanel({
   wishlistPending,
   onToggleWishlist,
   selectedColor,
-  setSelectedColor,
+  onSelectColor,
   selectedSize,
   setSelectedSize,
   colors,
@@ -275,7 +278,7 @@ function ProductPurchasePanel({
   wishlistPending: boolean;
   onToggleWishlist: () => void;
   selectedColor: string;
-  setSelectedColor: (v: string) => void;
+  onSelectColor: (color: ProductColor) => void;
   selectedSize: string | null;
   setSelectedSize: (v: string | null) => void;
   colors: ProductColor[];
@@ -358,10 +361,10 @@ function ProductPurchasePanel({
               const active = selectedColor === c.label;
               return (
                 <button
-                  key={c.label}
+                  key={c.slug || c.label}
                   type="button"
                   aria-label={c.label}
-                  onClick={() => setSelectedColor(c.label)}
+                  onClick={() => onSelectColor(c)}
                   className={`h-9 w-9 border transition-all md:h-[35px] md:w-[35px] ${
                     active
                       ? "border-black ring-1 ring-black ring-offset-2"
@@ -564,14 +567,41 @@ export default function ProductClient({ product }: ProductProps) {
   const baseGallery =
     product.images && product.images.length > 0 ? product.images : MOCK_GALLERY;
   const colorGalleries = product.colorGalleries || {};
-
-  const colors = product.colors?.length ? product.colors : DEFAULT_PRODUCT_COLORS;
-  const sizes = product.sizes?.length ? product.sizes : DEFAULT_SIZES;
   const variations = product.variations || [];
   const defaultAttributes = product.defaultAttributes || {};
+
+  const rawColors = product.colors?.length
+    ? product.colors
+    : DEFAULT_PRODUCT_COLORS;
+  const hasSiblingColorLinks = rawColors.some((c) => Boolean(c.slug));
+  const variationHasColor = variationsHaveColorAttribute(variations);
+
+  // 單色獨立商品：若尚未設定同款群組，但屬性仍列多色，只保留本商品顏色，避免同頁假切換
+  const colors = useMemo(() => {
+    if (hasSiblingColorLinks || variationHasColor) return rawColors;
+    if (rawColors.length <= 1) return rawColors;
+    const own =
+      String(product.productColor || "").trim() ||
+      String(defaultAttributes.color || "").trim();
+    if (!own) return rawColors.slice(0, 1);
+    const matched = rawColors.filter((c) => {
+      const a = c.label.trim().toLowerCase();
+      const b = own.toLowerCase();
+      return a === b || a.includes(b) || b.includes(a);
+    });
+    return matched.length ? matched : rawColors.slice(0, 1);
+  }, [
+    rawColors,
+    hasSiblingColorLinks,
+    variationHasColor,
+    product.productColor,
+    defaultAttributes.color,
+  ]);
+
+  const sizes = product.sizes?.length ? product.sizes : DEFAULT_SIZES;
   const defaultColorLabel = resolveInitialColorLabel(
     colors,
-    defaultAttributes.color,
+    product.productColor || defaultAttributes.color,
   );
   const defaultSizeLabel = String(defaultAttributes.size || "").trim();
 
@@ -582,6 +612,18 @@ export default function ProductClient({ product }: ProductProps) {
   const [qty, setQty] = useState(1);
   const [wishlistPending, setWishlistPending] = useState(false);
   const [adding, setAdding] = useState(false);
+
+  const handleSelectColor = (color: ProductColor) => {
+    if (
+      color.slug &&
+      productSlug &&
+      color.slug !== productSlug
+    ) {
+      router.push(`/products/${color.slug}`);
+      return;
+    }
+    setSelectedColor(color.label);
+  };
 
   const availableSizes = useMemo(
     () => getSizesForColor(variations, selectedColor, sizes),
@@ -636,10 +678,13 @@ export default function ProductClient({ product }: ProductProps) {
     }
   }, [maxQty, qty]);
 
-  const gallery = useMemo(
-    () => resolveGalleryForColor(selectedColor, colorGalleries, baseGallery),
-    [selectedColor, colorGalleries, baseGallery],
-  );
+  const gallery = useMemo(() => {
+    // 同款分色獨立商品：圖庫固定用本商品圖片，不在同頁切色
+    if (hasSiblingColorLinks) {
+      return baseGallery;
+    }
+    return resolveGalleryForColor(selectedColor, colorGalleries, baseGallery);
+  }, [hasSiblingColorLinks, selectedColor, colorGalleries, baseGallery]);
 
   const displayPrice = matchedVariation
     ? matchedVariation.salePrice ?? matchedVariation.price
@@ -735,7 +780,7 @@ export default function ProductClient({ product }: ProductProps) {
             wishlistPending={wishlistPending}
             onToggleWishlist={handleToggleWishlist}
             selectedColor={selectedColor}
-            setSelectedColor={setSelectedColor}
+            onSelectColor={handleSelectColor}
             selectedSize={selectedSize}
             setSelectedSize={setSelectedSize}
             colors={colors}
@@ -776,7 +821,7 @@ export default function ProductClient({ product }: ProductProps) {
             wishlistPending={wishlistPending}
             onToggleWishlist={handleToggleWishlist}
             selectedColor={selectedColor}
-            setSelectedColor={setSelectedColor}
+            onSelectColor={handleSelectColor}
             selectedSize={selectedSize}
             setSelectedSize={setSelectedSize}
             colors={colors}

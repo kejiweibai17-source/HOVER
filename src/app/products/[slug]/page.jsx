@@ -430,6 +430,7 @@ export default async function ProductPage({ params }) {
                 colorGalleries: woo.colorGalleries,
                 variations: woo.variations,
                 defaultAttributes: woo.defaultAttributes,
+                productColor: woo.productColor,
                 stock: woo.stock,
               }
             : {

@@ -4,7 +4,10 @@ export type WooCategoryRaw = {
   slug: string;
   parent: number;
   menu_order?: number;
+  /** Navbar／其他分類導覽是否顯示（預設 true） */
   hover_show_frontend?: boolean;
+  /** Filter「商品類型」是否顯示（預設 true） */
+  hover_show_filter?: boolean;
 };
 
 export type NavCategoryChild = {
@@ -92,11 +95,23 @@ function isTruthyVisibility(value: unknown): boolean {
   return true;
 }
 
-export function isCategoryVisible(cat: WooCategoryRaw): boolean {
+function isHiddenSystemCategory(cat: WooCategoryRaw): boolean {
   const slug = normalizeCategorySlug(cat.slug);
-  if (HIDDEN_SLUGS.has(slug)) return false;
-  if (cat.name === "未分類") return false;
+  if (HIDDEN_SLUGS.has(slug)) return true;
+  if (cat.name === "未分類") return true;
+  return false;
+}
+
+/** Navbar／其他分類導覽可見性 */
+export function isCategoryVisible(cat: WooCategoryRaw): boolean {
+  if (isHiddenSystemCategory(cat)) return false;
   return isTruthyVisibility(cat.hover_show_frontend);
+}
+
+/** Filter「商品類型」可見性（可與 Navbar 分開） */
+export function isCategoryVisibleInFilter(cat: WooCategoryRaw): boolean {
+  if (isHiddenSystemCategory(cat)) return false;
+  return isTruthyVisibility(cat.hover_show_filter);
 }
 
 export function slugToNavLabel(slug: string): string {

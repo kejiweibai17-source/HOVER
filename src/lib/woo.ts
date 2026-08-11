@@ -4,11 +4,15 @@ import type { SizeGuide } from "./sizeGuide";
 import { extractSizeGuideFromWooProduct } from "./sizeGuide";
 import type { WashingInstructions } from "./washingInstructions";
 import { extractWashingInstructionsFromWooProduct } from "./washingInstructions";
-import type { ProductColor } from "./productColors";
+import type { ColorSibling, ProductColor } from "./productColors";
 import {
+  buildColorsFromSiblings,
+  ensureCurrentColorInList,
   extractColorSwatchesFromWooProduct,
   extractProductColors,
   extractProductSizes,
+  guessColorHex,
+  guessColorLabelFromSlug,
 } from "./productColors";
 import type { ColorGalleries } from "./variationGallery";
 import {
@@ -66,6 +70,10 @@ export type WooProduct = {
   sizes: string[];
   colorGalleries: ColorGalleries;
   variations: ProductVariation[];
+  /** 同款分色獨立商品 */
+  colorGroup: string;
+  productColor: string;
+  colorSiblings: ColorSibling[];
   /** Woo「預設表單值」（顏色／尺寸） */
   defaultAttributes: ProductDefaultAttributes;
   /** 簡易商品庫存（可變商品以各 variation.stock 為準） */
@@ -136,7 +144,42 @@ const mapWoo = (p: any): WooProduct => {
     : [];
   const attributes = p.attributes || [];
   const colorSwatches = extractColorSwatchesFromWooProduct(p);
-  const colors = extractProductColors({ attributes, hover_color_swatches: colorSwatches });
+  const colorSiblings: ColorSibling[] = Array.isArray(p?.hover_color_siblings)
+    ? p.hover_color_siblings
+        .map((row: any) => ({
+          id: Number(row?.id) || 0,
+          slug: String(row?.slug || "").trim(),
+          name: String(row?.name || "").trim() || undefined,
+          color: String(row?.color || "").trim(),
+          hex: String(row?.hex || "").trim() || guessColorHex(String(row?.color || "")),
+          image: String(row?.image || "").trim() || undefined,
+        }))
+        .filter((row: ColorSibling) => row.id > 0 && row.slug && row.color)
+    : [];
+  const siblingColors = buildColorsFromSiblings(colorSiblings, colorSwatches);
+  const attrColors = extractProductColors({
+    attributes,
+    hover_color_swatches: colorSwatches,
+  });
+  const colorGroup = String(p?.hover_color_group || "").trim();
+  const productColor =
+    String(p?.hover_product_color || "").trim() ||
+    guessColorLabelFromSlug(String(p?.slug || "")) ||
+    (siblingColors.find((c) => c.slug === String(p?.slug || ""))?.label ?? "") ||
+    (attrColors.length === 1 ? attrColors[0].label : "");
+  // 有同款群組時以色票跳轉清單為準；並保證目前商品一定在清單內
+  const colors =
+    siblingColors.length > 0
+      ? ensureCurrentColorInList(siblingColors, {
+          id: p?.id,
+          slug: String(p?.slug || ""),
+          color: productColor,
+          hex: productColor
+            ? colorSwatches[productColor] || guessColorHex(productColor)
+            : undefined,
+          image: images[0]?.src,
+        })
+      : attrColors;
   const sizes = extractProductSizes(attributes);
   const categories: WooCategoryRef[] = Array.isArray(p?.categories)
     ? p.categories.map((c: any) => ({
@@ -204,6 +247,9 @@ const mapWoo = (p: any): WooProduct => {
     sizes,
     colorGalleries: extractColorGalleriesFromWooProduct(p),
     variations: [],
+    colorGroup,
+    productColor,
+    colorSiblings,
     defaultAttributes: parseDefaultAttributes(p?.default_attributes),
     stock: parseWooStock(p),
     stock_status: String(p?.stock_status || "instock"),
@@ -387,9 +433,9 @@ export async function fetchAllProductSlugs({
 
 export type { ProductVariation } from "./productVariations";
 export type { WooCategoryRaw } from "./categoryNav";
-export { buildCategoryNav, isCategoryVisible } from "./categoryNav";
+export { buildCategoryNav, isCategoryVisible, isCategoryVisibleInFilter } from "./categoryNav";
 
-/** 抓取 WooCommerce 商品分類（含 hover_show_frontend） */
+/** 抓取 WooCommerce 商品分類（含 Navbar / Filter 顯示開關） */
 export async function fetchProductCategories() {
   const { base } = getEnv();
   const url = withAuth(
@@ -410,5 +456,6 @@ export async function fetchProductCategories() {
         ? undefined
         : Number(c.menu_order),
     hover_show_frontend: c.hover_show_frontend,
+    hover_show_filter: c.hover_show_filter,
   }));
 }

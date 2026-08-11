@@ -1,5 +1,5 @@
 import type { WooCategoryRaw } from "./categoryNav";
-import { isCategoryVisible } from "./categoryNav";
+import { isCategoryVisibleInFilter } from "./categoryNav";
 import { guessColorHex } from "./productColors";
 import { sortProductSizes } from "./productVariations";
 
@@ -65,7 +65,7 @@ export function buildProductFilterOptions(
   const productCatNames = collectProductCategoryNames(products);
   const visible = categories
     .map(normalizeCategory)
-    .filter(isCategoryVisible)
+    .filter(isCategoryVisibleInFilter)
     .sort(sortCategories);
   const visibleById = new Map(visible.map((cat) => [cat.id, cat]));
 
