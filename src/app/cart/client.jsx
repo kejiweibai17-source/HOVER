@@ -22,6 +22,8 @@ import {
   X,
 } from "lucide-react";
 import { useCartStore } from "@/lib/cartStore";
+import { DEFAULT_SHIPPING } from "@/lib/shippingDefaults";
+import { useShippingSettings } from "@/lib/useShippingSettings";
 
 // ✅ 內建輕量版：台灣縣市與鄉鎮區字典
 const TW_CITIES = {
@@ -475,8 +477,16 @@ function calcPricing(
 
 // 結帳折扣碼改由 /api/checkout/validate-coupon 驗證 WooCommerce 優惠券
 
-function buildCheckoutPricing(pricing, shipMethod, couponDiscount = 0) {
-  const shippingBase = shipMethod === "000" ? 105 : 0;
+function buildCheckoutPricing(
+  pricing,
+  shipMethod,
+  couponDiscount = 0,
+  shippingSettings = DEFAULT_SHIPPING,
+) {
+  const shippingBase =
+    shipMethod === "000"
+      ? shippingSettings.homeDeliveryFee
+      : shippingSettings.cvsFee;
   const subtotal = pricing.subtotal;
   const memberDiscount = pricing.memberDiscountAmount || 0;
   const subtotalAfterMember = Math.max(0, subtotal - memberDiscount);
@@ -485,7 +495,8 @@ function buildCheckoutPricing(pricing, shipMethod, couponDiscount = 0) {
     subtotalAfterMember,
   );
   const finalSubtotal = Math.max(0, subtotalAfterMember - safeCoupon);
-  const freeShipThreshold = pricing.freeShipThreshold || 1500;
+  const freeShipThreshold =
+    shippingSettings.freeShipThreshold || pricing.freeShipThreshold || 1500;
   const shipping =
     finalSubtotal >= freeShipThreshold || finalSubtotal === 0
       ? 0
@@ -1021,6 +1032,7 @@ function CheckoutStep({
   onClearCart,
   membership,
   isLoggedIn,
+  shippingSettings = DEFAULT_SHIPPING,
 }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState({});
@@ -1046,8 +1058,13 @@ function CheckoutStep({
 
   const checkoutPricing = useMemo(
     () =>
-      buildCheckoutPricing(pricing, shipMethod, appliedCoupon?.discount || 0),
-    [pricing, shipMethod, appliedCoupon],
+      buildCheckoutPricing(
+        pricing,
+        shipMethod,
+        appliedCoupon?.discount || 0,
+        shippingSettings,
+      ),
+    [pricing, shipMethod, appliedCoupon, shippingSettings],
   );
 
   useEffect(() => {
@@ -1779,6 +1796,7 @@ function CartContent() {
   const [step, setStep] = useState(1);
 
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const shippingSettings = useShippingSettings();
 
   const [pricing, setPricing] = useState({
     subtotal: 0,
@@ -1987,17 +2005,23 @@ function CartContent() {
 
   useEffect(() => {
     if (!itemsLoaded) return;
-    const shippingBase = shipMethod === "000" ? 105 : 0;
+    const shippingBase =
+      shipMethod === "000"
+        ? shippingSettings.homeDeliveryFee
+        : shippingSettings.cvsFee;
 
     setPricing(
       calcPricing(
         items,
-        { shippingBase, freeShipThreshold: 1500 },
+        {
+          shippingBase,
+          freeShipThreshold: shippingSettings.freeShipThreshold,
+        },
         0,
         discountRate,
       ),
     );
-  }, [items, itemsLoaded, discountRate, shipMethod]);
+  }, [items, itemsLoaded, discountRate, shipMethod, shippingSettings]);
 
   // ✅ 修正數量增減與移除，先更新 Local State，再更新 Store
   const updateQty = (id, newQty) => {
@@ -2087,6 +2111,7 @@ function CartContent() {
                 onClearCart={clearCart}
                 membership={membership}
                 isLoggedIn={isLoggedIn}
+                shippingSettings={shippingSettings}
               />
             </motion.div>
           )}

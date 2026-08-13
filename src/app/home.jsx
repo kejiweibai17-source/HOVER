@@ -14,98 +14,7 @@ import HoverMidVideo from "@/components/hover/HoverMidVideo";
 import { FALLBACK_BRAND_STORY_SLIDES } from "@/lib/brandStoryDefaults";
 import { FALLBACK_CATEGORY_TILES } from "@/lib/categoryGridDefaults";
 import { FALLBACK_PEOPLE_SLIDES } from "@/lib/peopleDefaults";
-
-/* ─── Data ──────────────────────────────────────────────────────────── */
-
-const PRODUCTS = [
-  {
-    id: "hover-product-1",
-    href: "/products/chambray-ribbon-shirt",
-    name: "ChambrayRIBBONSHIRT",
-    image: "/images/hover/product-1.jpg",
-    isNew: false,
-    originalPrice: 1280,
-    colorLabel: "藍",
-    colorHex: "#9ab3d4",
-    colors: [
-      { label: "藍", hex: "#9ab3d4" },
-      { label: "黑", hex: "#111111" },
-      { label: "白", hex: "#ffffff" },
-    ],
-    gallery: [
-      "/images/hover/product-1.jpg",
-      "/images/hover/product-2.jpg",
-      "/images/hover/product-3.jpg",
-      "/images/hover/product-4.jpg",
-    ],
-    description:
-      "以輕盈丹寧面料打造的日常襯衫，俐落剪裁搭配細緻織帶細節，適合層疊穿搭或單穿，展現 HOVER 的簡約質感。",
-  },
-  {
-    id: "hover-product-2",
-    href: "/products/chambray-ribbon-shirt-2",
-    name: "ChambrayRIBBONSHIRT",
-    image: "/images/hover/product-2.jpg",
-    isNew: true,
-    originalPrice: 1280,
-    soldOut: true,
-    colorLabel: "藍",
-    colorHex: "#9ab3d4",
-    colors: [{ label: "藍", hex: "#9ab3d4" }],
-    gallery: [
-      "/images/hover/product-2.jpg",
-      "/images/hover/product-1.jpg",
-      "/images/hover/people-2.jpg",
-    ],
-    description:
-      "經典丹寧襯衫的升級版本，以織帶元素點綴衣身輪廓，呈現中性而現代的日常風格。",
-  },
-  {
-    id: "hover-product-3",
-    href: "/products/chambray-ribbon-shirt-3",
-    name: "ChambrayRIBBONSHIRT",
-    image: "/images/hover/product-3.jpg",
-    isNew: true,
-    originalPrice: 1280,
-    colorLabel: "藍",
-    colorHex: "#b8cad8",
-    colors: [
-      { label: "藍", hex: "#b8cad8" },
-      { label: "黑", hex: "#111111" },
-    ],
-    gallery: [
-      "/images/hover/product-3.jpg",
-      "/images/hover/people-3.jpg",
-      "/images/hover/product-1.jpg",
-    ],
-    description:
-      "柔和色調的丹寧襯衫，透氣舒適的材質適合春夏日常，輕鬆搭配各種下著。",
-  },
-  {
-    id: "hover-product-4",
-    href: "/products/chambray-ribbon-shirt-4",
-    name: "ChambrayRIBBONSHIRT",
-    image: "/images/hover/product-4.jpg",
-    isNew: false,
-    originalPrice: 1280,
-    soldOut: true,
-    colorLabel: "藍",
-    colorHex: "#9ab3d4",
-    colors: [{ label: "藍", hex: "#9ab3d4" }],
-    gallery: ["/images/hover/product-4.jpg", "/images/hover/people-4.jpg"],
-    description:
-      "深藍丹寧襯衫，簡約線條與織帶細節相互平衡，是衣櫃中不可或缺的百搭單品。",
-  },
-];
-
-// 輪播用假資料（重複一組，之後可換 API）
-const CAROUSEL_PRODUCTS = [
-  ...PRODUCTS,
-  ...PRODUCTS.map((p, i) => ({
-    ...p,
-    id: `${p.id}-dup-${i}`,
-  })),
-];
+import { FALLBACK_HOME_PRODUCTS } from "@/lib/homeProductsDefaults";
 
 // 預設 HOVER PEOPLE 圖（後台「HOVER PEOPLE」未設定時使用）
 const PEOPLE_ITEMS = FALLBACK_PEOPLE_SLIDES;
@@ -126,7 +35,7 @@ function ProductCard({ product }) {
   const isSaved = hasItem(product.id);
   const [wishlistPending, setWishlistPending] = useState(false);
 
-  const slug = product.href.replace(/^\/products\//, "");
+  const slug = String(product.href || "").replace(/^\/products\//, "");
 
   const handleWishlist = async (e) => {
     e.preventDefault();
@@ -163,31 +72,36 @@ function ProductCard({ product }) {
           if (hasHoverImage) setHoverReady(true);
         }}
       >
-        <Link href={product.href} className="absolute inset-0 block">
-          <OptimizedImage
-            src={product.image}
-            fullSrc={product.image}
-            role="card"
-            alt={product.name}
-            fill
-            className={`object-cover transition-opacity duration-300 ${
-              hasHoverImage && hoverReady
-                ? "opacity-100 group-hover:opacity-0"
-                : ""
-            }`}
-            sizes="(max-width: 768px) 50vw, 25vw"
-          />
-          {hasHoverImage && hoverReady && (
+        <Link
+          href={product.href}
+          className="absolute inset-0 flex items-center justify-center p-5 md:p-8"
+        >
+          <span className="relative block h-full w-full">
             <OptimizedImage
-              src={hoverImage}
-              fullSrc={hoverImage}
-              role="card"
-              alt={`${product.name} alternate view`}
+              src={product.image}
+              fullSrc={product.image}
+              role="pdp"
+              alt={product.name}
               fill
-              className="object-cover opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-              sizes="(max-width: 768px) 50vw, 25vw"
+              className={`object-contain transition-opacity duration-300 ${
+                hasHoverImage && hoverReady
+                  ? "opacity-100 group-hover:opacity-0"
+                  : ""
+              }`}
+              sizes="(max-width: 768px) 50vw, 28vw"
             />
-          )}
+            {hasHoverImage && hoverReady && (
+              <OptimizedImage
+                src={hoverImage}
+                fullSrc={hoverImage}
+                role="pdp"
+                alt={`${product.name} alternate view`}
+                fill
+                className="object-contain opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+                sizes="(max-width: 768px) 50vw, 28vw"
+              />
+            )}
+          </span>
         </Link>
 
         {product.isNew && (
@@ -219,12 +133,14 @@ function ProductCard({ product }) {
           </button>
         </div>
 
-        <div className="flex min-w-0 items-center gap-1.5 pt-0.5">
-          <span
-            className="inline-block h-3 w-3 shrink-0 rounded-full border border-[#ccc]"
-            style={{ background: product.colorHex }}
-          />
-        </div>
+        {product.colorHex ? (
+          <div className="flex min-w-0 items-center gap-1.5 pt-0.5">
+            <span
+              className="inline-block h-3 w-3 shrink-0 rounded-full border border-[#ccc]"
+              style={{ background: product.colorHex }}
+            />
+          </div>
+        ) : null}
 
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 pt-0.5">
           <span
@@ -232,7 +148,7 @@ function ProductCard({ product }) {
               product.soldOut ? "line-through" : ""
             }`}
           >
-            NT {product.originalPrice}
+            NT {product.salePrice ?? product.originalPrice}
           </span>
           {product.soldOut && (
             <span className="text-[12px] font-bold text-[#222] md:text-[13px]">
@@ -403,16 +319,25 @@ export default function Home({
   initialMidVideo = null,
   initialCategoryGrid = null,
   initialPeople = null,
+  initialNewArrivals = null,
+  initialBestSeller = null,
 }) {
+  const newArrivals = Array.isArray(initialNewArrivals)
+    ? initialNewArrivals
+    : FALLBACK_HOME_PRODUCTS;
+  const bestSeller = Array.isArray(initialBestSeller)
+    ? initialBestSeller
+    : FALLBACK_HOME_PRODUCTS;
+
   return (
     <div className="bg-white">
       <HoverPopup />
       <HoverHero initialHero={initialHero} />
-      <ProductSection title="NEW ARRIVALS" products={CAROUSEL_PRODUCTS} />
+      <ProductSection title="NEW ARRIVALS" products={newArrivals} />
       <BrandStorySection slides={initialBrandStory} />
       <HoverMidVideo initialSettings={initialMidVideo} />
       <CategoryGrid tiles={initialCategoryGrid} />
-      <ProductSection title="BEST SELLER" products={CAROUSEL_PRODUCTS} />
+      <ProductSection title="BEST SELLER" products={bestSeller} />
       <HoverPeopleSection slides={initialPeople} />
     </div>
   );

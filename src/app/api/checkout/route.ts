@@ -9,6 +9,7 @@ import {
   mapWcOrdersToLite,
 } from "@/lib/membership";
 import { checkCartStock } from "@/lib/validateCartStock";
+import { fetchShippingSettings, shippingFeeFor } from "@/lib/shippingDefaults";
 
 export const runtime = "nodejs";
 
@@ -247,14 +248,12 @@ export async function POST(req: Request) {
     const totalDiscount = serverMemberDiscount + serverCouponDiscount;
     const discountedSubtotal = Math.max(0, calculatedSubtotal - totalDiscount);
 
-    // 🌟 後端真實運費邏輯
-    const freeShipThreshold = 1500;
-    let realShippingCost = 0;
-    
-    if (discountedSubtotal < freeShipThreshold && discountedSubtotal > 0) {
-      // ⚠️ 如果之後要改回超商 80 元，把下面這行的 0 改成 80 即可！
-      realShippingCost = shipMethod === "000" ? 105 : 0; 
-    }
+    const shippingSettings = await fetchShippingSettings({ cache: "no-store" });
+    const realShippingCost = shippingFeeFor(
+      discountedSubtotal,
+      shipMethod,
+      shippingSettings,
+    );
 
     const secureTotalAmount = discountedSubtotal + realShippingCost;
 

@@ -12,20 +12,18 @@ import {
   keyOf,
   type CartItem,
 } from "@/lib/cartStore";
+import { shippingFeeFor, type ShippingSettings } from "@/lib/shippingDefaults";
+import { useShippingSettings } from "@/lib/useShippingSettings";
 
 const currency = (n: number) =>
   `NT$ ${(Math.round(n || 0)).toLocaleString("zh-TW")}`;
 
-const FREE_SHIP_THRESHOLD = 1500;
-const SHIPPING_BASE = 80;
-
-function calcTotals(items: CartItem[]) {
+function calcTotals(items: CartItem[], shippingSettings: ShippingSettings) {
   const subtotal = items.reduce(
     (sum, it) => sum + Number(it.price || 0) * (it.qty || 0),
     0,
   );
-  const shipping =
-    subtotal >= FREE_SHIP_THRESHOLD || subtotal === 0 ? 0 : SHIPPING_BASE;
+  const shipping = shippingFeeFor(subtotal, "711", shippingSettings);
   const total = subtotal + shipping;
   return { subtotal, shipping, total };
 }
@@ -45,6 +43,7 @@ export default function CartSheet() {
   const open = useCartStore(selectOpen);
   const close = useCartStore((s) => s.closeCart);
   const items = useCartStore(selectItems);
+  const shippingSettings = useShippingSettings();
 
   const inc = useCartStore((s) => s.inc);
   const dec = useCartStore((s) => s.dec);
@@ -52,7 +51,10 @@ export default function CartSheet() {
 
   const router = useRouter();
 
-  const { subtotal, total } = useMemo(() => calcTotals(items), [items]);
+  const { subtotal, total } = useMemo(
+    () => calcTotals(items, shippingSettings),
+    [items, shippingSettings],
+  );
 
   const goCheckout = () => {
     if (!items.length) return;

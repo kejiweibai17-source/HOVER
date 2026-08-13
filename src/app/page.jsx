@@ -9,6 +9,8 @@ import { fetchBrandStorySlides } from "@/lib/brandStoryDefaults";
 import { fetchMidVideoSettings } from "@/lib/midVideoDefaults";
 import { fetchCategoryTiles } from "@/lib/categoryGridDefaults";
 import { fetchPeopleSlides } from "@/lib/peopleDefaults";
+import { fetchHomeCarouselProducts } from "@/lib/homeProductsDefaults";
+import { fetchShippingSettings } from "@/lib/shippingDefaults";
 
 // 🌟 1. 動態獲取網址，解決本地端與正式機網址判定問題
 const getSiteUrl = () => {
@@ -20,24 +22,26 @@ const getSiteUrl = () => {
 
 const SITE_URL = getSiteUrl();
 
-// 🌟 首頁動態 FAQ 資料
-const homeFAQs = [
-  {
-    question: "HOVER 的服飾有什麼特色？",
-    answer:
-      "HOVER 精選兼具舒適、質感與實穿性的日常服飾，以簡約剪裁與中性風格為主，適合依照生活節奏自在穿搭。",
-  },
-  {
-    question: "如何選擇適合的尺寸？",
-    answer:
-      "每款商品頁面皆提供尺寸指南，建議參考肩寬、胸寬、衣長等數據挑選。若仍有疑問，歡迎透過聯絡我們頁面洽詢客服。",
-  },
-  {
-    question: "訂購後大約幾天可以收到商品？有退換貨服務嗎？",
-    answer:
-      "現貨商品一般於訂單確認後 1–3 個工作天內出貨。全館單筆滿 NT$2,000 享免運。若收到商品有瑕疵或錯誤，請於 7 日內聯繫 HOVER 客服協助處理。",
-  },
-];
+async function getHomeFaqs() {
+  const shipping = await fetchShippingSettings();
+  const threshold = shipping.freeShipThreshold.toLocaleString("zh-TW");
+  return [
+    {
+      question: "HOVER 的服飾有什麼特色？",
+      answer:
+        "HOVER 精選兼具舒適、質感與實穿性的日常服飾，以簡約剪裁與中性風格為主，適合依照生活節奏自在穿搭。",
+    },
+    {
+      question: "如何選擇適合的尺寸？",
+      answer:
+        "每款商品頁面皆提供尺寸指南，建議參考肩寬、胸寬、衣長等數據挑選。若仍有疑問，歡迎透過聯絡我們頁面洽詢客服。",
+    },
+    {
+      question: "訂購後大約幾天可以收到商品？有退換貨服務嗎？",
+      answer: `現貨商品一般於訂單確認後 1–3 個工作天內出貨。全館單筆滿 NT$${threshold} 享免運。若收到商品有瑕疵或錯誤，請於 7 日內聯繫 HOVER 客服協助處理。`,
+    },
+  ];
+}
 
 const HOME_TITLE = "HOVER｜只為經典而生";
 const HOME_DESCRIPTION =
@@ -81,6 +85,7 @@ export const revalidate = 60;
 
 // 🚀 改為 async 函式，支援伺服器端抓取資料
 export default async function Page() {
+  const homeFAQs = await getHomeFaqs();
   const schemaWebSite = {
     "@context": "https://schema.org",
     "@type": "WebSite",
@@ -180,6 +185,7 @@ export default async function Page() {
   const initialMidVideo = await fetchMidVideoSettings();
   const initialCategoryGrid = await fetchCategoryTiles();
   const initialPeople = await fetchPeopleSlides();
+  const homeCarousels = await fetchHomeCarouselProducts();
 
   return (
     <>
@@ -216,6 +222,8 @@ export default async function Page() {
         initialMidVideo={initialMidVideo}
         initialCategoryGrid={initialCategoryGrid}
         initialPeople={initialPeople}
+        initialNewArrivals={homeCarousels.newArrivals}
+        initialBestSeller={homeCarousels.bestSeller}
       />
     </>
   );

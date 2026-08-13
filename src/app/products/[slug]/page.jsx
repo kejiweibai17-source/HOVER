@@ -7,6 +7,7 @@ import { DEFAULT_WASHING_INSTRUCTIONS } from "@/lib/washingInstructions";
 import { DEFAULT_PRODUCT_COLORS } from "@/lib/productColors";
 import { pickWpSizeUrl } from "@/lib/listImageUrl";
 import { stripHtmlToText } from "@/lib/utils";
+import { fetchShippingSettings } from "@/lib/shippingDefaults";
 
 export const revalidate = 10;
 
@@ -30,7 +31,7 @@ function resolveSeoTemplate(value, productName) {
 }
 
 // ===================== 動態 FAQ 生成器 =====================
-function getProductFAQs(productName) {
+function getProductFAQs(productName, freeShipThreshold = 1500) {
   const name = String(productName).toLowerCase();
 
   if (
@@ -77,7 +78,7 @@ function getProductFAQs(productName) {
     {
       question: "商品有提供退換貨服務嗎？",
       answer:
-        "全館單筆滿 NT$2,000 享免運。若商品有瑕疵或配送錯誤，請於收到後 7 日內聯繫客服協助處理。",
+        `全館單筆滿 NT$${Number(freeShipThreshold).toLocaleString("zh-TW")} 享免運。若商品有瑕疵或配送錯誤，請於收到後 7 日內聯繫客服協助處理。`,
     },
     {
       question: "出貨時間大約多久？",
@@ -100,6 +101,7 @@ export async function generateStaticParams() {
 // ===================== Metadata 動態生成與 SEO 優化 =====================
 export async function generateMetadata({ params }) {
   const p = await fetchProductBySlug(params.slug);
+  const shipping = await fetchShippingSettings();
   const siteName = "HOVER";
 
   if (!p) {
@@ -124,7 +126,7 @@ export async function generateMetadata({ params }) {
     resolveSeoTemplate(p.seoDescription, p.name) ||
     (cleanDesc
       ? cleanDesc
-      : `探索 HOVER【${p.name}】——以舒適剪裁與簡約質感，為日常穿搭帶來更多可能。全館滿 NT$2,000 享免運。`);
+      : `探索 HOVER【${p.name}】——以舒適剪裁與簡約質感，為日常穿搭帶來更多可能。全館滿 NT$${shipping.freeShipThreshold.toLocaleString("zh-TW")} 享免運。`);
 
   const productPath = `/products/${params.slug}`; // 相對路徑配合 metadataBase
 
@@ -172,6 +174,7 @@ export async function generateMetadata({ params }) {
 }
 
 export default async function ProductPage({ params }) {
+  const shipping = await fetchShippingSettings();
   let woo = null;
   try {
     woo = await fetchProductBySlug(params.slug);
@@ -220,7 +223,9 @@ export default async function ProductPage({ params }) {
       }
     : defaultFallback;
 
-  const productFAQs = woo ? getProductFAQs(woo.name) : [];
+  const productFAQs = woo
+    ? getProductFAQs(woo.name, shipping.freeShipThreshold)
+    : [];
   // 內頁大圖：只用 WP REST 真實 sizes；沒有就用原圖。
   // 勿臆造 -1024x1024（本站多數商品沒有此尺寸 → 404 死圖）。
   const schemaImages =
@@ -314,7 +319,7 @@ export default async function ProductPage({ params }) {
             },
             shippingRate: {
               "@type": "MonetaryAmount",
-              value: "80", // 預設運費
+              value: String(shipping.homeDeliveryFee || shipping.cvsFee || 0),
               currency: "TWD",
             },
             deliveryTime: {

@@ -18,6 +18,7 @@ import { usePathname } from "next/navigation";
 import HoverIcon from "@/components/hover/HoverIcon";
 import WishlistIcon from "@/components/hover/WishlistIcon";
 import { PasswordInput } from "@/components/hover/AuthField";
+import { useShippingSettings } from "@/lib/useShippingSettings";
 import {
   Home,
   Package,
@@ -336,6 +337,7 @@ function HoverSectionAction({ children, onClick, disabled = false }) {
 const HOVER_LINE_URL = "https://line.me/R/ti/p/@330kefmm";
 
 function OrderDetail({ order }) {
+  const shippingSettings = useShippingSettings();
   const shipping = order.shipping || {};
   const billing = order.billing || {};
   const recipient =
@@ -406,7 +408,7 @@ function OrderDetail({ order }) {
           <span>運費</span>
           <span className="text-right">
             {shippingTotal === 0
-              ? "消費滿NT$2,000免運"
+              ? `消費滿NT$${shippingSettings.freeShipThreshold.toLocaleString("zh-TW")}免運`
               : formatMoneyNT(shippingTotal)}
           </span>
         </div>

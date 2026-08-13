@@ -413,9 +413,6 @@ function ProductPurchasePanel({
             );
           })}
         </div>
-        {!selectedSize && (
-          <p className="mt-2.5 text-[12px] text-[#c90000]">請選擇尺寸</p>
-        )}
         {soldOut && selectedSize && (
           <p className="mt-2.5 text-[12px] text-[#c90000]">{STOCK_SOLD_OUT_MSG}</p>
         )}
