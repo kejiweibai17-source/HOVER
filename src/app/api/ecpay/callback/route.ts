@@ -4,13 +4,11 @@ import { issueEcpayInvoice } from "@/lib/ecpay-invoice";
 
 export const runtime = "nodejs";
 
-const {
-  WC_API_BASE,
-  WC_CONSUMER_KEY,
-  WC_CONSUMER_SECRET,
-  ECPAY_HASH_KEY,
-  ECPAY_HASH_IV,
-} = process.env;
+const WC_API_BASE = process.env.WC_API_BASE;
+const WC_CONSUMER_KEY = process.env.WC_CONSUMER_KEY;
+const WC_CONSUMER_SECRET = process.env.WC_CONSUMER_SECRET;
+const ECPAY_HASH_KEY = (process.env.ECPAY_HASH_KEY || "").trim();
+const ECPAY_HASH_IV = (process.env.ECPAY_HASH_IV || "").trim();
 
 // 產生綠界檢查碼
 function generateCheckMacValue(params: Record<string, string>, hashKey: string, hashIv: string): string {

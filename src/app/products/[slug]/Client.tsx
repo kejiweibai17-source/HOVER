@@ -4,7 +4,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import Image from "next/image";
 import { useRouter, useParams } from "next/navigation";
-import { AnimatePresence, motion } from "framer-motion";
 import { Minus, Plus } from "lucide-react";
 import WishlistIcon from "@/components/hover/WishlistIcon";
 import SizeGuideTable from "@/components/hover/SizeGuideTable";
@@ -21,10 +20,7 @@ import {
   type ProductColor,
 } from "@/lib/productColors";
 import { hasRichHtmlContent, sanitizeRichHtml } from "@/lib/utils";
-import {
-  resolveGalleryForColor,
-  type ColorGalleries,
-} from "@/lib/variationGallery";
+import { type ColorGalleries } from "@/lib/variationGallery";
 import {
   isWashingInstructionsVisible,
   type WashingInstructions,
@@ -138,7 +134,6 @@ function ProductGallery({
   images,
   name,
   part = "all",
-  /** mobile：一排一張、不裁切；desktop：維持 3:4 雙欄網格 */
   variant = "desktop",
 }: {
   images: string[];
@@ -147,26 +142,28 @@ function ProductGallery({
   variant?: "desktop" | "mobile";
 }) {
   const gallery = useMemo(() => normalizeGalleryImages(images), [images]);
-  const [index] = useState(0);
-  const secondLarge = gallery[1];
-  const gridImages = gallery.slice(2, GALLERY_IMAGE_COUNT);
-  const showHero = part === "all" || part === "hero";
-  const showRest = part === "all" || part === "rest";
   const isMobile = variant === "mobile";
+  const visible =
+    part === "hero"
+      ? gallery.slice(0, 1)
+      : part === "rest"
+        ? gallery.slice(1, GALLERY_IMAGE_COUNT)
+        : gallery.slice(0, GALLERY_IMAGE_COUNT);
 
-  if (isMobile) {
-    const mobileImages =
-      part === "hero"
-        ? gallery.slice(0, 1)
-        : part === "rest"
-          ? gallery.slice(1, GALLERY_IMAGE_COUNT)
-          : gallery.slice(0, GALLERY_IMAGE_COUNT);
-
-    return (
-      <div className="flex flex-col gap-2">
-        {mobileImages.map((src, i) => (
-          <div key={`m-${src}-${i}`} className="w-full bg-[#e8e6e2]">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
+  return (
+    <div className="flex flex-col gap-2">
+      {visible.map((src, i) => (
+        <div
+          key={`${part}-${src}-${i}`}
+          className={
+            isMobile
+              ? "w-full bg-[#e8e6e2]"
+              : "relative w-full overflow-hidden bg-[#e8e6e2]"
+          }
+          style={isMobile ? undefined : { aspectRatio: "3/4" }}
+        >
+          {isMobile ? (
+            // eslint-disable-next-line @next/next/no-img-element
             <img
               src={src}
               alt={`${name} ${part === "rest" ? i + 2 : i + 1}`}
@@ -174,78 +171,19 @@ function ProductGallery({
               loading={i === 0 && part === "hero" ? "eager" : "lazy"}
               decoding="async"
             />
-          </div>
-        ))}
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col gap-2">
-      {showHero && (
-        <div
-          className="relative w-full overflow-hidden bg-[#e8e6e2]"
-          style={{ aspectRatio: "3/4" }}
-        >
-          <AnimatePresence mode="wait" initial={false}>
-            <motion.div
-              key={gallery[index]}
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.22 }}
-              className="absolute inset-0"
-            >
-              <Image
-                src={gallery[index]}
-                alt={`${name} ${index + 1}`}
-                fill
-                unoptimized
-                sizes="(max-width: 768px) 100vw, 50vw"
-                className="object-cover"
-                priority={index === 0}
-              />
-            </motion.div>
-          </AnimatePresence>
+          ) : (
+            <Image
+              src={src}
+              alt={`${name} ${part === "rest" ? i + 2 : i + 1}`}
+              fill
+              unoptimized
+              sizes="(max-width: 768px) 100vw, 50vw"
+              className="object-cover"
+              priority={i === 0 && part !== "rest"}
+            />
+          )}
         </div>
-      )}
-
-      {showRest && secondLarge && (
-        <div
-          className="relative w-full overflow-hidden bg-[#e8e6e2]"
-          style={{ aspectRatio: "3/4" }}
-        >
-          <Image
-            src={secondLarge}
-            alt={`${name} 2`}
-            fill
-            unoptimized
-            sizes="(max-width: 768px) 100vw, 50vw"
-            className="object-cover"
-          />
-        </div>
-      )}
-
-      {showRest && gridImages.length > 0 && (
-        <div className="grid grid-cols-2 gap-2">
-          {gridImages.map((src, i) => (
-            <div
-              key={`grid-${src}-${i}`}
-              className="relative overflow-hidden bg-[#e8e6e2]"
-              style={{ aspectRatio: "3/4" }}
-            >
-              <Image
-                src={src}
-                alt={`${name} ${i + 3}`}
-                fill
-                unoptimized
-                sizes="(max-width: 768px) 50vw, 25vw"
-                className="object-cover"
-              />
-            </div>
-          ))}
-        </div>
-      )}
+      ))}
     </div>
   );
 }
@@ -563,7 +501,6 @@ export default function ProductClient({ product }: ProductProps) {
 
   const baseGallery =
     product.images && product.images.length > 0 ? product.images : MOCK_GALLERY;
-  const colorGalleries = product.colorGalleries || {};
   const variations = product.variations || [];
   const defaultAttributes = product.defaultAttributes || {};
 
@@ -676,12 +613,12 @@ export default function ProductClient({ product }: ProductProps) {
   }, [maxQty, qty]);
 
   const gallery = useMemo(() => {
-    // 同款分色獨立商品：圖庫固定用本商品圖片，不在同頁切色
-    if (hasSiblingColorLinks) {
-      return baseGallery;
+    if (selectedSize) {
+      const fromVariation = (matchedVariation?.gallery || []).filter(Boolean);
+      if (fromVariation.length) return fromVariation;
     }
-    return resolveGalleryForColor(selectedColor, colorGalleries, baseGallery);
-  }, [hasSiblingColorLinks, selectedColor, colorGalleries, baseGallery]);
+    return baseGallery;
+  }, [selectedSize, matchedVariation, baseGallery]);
 
   const displayPrice = matchedVariation
     ? matchedVariation.salePrice ?? matchedVariation.price
@@ -767,7 +704,7 @@ export default function ProductClient({ product }: ProductProps) {
       {/* 桌機 — 雙欄 */}
       <div className="mx-auto hidden max-w-[1400px] grid-cols-2 items-start gap-12 px-10 pb-16 pt-6 md:grid lg:gap-20 xl:gap-24">
         <div className="w-full">
-          <ProductGallery key={selectedColor} images={gallery} name={product.name} />
+          <ProductGallery key={`${selectedColor}-${selectedSize || "none"}`} images={gallery} name={product.name} />
         </div>
 
         <div className="w-full md:sticky md:top-[calc(var(--hover-header-height,116px)+16px)] md:self-start">
@@ -804,7 +741,7 @@ export default function ProductClient({ product }: ProductProps) {
       {/* 手機 — 主圖 → 購買資訊 → 手風琴 → 下方圖片區 */}
       <div className="bg-white pb-16 md:hidden">
         <ProductGallery
-          key={`${selectedColor}-hero`}
+          key={`${selectedColor}-${selectedSize || "none"}-hero`}
           images={gallery}
           name={product.name}
           part="hero"
@@ -848,7 +785,7 @@ export default function ProductClient({ product }: ProductProps) {
 
         <div className="mt-6">
           <ProductGallery
-            key={`${selectedColor}-rest`}
+            key={`${selectedColor}-${selectedSize || "none"}-rest`}
             images={gallery}
             name={product.name}
             part="rest"

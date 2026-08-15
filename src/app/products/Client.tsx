@@ -184,7 +184,7 @@ function FilterSidebar({
 
         <div className="flex-1 px-6 pb-10 pt-6 md:pt-20  ">
           <div className="mb-6 flex items-center justify-between">
-            <p className="text-[15px] font-medium tracking-[0.08em] text-black">
+            <p className="text-[15px] font-medium tracking-[0.08em] text-black md:text-[16px]">
               Filter
             </p>
             {/* 桌機關閉鈕 */}
@@ -199,18 +199,18 @@ function FilterSidebar({
           </div>
 
           {!hasAnyFilter && (
-            <p className="text-[13px] text-[#888]">目前沒有可篩選的條件。</p>
+            <p className="text-[13px] text-[#888] md:text-[14px]">目前沒有可篩選的條件。</p>
           )}
 
           {/* 商品類型 */}
           {typeGroups.length > 0 && (
             <div className="mb-8">
-              <p className="mb-3 text-[13px] font-semibold tracking-widest text-[#333]">
+              <p className="mb-3 text-[13px] font-semibold tracking-widest text-[#333] md:text-[14px]">
                 商品類型
               </p>
               {typeGroups.map((group) => (
                 <div key={group.group} className="mb-4">
-                  <p className="mb-2 text-[12px] text-[#999]">{group.group}</p>
+                  <p className="mb-2 text-[12px] text-[#666] md:text-[13px]">{group.group}</p>
                   <div className="space-y-2.5">
                     {group.items.map((item) => (
                       <label
@@ -225,7 +225,7 @@ function FilterSidebar({
                           }`}
                           onClick={() => onToggle(item)}
                         />
-                        <span className="text-[13px] text-[#333]">{item}</span>
+                        <span className="text-[13px] text-[#333] md:text-[14px]">{item}</span>
                       </label>
                     ))}
                   </div>
@@ -237,7 +237,7 @@ function FilterSidebar({
           {/* 顏色 */}
           {colors.length > 0 && (
             <div className="mb-8">
-              <p className="mb-3 text-[13px] font-semibold tracking-widest text-[#333]">
+              <p className="mb-3 text-[13px] font-semibold tracking-widest text-[#333] md:text-[14px]">
                 顏色
               </p>
               <div className="flex flex-wrap gap-x-6 gap-y-3">
@@ -259,7 +259,7 @@ function FilterSidebar({
                         }`}
                         style={{ backgroundColor: color.hex }}
                       />
-                      <span className="text-[12px] text-[#333]">
+                      <span className="text-[12px] text-[#333] md:text-[13px]">
                         {color.label}
                       </span>
                     </button>
@@ -272,7 +272,7 @@ function FilterSidebar({
           {/* 尺寸 */}
           {sizes.length > 0 && (
             <div>
-              <p className="mb-3 text-[13px] font-semibold tracking-widest text-[#333]">
+              <p className="mb-3 text-[13px] font-semibold tracking-widest text-[#333] md:text-[14px]">
                 尺寸
               </p>
               <div className="flex flex-wrap gap-2.5">
@@ -283,7 +283,7 @@ function FilterSidebar({
                       key={size}
                       type="button"
                       onClick={() => onToggle(size)}
-                      className={`flex h-[30px] min-w-[30px] items-center justify-center border px-2 text-[12px] font-bold transition-all ${
+                      className={`flex h-[30px] min-w-[30px] items-center justify-center border px-2 text-[12px] font-bold transition-all md:h-8 md:min-w-8 md:text-[13px] ${
                         active
                           ? "border-[#8b8b8b] bg-[#8b8b8b] text-white"
                           : "border-[#ccc] bg-white text-black hover:border-[#888]"
@@ -326,7 +326,7 @@ function SortDropdown({
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex items-center gap-1 text-[13px] text-black hover:opacity-60"
+        className="flex items-center gap-1 text-[14px] text-black hover:opacity-60 md:text-[15px]"
       >
         排序
         <ChevronDown
@@ -346,7 +346,7 @@ function SortDropdown({
                     onChange(opt);
                     setOpen(false);
                   }}
-                  className={`w-full px-4 py-2 text-left text-[12px] hover:bg-[#f5f5f3] ${
+                  className={`w-full px-4 py-2 text-left text-[13px] hover:bg-[#f5f5f3] md:text-[14px] ${
                     value === opt
                       ? "font-semibold text-[#2a514d]"
                       : "text-[#333]"
@@ -421,14 +421,14 @@ function ProductCardImage({
     <OptimizedImage
       src={fullSrc}
       fullSrc={fullSrc}
-      role="card"
+      role="pdp"
       alt={alt}
       fill
-      sizes="(max-width: 768px) 50vw, 25vw"
+      sizes="(max-width: 768px) 50vw, 22vw"
       priority={priority}
       loading={priority ? "eager" : "lazy"}
       decoding="async"
-      className={`object-cover ${className}`}
+      className={`object-contain ${className}`}
     />
   );
 }
@@ -463,25 +463,29 @@ const ProductCard = memo(function ProductCard({
       {/* Image container */}
       <div
         className="relative mb-2 w-full overflow-hidden bg-white"
-        style={{ aspectRatio: "1/1" }}
+        style={{ aspectRatio: "404/479" }}
       >
-        <ProductCardImage
-          fullSrc={img}
-          alt={product.images?.[0]?.alt || product.name}
-          priority={priority}
-          className={
-            hasHoverImage && hoverReady
-              ? "transition-opacity duration-300 opacity-100 group-hover:opacity-0"
-              : ""
-          }
-        />
-        {hasHoverImage && hoverReady && (
-          <ProductCardImage
-            fullSrc={hoverImg!}
-            alt={hoverImage?.alt || `${product.name} alternate view`}
-            className="transition-opacity duration-300 opacity-0 group-hover:opacity-100"
-          />
-        )}
+        <div className="absolute inset-0 flex items-center justify-center p-3 md:p-5">
+          <span className="relative block h-full w-full">
+            <ProductCardImage
+              fullSrc={img}
+              alt={product.images?.[0]?.alt || product.name}
+              priority={priority}
+              className={
+                hasHoverImage && hoverReady
+                  ? "transition-opacity duration-300 opacity-100 group-hover:opacity-0"
+                  : ""
+              }
+            />
+            {hasHoverImage && hoverReady && (
+              <ProductCardImage
+                fullSrc={hoverImg!}
+                alt={hoverImage?.alt || `${product.name} alternate view`}
+                className="transition-opacity duration-300 opacity-0 group-hover:opacity-100"
+              />
+            )}
+          </span>
+        </div>
 
         {/* Badge */}
         {(product.isNew || product.tag) && (
@@ -494,7 +498,7 @@ const ProductCard = memo(function ProductCard({
       {/* Info */}
       <div className="mt-2 min-w-0 space-y-1 px-0.5 text-left md:mt-3">
         <div className="mb-0 flex min-h-9 min-w-0 items-center justify-between gap-2">
-          <p className="flex min-w-0 flex-1 items-center break-words text-[12px] font-semibold leading-snug text-black line-clamp-2 md:text-[13px]">
+          <p className="flex min-w-0 flex-1 items-center break-words text-[14px] font-semibold leading-snug text-black line-clamp-2 md:text-[15px]">
             {product.name}
           </p>
           <WishlistHeart product={product} />
@@ -512,7 +516,7 @@ const ProductCard = memo(function ProductCard({
           </div>
         )}
 
-        <p className="pt-0.5 text-[12px] font-bold text-[#222] md:text-[13px]">
+        <p className="pt-0.5 text-[14px] font-bold text-[#222] md:text-[15px]">
           NT {product.price}
         </p>
       </div>
@@ -663,7 +667,7 @@ export default function Client({
             {/* 桌機：上方 Banner＋標題＋麵包屑 = 50vh；手機 Banner 16:9 流式 */}
             <div className="md:flex md:h-[50vh] md:min-h-[280px] md:flex-col">
               <CategoryBannerBlock banner={banner} viewportFill />
-              <nav className="mb-3 mt-4 flex shrink-0 items-center gap-1 px-4 text-[11px] text-[#888] md:mt-4 md:mb-3 md:px-12 lg:px-16">
+              <nav className="mb-3 mt-4 flex shrink-0 items-center gap-1 px-4 text-[11px] text-[#888] md:mt-4 md:mb-3 md:px-16 xl:px-20">
                 <Link href="/" className="hover:text-black">
                   HOME
                 </Link>
@@ -675,13 +679,13 @@ export default function Client({
             {/* 桌機：下方篩選＋產品至少 50vh */}
             <div className="md:flex md:min-h-[50vh] md:flex-col">
               <div className="w-full shrink-0 border-t border-b border-[#e8e8e8]">
-                <div className="flex w-full items-center justify-between px-4 pb-4 pt-3 md:px-12 lg:px-16">
+                <div className="flex w-full items-center justify-between px-4 pb-4 pt-3 md:px-16 xl:px-20">
                   <button
                     type="button"
                     onClick={() =>
                       filterOpen ? setFilterOpen(false) : openFilter()
                     }
-                    className="flex items-center gap-2 text-[13px] text-black hover:opacity-60"
+                    className="flex items-center gap-2 text-[14px] text-black hover:opacity-60 md:text-[15px]"
                   >
                     <SlidersHorizontal size={15} strokeWidth={1.5} />
                     Filters
@@ -690,7 +694,7 @@ export default function Client({
                 </div>
               </div>
 
-              <div className="mx-auto w-full max-w-[1200px] flex-1 px-4 pt-6 md:px-8">
+              <div className="w-full flex-1 px-4 pt-6 md:px-16 xl:px-20">
                 {sorted.length === 0 ? (
                   <div
                     ref={gridRef}
@@ -716,7 +720,7 @@ export default function Client({
                 ) : (
                   <div
                     ref={gridRef}
-                    className="grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-3 md:grid-cols-4 md:gap-x-5 md:gap-y-10"
+                    className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 md:grid-cols-4 md:gap-x-7 md:gap-y-12 lg:gap-x-8"
                   >
                     {paginated.map((product, index) => (
                       <ProductCard
@@ -748,7 +752,7 @@ export default function Client({
                 {categorySlug === "all" ? "全部商品種類" : categoryLabel}
               </h1>
             </div>
-            <nav className="mb-4 mt-6 flex items-center gap-1 px-4 text-[11px] text-[#888] md:mt-8 md:px-12 lg:px-16">
+            <nav className="mb-4 mt-6 flex items-center gap-1 px-4 text-[11px] text-[#888] md:mt-8 md:px-16 xl:px-20">
               <Link href="/" className="hover:text-black">
                 HOME
               </Link>
@@ -756,13 +760,13 @@ export default function Client({
               <span className="text-black">{categoryLabel}</span>
             </nav>
             <div className="mb-8 w-full border-t border-b border-[#e8e8e8]">
-              <div className="flex w-full items-center justify-between px-4 pb-4 pt-3 md:px-12 lg:px-16">
+              <div className="flex w-full items-center justify-between px-4 pb-4 pt-3 md:px-16 xl:px-20">
                 <button
                   type="button"
                   onClick={() =>
                     filterOpen ? setFilterOpen(false) : openFilter()
                   }
-                  className="flex items-center gap-2 text-[13px] text-black hover:opacity-60"
+                  className="flex items-center gap-2 text-[14px] text-black hover:opacity-60 md:text-[15px]"
                 >
                   <SlidersHorizontal size={15} strokeWidth={1.5} />
                   Filters
@@ -771,7 +775,7 @@ export default function Client({
               </div>
             </div>
 
-            <div className="mx-auto max-w-[1200px] px-4 md:px-8">
+            <div className="px-4 md:px-16 xl:px-20">
               {sorted.length === 0 ? (
                 <div
                   ref={gridRef}
@@ -797,7 +801,7 @@ export default function Client({
               ) : (
                 <div
                   ref={gridRef}
-                  className="grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-3 md:grid-cols-4 md:gap-x-5 md:gap-y-10"
+                  className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 md:grid-cols-4 md:gap-x-7 md:gap-y-12 lg:gap-x-8"
                 >
                   {paginated.map((product, index) => (
                     <ProductCard

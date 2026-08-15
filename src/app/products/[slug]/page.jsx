@@ -9,7 +9,7 @@ import { pickWpSizeUrl } from "@/lib/listImageUrl";
 import { stripHtmlToText } from "@/lib/utils";
 import { fetchShippingSettings } from "@/lib/shippingDefaults";
 
-export const revalidate = 10;
+export const revalidate = 0;
 
 // 🌟 動態獲取網址：本地端會顯示 localhost，正式上線設定變數後自動轉為正式網址
 const getSiteUrl = () => {

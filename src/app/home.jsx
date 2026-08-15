@@ -103,12 +103,6 @@ function ProductCard({ product }) {
             )}
           </span>
         </Link>
-
-        {product.isNew && (
-          <span className="pointer-events-none absolute left-2 top-2 z-20 bg-white px-2 py-0.5 text-[10px] font-semibold tracking-widest text-black md:left-3 md:top-3">
-            NEW
-          </span>
-        )}
       </div>
 
       {/* Info */}
@@ -116,7 +110,7 @@ function ProductCard({ product }) {
         <div className="flex min-h-9 min-w-0 items-center justify-between gap-2">
           <Link
             href={product.href}
-            className="flex min-w-0 flex-1 items-center break-words text-[12px] font-semibold leading-snug text-black line-clamp-2 hover:opacity-60 md:text-[13px]"
+            className="flex min-w-0 flex-1 items-center break-words text-[14px] font-semibold leading-snug text-black line-clamp-2 hover:opacity-60 md:text-[15px]"
           >
             {product.name}
           </Link>
@@ -144,7 +138,7 @@ function ProductCard({ product }) {
 
         <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 pt-0.5">
           <span
-            className={`text-[12px] font-bold text-[#222] md:text-[13px] ${
+            className={`text-[14px] font-bold text-[#222] md:text-[15px] ${
               product.soldOut ? "line-through" : ""
             }`}
           >

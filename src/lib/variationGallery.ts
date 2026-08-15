@@ -126,10 +126,29 @@ export function resolveGalleryForColor(
   colorGalleries: ColorGalleries,
   fallback: string[],
 ): string[] {
+  const entries = Object.entries(colorGalleries).filter(
+    ([, images]) => images?.length,
+  );
+  if (!entries.length) return fallback;
+
   const key = String(color || "").trim();
-  const images = colorGalleries[key];
-  if (images?.length) {
-    return images.map((img) => img.src).filter(Boolean);
+  if (!key) {
+    return entries.length === 1
+      ? entries[0][1].map((img) => img.src).filter(Boolean)
+      : fallback;
+  }
+
+  const lower = key.toLowerCase();
+  const matched = entries.find(([name]) => {
+    const n = name.trim().toLowerCase();
+    return n === lower || n.includes(lower) || lower.includes(n);
+  });
+  if (matched?.[1]?.length) {
+    return matched[1].map((img) => img.src).filter(Boolean);
+  }
+
+  if (entries.length === 1) {
+    return entries[0][1].map((img) => img.src).filter(Boolean);
   }
   return fallback;
 }

@@ -32,10 +32,16 @@ function hcvg_is_color_attribute_name(string $name): bool
 
 function hcvg_normalize_ids($raw): array
 {
-    if (is_string($raw) && $raw !== '') {
-        $decoded = json_decode($raw, true);
-        if (is_array($decoded)) {
-            $raw = $decoded;
+    if (is_string($raw)) {
+        $raw = trim(wp_unslash($raw));
+        if ($raw === '') {
+            return [];
+        }
+        if (str_starts_with($raw, '[')) {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : explode(',', $raw);
+        } else {
+            $raw = explode(',', $raw);
         }
     }
     if (!is_array($raw)) {
@@ -187,38 +193,86 @@ add_action('woocommerce_product_after_variable_attributes', function ($loop, $va
     $variation_id = $variation->ID ?? 0;
     $ids = $variation_id ? hcvg_get_variation_gallery_ids((int) $variation_id) : [];
     $images = hcvg_ids_to_images($ids);
-    $json = wp_json_encode($ids, JSON_UNESCAPED_UNICODE);
+    $csv = implode(',', $ids);
     ?>
-    <div class="hcvg-variation-panel" data-loop="<?php echo esc_attr((string) $loop); ?>">
-        <p class="form-row form-row-full">
-            <label>HOVER 變體圖庫 <span class="description">（可多張，前台選此顏色時會切換圖庫）</span></label>
-            <input type="hidden" class="hcvg-gallery-ids" name="hover_variation_gallery[<?php echo esc_attr((string) $loop); ?>]" value="<?php echo esc_attr($json ?: '[]'); ?>">
-            <div class="hcvg-gallery-list">
-                <?php foreach ($images as $image) : ?>
-                    <div class="hcvg-gallery-item" data-id="<?php echo esc_attr((string) $image['id']); ?>">
-                        <img src="<?php echo esc_url($image['src']); ?>" alt="">
-                        <button type="button" class="hcvg-remove-image" aria-label="移除圖片">×</button>
-                    </div>
-                <?php endforeach; ?>
-            </div>
-            <button type="button" class="button hcvg-add-images">新增圖片</button>
-            <button type="button" class="button hcvg-copy-same-color">套用到相同顏色變體</button>
-        </p>
+    <div class="hcvg-variation-panel form-row form-row-full" data-loop="<?php echo esc_attr((string) $loop); ?>" data-variation-id="<?php echo esc_attr((string) $variation_id); ?>">
+        <label>HOVER 變體圖庫 <span class="description">（可多張；點「新增圖片」會加在後面，不會蓋掉已選）</span></label>
+        <input type="hidden" class="hcvg-gallery-ids" name="hcvg_gallery[<?php echo esc_attr((string) $variation_id); ?>]" value="<?php echo esc_attr($csv); ?>">
+        <div class="hcvg-gallery-list">
+            <?php foreach ($images as $image) : ?>
+                <div class="hcvg-gallery-item" data-id="<?php echo esc_attr((string) $image['id']); ?>">
+                    <img src="<?php echo esc_url($image['src']); ?>" alt="">
+                    <button type="button" class="hcvg-remove-image" aria-label="移除圖片">×</button>
+                </div>
+            <?php endforeach; ?>
+        </div>
+        <button type="button" class="button hcvg-add-images">新增圖片</button>
+        <p class="description" style="margin:8px 0 0">改完按「更新」即可。每個尺寸各自獨立，不會套到其他尺寸。</p>
     </div>
     <?php
 }, 10, 3);
 
-/** 儲存變體 */
+function hcvg_save_variation_gallery(int $variation_id, $raw): void
+{
+    if ($variation_id <= 0 || !current_user_can('edit_post', $variation_id)) {
+        return;
+    }
+    update_post_meta($variation_id, HCVG_META, hcvg_normalize_ids($raw));
+}
+
+function hcvg_payload_from_post(): array
+{
+    if (empty($_POST['hcvg_payload'])) {
+        return [];
+    }
+    $decoded = json_decode(wp_unslash((string) $_POST['hcvg_payload']), true);
+    return is_array($decoded) ? $decoded : [];
+}
+
+/** 一次寫入目前頁面上所有變體圖庫（避免 loop 索引對錯、欄位被 disable 沒送出） */
+add_action('woocommerce_ajax_save_product_variations', function ($product_id) {
+    $payload = hcvg_payload_from_post();
+    if ($payload) {
+        foreach ($payload as $variation_id => $ids) {
+            hcvg_save_variation_gallery((int) $variation_id, $ids);
+        }
+    } elseif (!empty($_POST['hcvg_gallery']) && is_array($_POST['hcvg_gallery'])) {
+        foreach ($_POST['hcvg_gallery'] as $variation_id => $raw) {
+            hcvg_save_variation_gallery((int) $variation_id, $raw);
+        }
+    }
+}, 20);
+
+/** 儲存單一變體（後備） */
 add_action('woocommerce_save_product_variation', function ($variation_id, $loop) {
-    if (!current_user_can('edit_post', $variation_id)) {
+    $variation_id = (int) $variation_id;
+    $payload = hcvg_payload_from_post();
+    if (array_key_exists($variation_id, $payload) || array_key_exists((string) $variation_id, $payload)) {
+        $raw = $payload[$variation_id] ?? $payload[(string) $variation_id];
+        hcvg_save_variation_gallery($variation_id, $raw);
         return;
     }
-    if (!isset($_POST['hover_variation_gallery'][$loop])) {
+    if (isset($_POST['hcvg_gallery'][$variation_id])) {
+        hcvg_save_variation_gallery($variation_id, $_POST['hcvg_gallery'][$variation_id]);
         return;
     }
-    $ids = hcvg_normalize_ids(wp_unslash($_POST['hover_variation_gallery'][$loop]));
-    update_post_meta($variation_id, HCVG_META, $ids);
-}, 10, 2);
+    if (isset($_POST['hover_variation_gallery'][$loop])) {
+        hcvg_save_variation_gallery($variation_id, $_POST['hover_variation_gallery'][$loop]);
+    }
+}, 20, 2);
+
+add_action('woocommerce_process_product_meta', function ($product_id) {
+    $product = wc_get_product($product_id);
+    if (!$product || !$product->is_type('variable')) {
+        return;
+    }
+    $payload = hcvg_payload_from_post();
+    if ($payload) {
+        foreach ($payload as $variation_id => $ids) {
+            hcvg_save_variation_gallery((int) $variation_id, $ids);
+        }
+    }
+}, 30);
 
 /** REST：變體 */
 add_filter('woocommerce_rest_prepare_product_variation_object', function ($response, $object, $request) {
@@ -242,17 +296,6 @@ add_filter('woocommerce_rest_prepare_product_object', function ($response, $obje
     return $response;
 }, 12, 3);
 
-add_action('init', function () {
-    register_post_meta('product_variation', HCVG_META, [
-        'type'              => 'string',
-        'single'            => true,
-        'show_in_rest'      => true,
-        'auth_callback'     => function () {
-            return current_user_can('edit_products');
-        },
-    ]);
-});
-
 /** 後台資源 */
 add_action('admin_enqueue_scripts', function ($hook) {
     if (!in_array($hook, ['post.php', 'post-new.php'], true)) {
@@ -264,7 +307,7 @@ add_action('admin_enqueue_scripts', function ($hook) {
     }
 
     wp_enqueue_media();
-    wp_register_script('hcvg-admin', false, ['jquery'], '1.0.0', true);
+    wp_register_script('hcvg-admin', false, ['jquery'], '1.6.0', true);
     wp_enqueue_script('hcvg-admin');
     wp_add_inline_script('hcvg-admin', hcvg_admin_js());
 });
@@ -273,55 +316,109 @@ function hcvg_admin_js(): string
 {
     return <<<'JS'
 jQuery(function($){
-    function getPanel($btn){
-        return $btn.closest('.hcvg-variation-panel');
+    function getPanel($el){
+        return $el.closest('.hcvg-variation-panel');
     }
 
-    function readIds($panel){
-        try {
-            return JSON.parse($panel.find('.hcvg-gallery-ids').val() || '[]') || [];
-        } catch (e) {
-            return [];
+    function idsFromDom($panel){
+        var ids = [];
+        $panel.find('.hcvg-gallery-item').each(function(){
+            var id = parseInt($(this).attr('data-id'), 10);
+            if (id > 0) ids.push(id);
+        });
+        return ids;
+    }
+
+    function ensurePayloadField(){
+        var $wrap = $('#variable_product_options .woocommerce_variations');
+        if (!$wrap.length) return $();
+        var $field = $wrap.children('textarea.hcvg-payload');
+        if (!$field.length) {
+            $field = $('<textarea class="hcvg-payload" name="hcvg_payload" hidden></textarea>');
+            $wrap.prepend($field);
         }
+        return $field.prop('disabled', false);
     }
 
-    function writeIds($panel, ids){
-        $panel.find('.hcvg-gallery-ids').val(JSON.stringify(ids));
+    function syncPayload(){
+        var payload = {};
+        $('.hcvg-variation-panel').each(function(){
+            var $panel = $(this);
+            var vid = parseInt($panel.attr('data-variation-id'), 10);
+            if (!vid) {
+                vid = parseInt($panel.closest('.woocommerce_variation').find('input[name^="variable_post_id"]').val(), 10);
+            }
+            if (!vid) return;
+            var ids = idsFromDom($panel);
+            payload[vid] = ids;
+            $panel.find('.hcvg-gallery-ids').prop('disabled', false).val(ids.join(','));
+        });
+        ensurePayloadField().val(JSON.stringify(payload));
+        return payload;
+    }
+
+    function markDirty($panel){
+        var $row = $panel.closest('.woocommerce_variation');
+        $row.addClass('variation-needs-update');
+        $panel.find('.hcvg-gallery-ids').prop('disabled', false).trigger('change');
+        $('#variable_product_options').trigger('woocommerce_variations_input_changed');
+        $('button.save-variation-changes').prop('disabled', false).removeClass('disabled');
+        $('button.cancel-variation-changes').prop('disabled', false).removeClass('disabled');
+        syncPayload();
     }
 
     function renderList($panel, attachments){
         var $list = $panel.find('.hcvg-gallery-list').empty();
         attachments.forEach(function(item){
+            if (!item || !item.id) return;
             var html = '<div class="hcvg-gallery-item" data-id="'+item.id+'">';
             html += '<img src="'+item.url+'" alt="">';
             html += '<button type="button" class="hcvg-remove-image" aria-label="移除圖片">×</button>';
             html += '</div>';
             $list.append(html);
         });
-        writeIds($panel, attachments.map(function(a){ return a.id; }));
+        markDirty($panel);
     }
+
+    $(document).on('mousedown', 'button.save-variation-changes', function(){
+        syncPayload();
+    });
+
+    $.ajaxPrefilter(function(options){
+        if (!options || !options.data) return;
+        var data = String(options.data);
+        if (data.indexOf('action=woocommerce_save_variations') === -1) return;
+        var payload = JSON.stringify(syncPayload());
+        options.data += '&hcvg_payload=' + encodeURIComponent(payload);
+    });
 
     $(document).on('click', '.hcvg-add-images', function(e){
         e.preventDefault();
+        e.stopPropagation();
         var $panel = getPanel($(this));
-        var current = readIds($panel);
+        var existingIds = idsFromDom($panel);
+        var existingMap = {};
+        $panel.find('.hcvg-gallery-item').each(function(){
+            existingMap[parseInt($(this).attr('data-id'), 10)] = $(this).find('img').attr('src');
+        });
         var frame = wp.media({
-            title: '選擇變體圖庫圖片',
+            title: '選擇要加入的圖片（可複選；不會覆蓋已有圖片）',
             button: { text: '加入圖庫' },
             multiple: true,
             library: { type: 'image' }
         });
-        frame.on('open', function(){
-            var selection = frame.state().get('selection');
-            current.forEach(function(id){
-                var att = wp.media.attachment(id);
-                att.fetch();
-                selection.add(att);
-            });
-        });
         frame.on('select', function(){
-            var attachments = frame.state().get('selection').toJSON().map(function(att){
-                return { id: att.id, url: att.sizes && att.sizes.thumbnail ? att.sizes.thumbnail.url : att.url };
+            var attachments = existingIds.map(function(id){
+                return { id: id, url: existingMap[id] || '' };
+            });
+            frame.state().get('selection').toJSON().forEach(function(att){
+                var id = parseInt(att.id, 10);
+                if (!id || existingIds.indexOf(id) !== -1) return;
+                existingIds.push(id);
+                attachments.push({
+                    id: id,
+                    url: (att.sizes && att.sizes.thumbnail) ? att.sizes.thumbnail.url : att.url
+                });
             });
             renderList($panel, attachments);
         });
@@ -330,55 +427,32 @@ jQuery(function($){
 
     $(document).on('click', '.hcvg-remove-image', function(e){
         e.preventDefault();
+        e.stopPropagation();
         var $panel = getPanel($(this));
-        var id = parseInt($(this).closest('.hcvg-gallery-item').data('id'), 10);
-        var ids = readIds($panel).filter(function(v){ return v !== id; });
+        var id = parseInt($(this).closest('.hcvg-gallery-item').attr('data-id'), 10);
         var attachments = [];
         $panel.find('.hcvg-gallery-item').each(function(){
-            var itemId = parseInt($(this).data('id'), 10);
+            var itemId = parseInt($(this).attr('data-id'), 10);
             if (itemId === id) return;
             attachments.push({ id: itemId, url: $(this).find('img').attr('src') });
         });
         renderList($panel, attachments);
     });
 
-    $(document).on('click', '.hcvg-copy-same-color', function(e){
+    document.addEventListener('click', function(e){
+        var btn = e.target.closest('#publish, #save-post');
+        if (!btn || btn.getAttribute('data-hcvg-ok') === '1') return;
+        var saveVar = document.querySelector('#variable_product_options button.save-variation-changes');
+        if (!saveVar || saveVar.disabled) return;
         e.preventDefault();
-        var $panel = getPanel($(this));
-        var $row = $panel.closest('.woocommerce_variation');
-        var colorVal = '';
-        $row.find('select[name^="attribute_"] option:selected').each(function(){
-            var txt = $.trim($(this).text());
-            if (txt) colorVal = txt;
+        e.stopPropagation();
+        syncPayload();
+        $(document).one('woocommerce_variations_saved', function(){
+            btn.setAttribute('data-hcvg-ok', '1');
+            btn.click();
         });
-        if (!colorVal) {
-            alert('找不到此變體的顏色屬性，無法套用。');
-            return;
-        }
-        var ids = readIds($panel);
-        if (!ids.length) {
-            alert('請先在此變體新增圖片。');
-            return;
-        }
-        var copied = 0;
-        $('#variable_product_options .woocommerce_variation').each(function(){
-            var $targetPanel = $(this).find('.hcvg-variation-panel');
-            if (!$targetPanel.length) return;
-            var match = false;
-            $(this).find('select[name^="attribute_"] option:selected').each(function(){
-                if ($.trim($(this).text()) === colorVal) match = true;
-            });
-            if (!match) return;
-            $targetPanel.find('.hcvg-gallery-ids').val(JSON.stringify(ids));
-            var html = '';
-            $panel.find('.hcvg-gallery-item').each(function(){
-                html += $('<div>').append($(this).clone()).html();
-            });
-            $targetPanel.find('.hcvg-gallery-list').html(html);
-            copied++;
-        });
-        alert('已套用到 ' + copied + ' 個「' + colorVal + '」變體。請記得儲存變化類型。');
-    });
+        saveVar.click();
+    }, true);
 });
 JS;
 }

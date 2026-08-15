@@ -17,9 +17,9 @@ const BASE = process.env.WC_API_BASE!;
 const CK = process.env.WC_CONSUMER_KEY!;
 const CS = process.env.WC_CONSUMER_SECRET!;
 
-const MERCHANT_ID = process.env.ECPAY_MERCHANT_ID!;
-const HASH_KEY = process.env.ECPAY_HASH_KEY!;
-const HASH_IV = process.env.ECPAY_HASH_IV!;
+const MERCHANT_ID = (process.env.ECPAY_MERCHANT_ID || "").trim();
+const HASH_KEY = (process.env.ECPAY_HASH_KEY || "").trim();
+const HASH_IV = (process.env.ECPAY_HASH_IV || "").trim();
 const ECPAY_URL = process.env.ECPAY_API_URL || "https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5"; 
 
 const LINEPAY_CHANNEL_ID = process.env.LINEPAY_CHANNEL_ID!;

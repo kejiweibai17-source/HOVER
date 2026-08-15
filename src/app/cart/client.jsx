@@ -1240,12 +1240,6 @@ function CheckoutStep({
       return;
     }
 
-    // 暫停金流導向（舊廠商串接資訊尚未更新）
-    if (payMethod === "card") {
-      alert("尚未串接綠界金流");
-      return;
-    }
-
     setIsSubmitting(true);
 
     const line1 =
@@ -1307,8 +1301,10 @@ function CheckoutStep({
         return;
       }
       if (data.html) {
-        setIsSubmitting(false);
-        alert("尚未串接綠界金流");
+        const div = document.createElement("div");
+        div.innerHTML = data.html;
+        document.body.appendChild(div);
+        document.getElementById("_form_ecpay")?.submit();
         return;
       }
       window.location.href = `/thank-you?orderId=${data.orderId}`;

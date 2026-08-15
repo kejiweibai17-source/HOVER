@@ -9,6 +9,7 @@ export type ProductVariation = {
   stockStatus: string;
   stock: ProductStock;
   attributes: Record<string, string>;
+  gallery?: string[];
 };
 
 /** WooCommerce「預設表單值」→ 前台初始選取 */
@@ -62,6 +63,7 @@ export function parseWooVariation(raw: {
   backorders?: string;
   purchasable?: boolean;
   attributes?: Array<{ name?: string; option?: string }>;
+  hover_variation_gallery?: Array<{ src?: string }>;
 }): ProductVariation {
   const attributes: Record<string, string> = {};
   for (const attr of raw.attributes || []) {
@@ -76,6 +78,11 @@ export function parseWooVariation(raw: {
     saleRaw && saleRaw > 0 && saleRaw < regularPrice ? saleRaw : null;
   const price = salePrice ?? Number(raw.price || regularPrice || 0);
   const stock = parseWooStock(raw);
+  const gallery = Array.isArray(raw.hover_variation_gallery)
+    ? raw.hover_variation_gallery
+        .map((image) => String(image?.src || "").trim())
+        .filter(Boolean)
+    : [];
 
   return {
     id: Number(raw.id),
@@ -85,6 +92,7 @@ export function parseWooVariation(raw: {
     stockStatus: stock.stockStatus,
     stock,
     attributes,
+    gallery,
   };
 }
 

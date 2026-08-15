@@ -375,7 +375,7 @@ async function fetchProductVariations(productId: number) {
   const url = withAuth(
     `${base}/wp-json/wc/v3/products/${productId}/variations?per_page=100&status=publish`,
   );
-  const res = await fetch(url, { next: { revalidate: 60 } });
+  const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) return [];
   const data = (await res.json()) as any[];
   return Array.isArray(data) ? data : [];
@@ -409,7 +409,7 @@ export async function fetchProductBySlug(slug: string) {
       slug
     )}&status=publish`
   );
-  const res = await fetch(url, { next: { revalidate: 10 } });
+  const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) return null;
   const arr = (await res.json()) as any[];
   if (!Array.isArray(arr) || arr.length === 0) return null;
