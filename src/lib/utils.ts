@@ -39,6 +39,12 @@ export function cn(...classes: (string | undefined | null | false)[]) {
   return classes.filter(Boolean).join(" ");
 }
 
+/** 商品價錢顯示：NT. 1680 */
+export function formatProductPrice(value: string | number | null | undefined): string {
+  const n = Math.round(Number(String(value ?? "").replace(/[^\d.-]/g, "")) || 0);
+  return `NT. ${n}`;
+}
+
 /**
  * 將 HTML 轉成純文字：去掉標籤、解碼實體（&nbsp; 等），並整理多餘空白／空行。
  * 用於 SEO meta、純文字摘要等場景。

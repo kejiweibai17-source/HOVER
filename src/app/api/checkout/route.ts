@@ -10,6 +10,7 @@ import {
 } from "@/lib/membership";
 import { checkCartStock } from "@/lib/validateCartStock";
 import { fetchShippingSettings, shippingFeeFor } from "@/lib/shippingDefaults";
+import { generateCheckMacValue, getEcpayDate } from "@/lib/ecpay";
 
 export const runtime = "nodejs";
 
@@ -26,7 +27,7 @@ const LINEPAY_CHANNEL_ID = process.env.LINEPAY_CHANNEL_ID!;
 const LINEPAY_CHANNEL_SECRET = process.env.LINEPAY_CHANNEL_SECRET!;
 const LINEPAY_BASE_URL = process.env.LINEPAY_BASE_URL || "https://api-pay.line.me"; 
 
-interface CartItem { wcProductId: number; wcVariationId?: number; qty: number; price: number; title: string; id?: string | number; }
+interface CartItem { wcProductId: number; wcVariationId?: number; qty: number; price: number; title: string; name?: string; id?: string | number; }
 interface ContactInfo { email: string; }
 interface AddressInfo { firstName: string; lastName: string; line1: string; phone: string; storeId?: string; storeName?: string; storeAddr?: string; }
 interface RequestBody { items: CartItem[]; contact: ContactInfo; addr: AddressInfo; total: number; shipMethod: string; payMethod?: string; coupon?: { code: string; amount: number } | string | null; memberDiscount?: number; }
@@ -87,27 +88,18 @@ async function validateCouponOnServer(
   return { amount: discount, code: String(coupon.code || code) };
 }
 
-function getEcpayDate(): string {
-  const d = new Date();
-  const offset = d.getTimezoneOffset() * 60000;
-  const local = new Date(d.getTime() - offset + 8 * 3600000);
-  return local.toISOString().replace(/T/, " ").replace(/\..+/, "").replace(/-/g, "/");
+function toTwdInt(value: unknown): number {
+  const n = Math.round(Number(String(value ?? "").replace(/,/g, "").replace(/[^\d.-]/g, "")));
+  return Number.isFinite(n) ? n : NaN;
 }
 
-function ecpayEncode(text: string | number | undefined | null): string {
-  if (text === undefined || text === null) return "";
-  return encodeURIComponent(String(text)).replace(/%20/g, "+");
-}
-
-function generateCheckMacValue(params: Record<string, string>): string {
-  const keys = Object.keys(params).sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase()));
-  let raw = `HashKey=${HASH_KEY}`;
-  keys.forEach((k) => { if (k !== "CheckMacValue") raw += `&${k}=${params[k]}`; });
-  raw += `&HashIV=${HASH_IV}`;
-  const encoded = encodeURIComponent(raw).toLowerCase()
-    .replace(/%20/g, "+").replace(/%2d/g, "-").replace(/%5f/g, "_").replace(/%2e/g, ".")
-    .replace(/%21/g, "!").replace(/%2a/g, "*").replace(/%28/g, "(").replace(/%29/g, ")");
-  return crypto.createHash("sha256").update(encoded).digest("hex").toUpperCase();
+function ecpayIgnorePayment(amount: number): string {
+  const ignore: string[] = [];
+  // ATM / 網路ATM：16～49,999
+  if (amount < 16 || amount > 49999) ignore.push("ATM", "WebATM");
+  // 超商代碼／條碼：約 16/31～20,000
+  if (amount < 31 || amount > 20000) ignore.push("CVS", "BARCODE");
+  return ignore.join("#");
 }
 
 function basicAuth(): string | undefined {
@@ -152,7 +144,12 @@ export async function POST(req: Request) {
       if (!item.wcProductId && !item.id) {
         return NextResponse.json({ ok: false, message: "商品資料異常" }, { status: 400 });
       }
-      const lineTotal = Number(item.price) * Number(item.qty);
+      const unit = toTwdInt(item.price);
+      const qty = Math.max(1, Math.round(Number(item.qty) || 0));
+      if (!Number.isFinite(unit) || unit < 0 || !Number.isFinite(qty)) {
+        return NextResponse.json({ ok: false, message: "商品金額異常" }, { status: 400 });
+      }
+      const lineTotal = unit * qty;
       calculatedSubtotal += lineTotal;
       const productId = Number(item.wcProductId || item.id);
       if (auth && productId) {
@@ -264,8 +261,12 @@ export async function POST(req: Request) {
     }
     // ============================================================================
 
-    const safeLastName = (addr.lastName || "").replace(/\s+/g, "");
-    const safeFirstName = (addr.firstName || "").replace(/\s+/g, "");
+    let safeLastName = (addr.lastName || "").replace(/\s+/g, "");
+    let safeFirstName = (addr.firstName || "").replace(/\s+/g, "");
+    // RY 會把 last_name + first_name 接成收件人姓名；單欄姓名勿重複寫進兩個欄位
+    if (safeLastName && safeFirstName && safeLastName === safeFirstName) {
+      safeFirstName = "";
+    }
     const safePhone = (addr.phone || "").replace(/\s+/g, "");
 
     if (!loggedInCustomerId && contact?.email && auth && BASE) {
@@ -281,8 +282,18 @@ export async function POST(req: Request) {
       } catch (e) {}
     }
 
-    const cleanItemName = items && items.length > 0 ? items.map((it) => (it.title || "").replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, "")).join("#").slice(0, 150) : "Uflow_Product";
-    const tradeNo = `W${Date.now().toString().slice(-8)}`;
+    const cleanItemName = (
+      items
+        ?.map((it) =>
+          String(it.title || it.name || "")
+            .replace(/[#&<>'"%\\]/g, "")
+            .trim(),
+        )
+        .filter(Boolean)
+        .join("#")
+        .slice(0, 200) || "HOVER商品"
+    );
+    const tradeNo = `H${Date.now()}`;
     let orderId: string | number = tradeNo;
     
     if (auth && BASE) {
@@ -293,8 +304,8 @@ export async function POST(req: Request) {
         ];
 
         let finalAddress = addr.line1;
-        let methodId = "ry_ecpay_shipping"; 
-        let shippingTitle = "宅配速送";
+        let methodId = "ry_ecpay_shipping_home_tcat"; 
+        let shippingTitle = "綠界物流 宅配 黑貓";
 
         const isCVS = ["CVS", "711", "HILIFE", "OKMART", "FAMI"].includes(shipMethod) && !!addr.storeId;
 
@@ -338,9 +349,15 @@ export async function POST(req: Request) {
 
         const wcOrderPayload: Record<string, unknown> = {
           customer_id: loggedInCustomerId, 
-          payment_method: payMethod === "linepay" ? "linepay" : "ecpay",
-          payment_method_title: payMethod === "linepay" ? "LINE Pay" : "綠界科技 ECPay",
-          set_paid: false, 
+          payment_method: payMethod === "linepay" ? "linepay" : payMethod === "atm" ? "ecpay_atm" : "ecpay",
+          payment_method_title:
+            payMethod === "linepay"
+              ? "LINE Pay"
+              : payMethod === "atm"
+                ? "ATM 虛擬帳號"
+                : "信用卡",
+          set_paid: false,
+          status: "pending", 
           billing: {
             first_name: safeFirstName, last_name: safeLastName,
             address_1: finalAddress, city: "Taipei", country: "TW",
@@ -349,6 +366,7 @@ export async function POST(req: Request) {
           shipping: {
             first_name: safeFirstName, last_name: safeLastName,
             address_1: finalAddress, country: "TW",
+            phone: safePhone,
           },
           shipping_lines: [{ method_id: methodId, method_title: shippingTitle, total: String(realShippingCost) }],
           fee_lines,
@@ -395,7 +413,11 @@ export async function POST(req: Request) {
       }
     }
 
-    const finalGatewayAmount = Math.round(secureTotalAmount).toString(); 
+    const amountInt = Math.round(Number(secureTotalAmount));
+    if (!Number.isFinite(amountInt) || amountInt < 1) {
+      return NextResponse.json({ ok: false, message: "訂單金額異常" }, { status: 400 });
+    }
+    const finalGatewayAmount = String(amountInt); 
     const domain = process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000"; 
 
     if (payMethod === "linepay") {
@@ -453,25 +475,45 @@ export async function POST(req: Request) {
       }
 
     } else {
+      const choosePayment =
+        payMethod === "atm" ? "ATM" : payMethod === "card" ? "Credit" : "ALL";
+
+      if (choosePayment === "ATM" && (amountInt < 16 || amountInt > 49999)) {
+        return NextResponse.json(
+          { ok: false, message: "ATM 轉帳金額需為 16～49,999 元" },
+          { status: 400 },
+        );
+      }
+
       const ecpayParams: Record<string, string> = {
         MerchantID: MERCHANT_ID,
         MerchantTradeNo: tradeNo,
         MerchantTradeDate: getEcpayDate(),
         PaymentType: "aio",
         TotalAmount: finalGatewayAmount,
-        TradeDesc: ecpayEncode("Uflow_Shop"),
+        TradeDesc: "HOVER Shop",
         ItemName: cleanItemName,
         ReturnURL: `${domain}/api/ecpay/callback`,
-        PaymentInfoURL: `${domain}/api/ecpay/callback`, 
-        ClientBackURL: `${domain}/thank-you?orderId=${orderId}`, 
-        ChoosePayment: "ALL", 
+        PaymentInfoURL: `${domain}/api/ecpay/callback`,
+        ClientBackURL: `${domain}/thank-you?orderId=${orderId}`,
+        ChoosePayment: choosePayment,
         EncryptType: "1",
         CustomField1: String(orderId),
-        CustomField2: contact.email,
+        CustomField2: String(contact.email || "").slice(0, 50),
         CustomField3: finalGatewayAmount,
       };
 
-      const checkMacValue = generateCheckMacValue(ecpayParams);
+      if (choosePayment === "ATM") {
+        ecpayParams.ExpireDate = "3";
+        ecpayParams.ClientRedirectURL = `${domain}/api/ecpay/atm-return`;
+      }
+
+      if (choosePayment === "ALL") {
+        const ignorePayment = ecpayIgnorePayment(amountInt);
+        if (ignorePayment) ecpayParams.IgnorePayment = ignorePayment;
+      }
+
+      const checkMacValue = generateCheckMacValue(ecpayParams, HASH_KEY, HASH_IV);
 
       const htmlForm = `
         <form id="_form_ecpay" action="${escapeHtmlAttr(ECPAY_URL)}" method="POST">

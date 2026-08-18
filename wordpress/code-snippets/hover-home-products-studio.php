@@ -13,6 +13,8 @@
  *
  * REST API（給 Next.js）：
  * GET /wp-json/hover/v1/home-products
+ *
+ * 卡片 hover 圖：取 Woo「商品圖庫」第二張；沒有第二張則用圖庫中第一張與主圖不同的。
  */
 
 if (!defined('ABSPATH')) {
@@ -223,17 +225,35 @@ function hhps_attachment_display_url(int $aid): string
 
 function hhps_product_images(\WC_Product $product): array
 {
-    $ids = [];
     $featured = (int) $product->get_image_id();
+    $gallery_ids = [];
+    foreach ($product->get_gallery_image_ids() as $gid) {
+        $gid = (int) $gid;
+        if ($gid) {
+            $gallery_ids[] = $gid;
+        }
+    }
+
+    $hover_id = isset($gallery_ids[1]) ? (int) $gallery_ids[1] : 0;
+    if (!$hover_id || $hover_id === $featured) {
+        foreach ($gallery_ids as $gid) {
+            if ($gid && $gid !== $featured) {
+                $hover_id = $gid;
+                break;
+            }
+        }
+    }
+
+    $ids = [];
     if ($featured) {
         $ids[] = $featured;
     }
-    foreach ($product->get_gallery_image_ids() as $gid) {
-        $gid = (int) $gid;
+    foreach ($gallery_ids as $gid) {
         if ($gid && !in_array($gid, $ids, true)) {
             $ids[] = $gid;
         }
     }
+
     $urls = [];
     foreach ($ids as $aid) {
         $url = hhps_attachment_display_url($aid);
@@ -241,7 +261,14 @@ function hhps_product_images(\WC_Product $product): array
             $urls[] = $url;
         }
     }
-    return $urls;
+
+    $hover = $hover_id ? hhps_attachment_display_url($hover_id) : '';
+
+    return [
+        'featured' => $urls[0] ?? '',
+        'gallery'  => $urls,
+        'hover'    => $hover && $hover !== ($urls[0] ?? '') ? $hover : '',
+    ];
 }
 
 function hhps_product_prices(\WC_Product $product): array
@@ -304,8 +331,9 @@ function hhps_map_card(\WC_Product $product): ?array
         'slug'          => $slug,
         'href'          => '/products/' . $slug,
         'name'          => $product->get_name(),
-        'image'         => $images[0] ?? '',
-        'gallery'       => $images,
+        'image'         => $images['featured'] ?? '',
+        'gallery'       => $images['gallery'] ?? [],
+        'hoverImage'    => $images['hover'] ?? '',
         'isNew'         => hhps_is_new_product($product),
         'originalPrice' => $prices['regular'],
         'salePrice'     => $prices['sale'],

@@ -54,9 +54,21 @@ export type IssueInvoiceInput = {
 };
 
 export async function issueEcpayInvoice(input: IssueInvoiceInput) {
-  const MerchantID = process.env.ECPAY_INVOICE_MERCHANT_ID || process.env.ECPAY_MERCHANT_ID || "";
-  const HashKey = process.env.ECPAY_INVOICE_HASH_KEY || ""; 
-  const HashIV = process.env.ECPAY_INVOICE_HASH_IV || "";   
+  const MerchantID = (
+    process.env.ECPAY_INVOICE_MERCHANT_ID ||
+    process.env.ECPAY_MERCHANT_ID ||
+    ""
+  ).trim();
+  const HashKey = (
+    process.env.ECPAY_INVOICE_HASH_KEY ||
+    process.env.ECPAY_HASH_KEY ||
+    ""
+  ).trim();
+  const HashIV = (
+    process.env.ECPAY_INVOICE_HASH_IV ||
+    process.env.ECPAY_HASH_IV ||
+    ""
+  ).trim(); 
 
   if (!MerchantID || !HashKey || !HashIV) throw new Error("發票金鑰未設定");
 

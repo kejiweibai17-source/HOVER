@@ -21,6 +21,8 @@ import {
   EMPTY_PRODUCT_FILTER_OPTIONS,
   type ProductFilterOptions,
 } from "@/lib/productFilters";
+import { formatProductPrice } from "@/lib/utils";
+import { pickProductHoverImage } from "@/lib/productCardImages";
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 
 export type Product = {
@@ -28,7 +30,7 @@ export type Product = {
   slug: string;
   name: string;
   price: string;
-  images: { src: string; alt?: string }[];
+  images: { id?: number; src: string; alt?: string }[];
   category?: string;
   isNew?: boolean;
   tag?: string;
@@ -441,9 +443,7 @@ const ProductCard = memo(function ProductCard({
   priority?: boolean;
 }) {
   const img = product.images?.[0]?.src || "/images/hover/product-1.jpg";
-  const hoverImage = product.images
-    ?.slice(1)
-    .find((image) => image?.src && image.src !== img);
+  const hoverImage = pickProductHoverImage(product.images);
   const hoverImg = hoverImage?.src;
   const hasHoverImage = Boolean(hoverImg);
   // 等滑過才掛第二張圖，避免一進頁就解碼 32 張原圖
@@ -463,9 +463,9 @@ const ProductCard = memo(function ProductCard({
       {/* Image container */}
       <div
         className="relative mb-2 w-full overflow-hidden bg-white"
-        style={{ aspectRatio: "404/479" }}
+        style={{ aspectRatio: "3/4" }}
       >
-        <div className="absolute inset-0 flex items-center justify-center p-3 md:p-5">
+        <div className="absolute inset-0 flex items-center justify-center">
           <span className="relative block h-full w-full">
             <ProductCardImage
               fullSrc={img}
@@ -517,7 +517,7 @@ const ProductCard = memo(function ProductCard({
         )}
 
         <p className="pt-0.5 text-[14px] font-bold text-[#222] md:text-[15px]">
-          NT {product.price}
+          {formatProductPrice(product.price)}
         </p>
       </div>
     </Link>

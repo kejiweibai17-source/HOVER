@@ -21,6 +21,8 @@ export async function POST(req: Request) {
         // 判斷物流商
         if (logisticsSubType.includes("UNIMART")) {
             params.set("provider", "711");
+        } else if (logisticsSubType.includes("FAMI")) {
+            params.set("provider", "CVS");
         } else {
             params.set("provider", "ecpay_cvs");
         }

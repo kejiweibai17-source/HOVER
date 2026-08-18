@@ -12,6 +12,7 @@ import Image from "next/image";
 import { Link } from "next-view-transitions";
 import { useRouter } from "next/navigation";
 import { useWishlistStore } from "@/lib/wishlistStore";
+import { formatProductPrice } from "@/lib/utils";
 import { LineChart, BarChart } from "@mui/x-charts";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePathname } from "next/navigation";
@@ -2577,7 +2578,7 @@ export default function AccountPage() {
                               src={item.image}
                               alt={item.name}
                               fill
-                              className="object-cover transition-transform duration-500 group-hover:scale-105"
+                              className="object-contain"
                               sizes="(max-width:640px) 50vw, (max-width:1024px) 33vw, 25vw"
                             />
                           ) : (
@@ -2615,7 +2616,7 @@ export default function AccountPage() {
                           )}
 
                           <p className="pt-0.5 text-[12px] font-bold text-[#222] md:text-[13px]">
-                            NT {item.price}
+                            {formatProductPrice(item.price)}
                           </p>
                         </div>
                       </div>

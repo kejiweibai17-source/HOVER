@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { Link } from "next-view-transitions";
+import { formatProductPrice } from "@/lib/utils";
 
 export default function ProductCard({
   href = "#",
@@ -14,12 +15,12 @@ export default function ProductCard({
 
   return (
     <div className="group flex min-w-0 flex-col">
-      <Link href={href} className="relative block aspect-[404/479] overflow-hidden bg-white">
+      <Link href={href} className="relative block aspect-[3/4] overflow-hidden bg-white">
         <Image
           src={image}
           alt={name}
           fill
-          className="object-cover transition-transform duration-500 group-hover:scale-105"
+          className="object-contain"
           sizes="(max-width: 768px) 80vw, 25vw"
         />
       </Link>
@@ -54,7 +55,7 @@ export default function ProductCard({
                 soldOut ? "line-through" : ""
               }`}
             >
-              NT {price}
+              {formatProductPrice(price)}
             </span>
           )}
           {soldOut && (

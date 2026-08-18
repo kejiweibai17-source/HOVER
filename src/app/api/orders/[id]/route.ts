@@ -22,24 +22,24 @@ const STATUS_MAP: Record<string, string> = {
  * 從 meta_data 中提取支付資訊 (超商/ATM)
  */
 function extractPaymentInfo(metaData: any[]) {
-  const info: any = {};
-  
-  // 遍歷搜尋常見的金流 Key 值
-  metaData.forEach((item: any) => {
-    const key = String(item.key).toLowerCase();
-    const val = item.value;
+  const info: Record<string, string> = {};
+  if (!Array.isArray(metaData)) return null;
 
-    // 1. 超商代碼 (CVS)
-    if (key.includes("cvs_payno") || key.includes("pay_no") || key.includes("payment_no")) {
+  metaData.forEach((item: any) => {
+    const key = String(item.key || "").toLowerCase();
+    const val = Array.isArray(item.value) ? String(item.value[0]) : String(item.value || "");
+    if (!val) return;
+    if (key.includes("vaccount") || key.includes("virtual_account") || key.includes("atm_account")) {
+      info.atm_account = val;
+    }
+    if (key.includes("bankcode") || key.includes("bank_code") || key.includes("atm_bank")) {
+      info.bank_code = val;
+    }
+    if (key.includes("paymentno") || key.includes("cvs_payment") || key.includes("cvscode") || key.includes("pay_no")) {
       info.cvs_code = val;
     }
-    // 2. 超商/ATM 過期時間
-    if (key.includes("expire_date") || key.includes("expiry_date") || key.includes("vaccount_expire_date")) {
+    if (key.includes("expiredate") || key.includes("expire_date") || key.includes("duedate")) {
       info.expire_date = val;
-    }
-    // 3. ATM 虛擬帳號
-    if (key.includes("vaccount") || key.includes("bank_code") || key.includes("atm_no")) {
-      info.atm_account = val;
     }
   });
 

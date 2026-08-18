@@ -15,9 +15,11 @@ export function getEcpayDate(): string {
   return `${year}/${month}/${day} ${hour}:${min}:${sec}`;
 }
 
-export function generateCheckMacValue(params: any, hashKey: string, hashIV: string): string {
-  // 1. 排序
-  const keys = Object.keys(params).filter((k) => k !== "CheckMacValue").sort();
+export function generateCheckMacValue(params: Record<string, string>, hashKey: string, hashIV: string): string {
+  // 1. 排序（綠界：不分大小寫）
+  const keys = Object.keys(params)
+    .filter((k) => k !== "CheckMacValue")
+    .sort((a, b) => a.toLowerCase().localeCompare(b.toLowerCase(), "en"));
 
   // 2. 串接字串
   let rawString = `HashKey=${hashKey}`;

@@ -87,7 +87,7 @@ export type ListProduct = {
   slug: string;
   name: string;
   price: string;
-  images: { src: string; alt?: string }[];
+  images: { id?: number; src: string; alt?: string }[];
   category?: string;
   isNew?: boolean;
   tag?: string;
@@ -293,6 +293,7 @@ export function mapWooToListProduct(product: WooProduct): ListProduct {
     name: product.name,
     price: product.price,
     images: product.images.map((image) => ({
+      id: image.id,
       src:
         pickWpSizeUrl(image.sizes, "card", "") ||
         toOptimizedImageUrl(image.src, "card"),

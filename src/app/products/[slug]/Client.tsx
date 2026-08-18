@@ -19,7 +19,7 @@ import {
   DEFAULT_PRODUCT_COLORS,
   type ProductColor,
 } from "@/lib/productColors";
-import { hasRichHtmlContent, sanitizeRichHtml } from "@/lib/utils";
+import { formatProductPrice, hasRichHtmlContent, sanitizeRichHtml } from "@/lib/utils";
 import { type ColorGalleries } from "@/lib/variationGallery";
 import {
   isWashingInstructionsVisible,
@@ -155,19 +155,15 @@ function ProductGallery({
       {visible.map((src, i) => (
         <div
           key={`${part}-${src}-${i}`}
-          className={
-            isMobile
-              ? "w-full bg-[#e8e6e2]"
-              : "relative w-full overflow-hidden bg-[#e8e6e2]"
-          }
-          style={isMobile ? undefined : { aspectRatio: "3/4" }}
+          className="relative w-full overflow-hidden bg-[#e8e6e2]"
+          style={{ aspectRatio: "3/4" }}
         >
           {isMobile ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={src}
               alt={`${name} ${part === "rest" ? i + 2 : i + 1}`}
-              className="block h-auto w-full object-contain"
+              className="absolute inset-0 h-full w-full object-contain"
               loading={i === 0 && part === "hero" ? "eager" : "lazy"}
               decoding="async"
             />
@@ -178,7 +174,7 @@ function ProductGallery({
               fill
               unoptimized
               sizes="(max-width: 768px) 100vw, 50vw"
-              className="object-cover"
+              className="object-contain"
               priority={i === 0 && part !== "rest"}
             />
           )}
@@ -276,7 +272,7 @@ function ProductPurchasePanel({
               isMobile ? "text-[14px]" : "text-[16px] md:text-[18px]"
             }`}
           >
-            NT. {regularPrice.toLocaleString()}
+            {formatProductPrice(regularPrice)}
           </span>
         )}
         <span
@@ -284,7 +280,7 @@ function ProductPurchasePanel({
             isMobile ? "text-[16px]" : "text-[18px] md:text-[20px]"
           } ${hasDiscount ? "text-[#c90000]" : "text-black"}`}
         >
-          NT. {displayPrice.toLocaleString()}
+          {formatProductPrice(displayPrice)}
         </span>
       </div>
 

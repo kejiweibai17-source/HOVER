@@ -2,7 +2,17 @@
 import crypto from "crypto";
 
 function ecpayUrlEncode(str) {
-  return encodeURIComponent(str).replace(/%[0-9A-F]{2}/g, (m) => m.toLowerCase());
+  return encodeURIComponent(str)
+    .replace(/!/g, "%21")
+    .replace(/'/g, "%27")
+    .replace(/\(/g, "%28")
+    .replace(/\)/g, "%29")
+    .replace(/\*/g, "%2A")
+    .replace(/%20/g, "+");
+}
+
+function ecpayUrlDecode(str) {
+  return decodeURIComponent(str.replace(/\+/g, "%20"));
 }
 
 function aesEncryptToBase64(plain, key, iv) {
@@ -12,14 +22,36 @@ function aesEncryptToBase64(plain, key, iv) {
   return enc.toString("base64");
 }
 
+function aesDecryptFromBase64(base64Cipher, key, iv) {
+  const decipher = crypto.createDecipheriv("aes-128-cbc", key, iv);
+  decipher.setAutoPadding(true);
+  const dec = Buffer.concat([
+    decipher.update(Buffer.from(base64Cipher, "base64")),
+    decipher.final(),
+  ]);
+  return dec.toString("utf8");
+}
+
 export function getInvoiceIssueUrl() {
   return "https://einvoice.ecpay.com.tw/B2CInvoice/Issue";
 }
 
 export async function issueEcpayInvoice({ relateNumber, customerEmail, salesAmount, items }) {
-  const MerchantID = process.env.ECPAY_INVOICE_MERCHANT_ID || "";
-  const HashKey = process.env.ECPAY_INVOICE_HASH_KEY || "";
-  const HashIV = process.env.ECPAY_INVOICE_HASH_IV || "";
+  const MerchantID = (
+    process.env.ECPAY_INVOICE_MERCHANT_ID ||
+    process.env.ECPAY_MERCHANT_ID ||
+    ""
+  ).trim();
+  const HashKey = (
+    process.env.ECPAY_INVOICE_HASH_KEY ||
+    process.env.ECPAY_HASH_KEY ||
+    ""
+  ).trim();
+  const HashIV = (
+    process.env.ECPAY_INVOICE_HASH_IV ||
+    process.env.ECPAY_HASH_IV ||
+    ""
+  ).trim();
 
   if (!MerchantID) throw new Error("ECPAY_INVOICE_MERCHANT_ID 未設定");
   if (!HashKey) throw new Error("ECPAY_INVOICE_HASH_KEY 未設定");
@@ -39,17 +71,15 @@ export async function issueEcpayInvoice({ relateNumber, customerEmail, salesAmou
     MerchantID,
     RelateNumber: relateNumber,
     CustomerEmail: customerEmail,
-
+    CustomerName: "HOVER顧客",
     Print: "0",
     Donation: "0",
     CarrierType: "",
     CarrierNum: "",
-
     TaxType: "1",
     SalesAmount: Number(salesAmount),
     InvType: "07",
     vat: "1",
-
     Items: items.map((it, idx) => ({
       ItemSeq: idx + 1,
       ItemName: it.ItemName,
@@ -69,7 +99,7 @@ export async function issueEcpayInvoice({ relateNumber, customerEmail, salesAmou
   const payload = {
     MerchantID,
     RqHeader: { Timestamp: nowTs },
-    Data: base64Cipher, // ✅ 不要 urlencode
+    Data: base64Cipher,
   };
 
   const res = await fetch(getInvoiceIssueUrl(), {
@@ -82,6 +112,22 @@ export async function issueEcpayInvoice({ relateNumber, customerEmail, salesAmou
   if (!res.ok) throw new Error(`HTTP ${res.status} :: ${raw}`);
 
   let result = {};
-  try { result = JSON.parse(raw); } catch {}
+  try {
+    result = JSON.parse(raw);
+  } catch {}
+
+  if (result?.TransCode !== 1) {
+    throw new Error(`Invoice API 傳輸失敗 :: ${raw}`);
+  }
+
+  if (result.Data) {
+    const decryptedStr = aesDecryptFromBase64(result.Data, HashKey, HashIV);
+    const innerResult = JSON.parse(ecpayUrlDecode(decryptedStr));
+    result.inner = innerResult;
+    if (innerResult.RtnCode !== 1) {
+      throw new Error(`綠界發票拒絕開立: [${innerResult.RtnCode}] ${innerResult.RtnMsg}`);
+    }
+  }
+
   return result;
 }

@@ -4,6 +4,8 @@ export type HomeCarouselProduct = {
   name: string;
   image: string;
   gallery?: string[];
+  /** 後台商品圖庫第二張，給卡片 hover */
+  hoverImage?: string;
   isNew?: boolean;
   originalPrice: number;
   salePrice?: number | null;
@@ -92,6 +94,7 @@ function normalizeProduct(raw: unknown, index: number): HomeCarouselProduct | nu
   const gallery = Array.isArray(o.gallery)
     ? o.gallery.map((src) => String(src || "").trim()).filter(Boolean)
     : [image];
+  const hoverImage = String(o.hoverImage || "").trim();
 
   const originalPrice = Number(o.originalPrice);
   const saleRaw = o.salePrice == null || o.salePrice === "" ? null : Number(o.salePrice);
@@ -102,6 +105,7 @@ function normalizeProduct(raw: unknown, index: number): HomeCarouselProduct | nu
     name,
     image,
     gallery: gallery.length ? gallery : [image],
+    hoverImage: hoverImage || undefined,
     isNew: Boolean(o.isNew),
     originalPrice: Number.isFinite(originalPrice) ? originalPrice : 0,
     salePrice: saleRaw != null && Number.isFinite(saleRaw) ? saleRaw : null,

@@ -15,6 +15,8 @@ import { FALLBACK_BRAND_STORY_SLIDES } from "@/lib/brandStoryDefaults";
 import { FALLBACK_CATEGORY_TILES } from "@/lib/categoryGridDefaults";
 import { FALLBACK_PEOPLE_SLIDES } from "@/lib/peopleDefaults";
 import { FALLBACK_HOME_PRODUCTS } from "@/lib/homeProductsDefaults";
+import { formatProductPrice } from "@/lib/utils";
+import { pickProductHoverSrc } from "@/lib/productCardImages";
 
 // 預設 HOVER PEOPLE 圖（後台「HOVER PEOPLE」未設定時使用）
 const PEOPLE_ITEMS = FALLBACK_PEOPLE_SLIDES;
@@ -59,22 +61,26 @@ function ProductCard({ product }) {
     });
   };
 
-  const hoverImage = product.gallery?.[1] ?? product.image;
-  const hasHoverImage = hoverImage !== product.image;
+  const hoverImage = pickProductHoverSrc(
+    product.image,
+    product.gallery,
+    product.hoverImage,
+  );
+  const hasHoverImage = Boolean(hoverImage && hoverImage !== product.image);
   const [hoverReady, setHoverReady] = useState(false);
 
   return (
     <article className="group relative flex min-w-0 w-full flex-col overflow-hidden">
       {/* Image + badges + wishlist */}
       <div
-        className="relative aspect-[404/479] overflow-hidden bg-white"
+        className="relative aspect-[3/4] overflow-hidden bg-white"
         onMouseEnter={() => {
           if (hasHoverImage) setHoverReady(true);
         }}
       >
         <Link
           href={product.href}
-          className="absolute inset-0 flex items-center justify-center p-5 md:p-8"
+          className="absolute inset-0"
         >
           <span className="relative block h-full w-full">
             <OptimizedImage
@@ -142,7 +148,7 @@ function ProductCard({ product }) {
               product.soldOut ? "line-through" : ""
             }`}
           >
-            NT {product.salePrice ?? product.originalPrice}
+            {formatProductPrice(product.salePrice ?? product.originalPrice)}
           </span>
           {product.soldOut && (
             <span className="text-[12px] font-bold text-[#222] md:text-[13px]">
@@ -163,7 +169,7 @@ function ProductSection({ title, products }) {
       visibleMd={4}
       visibleSm={2}
       className="py-0"
-      imageAspectRatio="404/479"
+      imageAspectRatio="3/4"
       renderItem={(product) => <ProductCard product={product} />}
     />
   );

@@ -15,12 +15,22 @@ const LINEPAY_BASE_URL = process.env.LINEPAY_BASE_URL || "https://api-pay.line.m
 // ============================================================================
 // 🚀 綠界發票 V2 (AES 加密) 正式環境變數設定
 // ============================================================================
-const envMerchantId = (process.env.ECPAY_INVOICE_MERCHANT_ID || "").trim();
-const isProdInvoice = envMerchantId.length > 0 && envMerchantId !== "2000132";
+const envMerchantId = (
+  process.env.ECPAY_INVOICE_MERCHANT_ID ||
+  process.env.ECPAY_MERCHANT_ID ||
+  ""
+).trim();
+const isProdInvoice =
+  process.env.ECPAY_INVOICE_ENV === "prod" ||
+  (envMerchantId.length > 0 && envMerchantId !== "2000132");
 
 const INV_MERCHANT_ID = isProdInvoice ? envMerchantId : "2000132";
-const INV_HASH_KEY = isProdInvoice ? (process.env.ECPAY_INVOICE_HASH_KEY || "").trim() : "ejCk326UnaZWKisg";
-const INV_HASH_IV = isProdInvoice ? (process.env.ECPAY_INVOICE_HASH_IV || "").trim() : "q9jcZX8Ib9LM8wYk";
+const INV_HASH_KEY = isProdInvoice
+  ? (process.env.ECPAY_INVOICE_HASH_KEY || process.env.ECPAY_HASH_KEY || "").trim()
+  : "ejCk326UnaZWKisg";
+const INV_HASH_IV = isProdInvoice
+  ? (process.env.ECPAY_INVOICE_HASH_IV || process.env.ECPAY_HASH_IV || "").trim()
+  : "q9jcZX8Ib9LM8wYk";
 
 const ECPAY_INVOICE_URL = isProdInvoice 
   ? "https://einvoice.ecpay.com.tw/B2CInvoice/Issue" 

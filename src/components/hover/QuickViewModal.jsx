@@ -11,6 +11,7 @@ import HoverIcon from "@/components/hover/HoverIcon";
 import { useCartStore } from "@/lib/cartStore";
 import { useWishlistStore } from "@/lib/wishlistStore";
 import { useAuthStore } from "@/lib/authStore";
+import { formatProductPrice } from "@/lib/utils";
 
 const DEFAULT_COLORS = [
   { label: "藍", hex: "#9ab3d4" },
@@ -205,7 +206,7 @@ export default function QuickViewModal({ product, onClose }) {
                       src={gallery[activeIdx]}
                       alt={product.name}
                       fill
-                      className="object-cover"
+                      className="object-contain"
                       sizes="(max-width: 768px) 100vw, 440px"
                     />
                     {gallery.length > 1 && (
@@ -254,7 +255,7 @@ export default function QuickViewModal({ product, onClose }) {
                             src={src}
                             alt={`${product.name} ${i + 1}`}
                             fill
-                            className="object-cover"
+                            className="object-contain"
                             sizes="80px"
                           />
                         </button>
@@ -290,14 +291,14 @@ export default function QuickViewModal({ product, onClose }) {
                           SOLD OUT
                         </span>
                         <span className="text-[16px] font-bold text-black line-through opacity-50">
-                          NT {displayPrice.toLocaleString()}
+                          {formatProductPrice(displayPrice)}
                         </span>
                       </>
                     ) : (
                       <>
                         {hasDiscount && (
                           <span className="text-[16px] font-bold text-black line-through opacity-50">
-                            NT {product.originalPrice.toLocaleString()}
+                            {formatProductPrice(product.originalPrice)}
                           </span>
                         )}
                         <span
@@ -305,7 +306,7 @@ export default function QuickViewModal({ product, onClose }) {
                             hasDiscount ? "text-[#c90000]" : "text-black"
                           }`}
                         >
-                          NT {displayPrice.toLocaleString()}
+                          {formatProductPrice(displayPrice)}
                         </span>
                       </>
                     )}

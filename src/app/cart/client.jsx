@@ -707,7 +707,7 @@ function CartBreadcrumb({ currentStep, onStepClick }) {
   return (
     <nav
       aria-label="購物流程"
-      className="mx-auto max-w-[1200px] px-4 pb-10 pt-8 md:px-8"
+      className="mx-auto max-w-[1300px] px-4 pb-10 pt-8 md:px-8"
     >
       <ol className="flex items-center justify-center">
         {steps.map((s, i) => {
@@ -841,12 +841,12 @@ function CartStep({
   }
 
   return (
-    <div className="mx-auto max-w-[1100px] px-4 pb-16 md:px-8">
+    <div className="mx-auto max-w-[1240px] px-4 pb-16 md:px-8">
       <h1 className="mb-10 text-center text-[16px] font-semibold tracking-[0.3em] text-black">
         SHOPPING BAG
       </h1>
 
-      <div className="grid grid-cols-1 gap-12 lg:grid-cols-[1fr_340px]">
+      <div className="grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,1fr)_340px]">
         {/* ── Product list ────────────────────────────────── */}
         <div>
           {items.map((it, idx) => {
@@ -855,10 +855,10 @@ function CartStep({
             return (
               <div
                 key={it.id}
-                className={`flex gap-5 py-6 ${idx === 0 ? "border-t" : ""} border-b border-[#d4d4d4]`}
+                className={`flex gap-4 py-6 md:gap-5 ${idx === 0 ? "border-t" : ""} border-b border-[#d4d4d4]`}
               >
                 {/* Image */}
-                <div className="h-[148px] w-[106px] shrink-0 overflow-hidden bg-[#e8e6e2]">
+                <div className="h-[179px] w-[128px] shrink-0 overflow-hidden bg-[#e8e6e2] md:h-[163px] md:w-[117px]">
                   <img
                     src={it.image || it.img || "/images/hover/product-1.jpg"}
                     className="h-full w-full object-cover"
@@ -871,14 +871,14 @@ function CartStep({
                   <div className="flex items-start justify-between gap-4">
                     {/* Name + meta */}
                     <div>
-                      <p className="text-[13px] font-semibold uppercase leading-snug text-black">
+                      <p className="text-[14px] font-semibold uppercase leading-snug text-black md:text-[15px]">
                         {it.name || it.title}
                       </p>
                       {color && (
                         <p className="mt-1 text-[12px] text-black">{color}</p>
                       )}
                       {size && <p className="text-[12px] text-black">{size}</p>}
-                      <p className="mt-2 text-[14px] font-bold text-black">
+                      <p className="mt-2 text-[15px] font-bold text-black md:text-[16px]">
                         {currency(Number(it.price))}
                       </p>
                     </div>
@@ -916,7 +916,7 @@ function CartStep({
                         >
                           <Minus className="h-3 w-3" />
                         </button>
-                        <span className="w-8 text-center text-[13px] font-medium">
+                        <span className="w-8 text-center text-[14px] font-medium">
                           {it.qty}
                         </span>
                         <button
@@ -954,7 +954,7 @@ function CartStep({
         <aside className="self-start lg:sticky lg:top-8">
           <div className="bg-white px-6 py-7">
             {/* Pricing rows */}
-            <div className="space-y-3 text-[13px]">
+            <div className="space-y-3 text-[14px]">
               <div className="flex items-center justify-between">
                 <span className="text-[#555]">商品總金額</span>
                 <span className="text-black">{currency(pricing.subtotal)}</span>
@@ -981,10 +981,10 @@ function CartStep({
 
             {/* Total */}
             <div className="mb-6 flex items-center justify-between">
-              <span className="text-[14px] font-semibold text-black">
+              <span className="text-[15px] font-semibold text-black">
                 總金額
               </span>
-              <span className="text-[16px] font-bold text-black">
+              <span className="text-[18px] font-bold text-black">
                 {currency(pricing.total)}
               </span>
             </div>
@@ -1173,7 +1173,7 @@ function CheckoutStep({
     form.submit();
   };
 
-  const openEcpay711Map = () => {
+  const openEcpayCvsMap = (subType) => {
     saveStateBeforeMap();
     const merchantID = process.env.NEXT_PUBLIC_ECPAY_MERCHANT_ID;
     if (!merchantID) return alert("錯誤：讀取不到 ECPAY_MERCHANT_ID");
@@ -1186,8 +1186,8 @@ function CheckoutStep({
     form.action = actionUrl;
     const params = {
       MerchantID: merchantID,
-      LogisticsSubType: "UNIMARTC2C",
-      MerchantTradeNo: `UFLOW${Date.now()}`,
+      LogisticsSubType: subType,
+      MerchantTradeNo: `H${Date.now()}`,
       LogisticsType: "CVS",
       IsCollection: "N",
       ServerReplyURL: `${window.location.origin}/api/logistics/ecpay-callback`,
@@ -1204,8 +1204,8 @@ function CheckoutStep({
   };
 
   const openStoreMap = () => {
-    if (shipMethod === "711") openEcpay711Map();
-    else if (shipMethod === "CVS") openEzShipMap();
+    if (shipMethod === "711") openEcpayCvsMap("UNIMARTC2C");
+    else if (shipMethod === "CVS") openEcpayCvsMap("FAMIC2C");
   };
 
   const validate = () => {
@@ -1257,7 +1257,7 @@ function CheckoutStep({
       })),
       contact: { email: contact.email.trim() },
       addr: {
-        firstName: addr.firstName.trim() || displayName,
+        firstName: addr.firstName.trim(),
         lastName: addr.lastName.trim() || displayName,
         line1: line1,
         phone: addr.phone.trim(),
@@ -1315,7 +1315,7 @@ function CheckoutStep({
   };
 
   return (
-    <div className="mx-auto max-w-[1200px] px-4 pb-20 md:px-8">
+    <div className="mx-auto max-w-[1300px] px-4 pb-20 md:px-8">
       <h1 className="mb-12 text-center text-[18px] font-bold tracking-[0.12em] text-black md:text-[20px]">
         填寫配送資料
       </h1>
@@ -1606,17 +1606,29 @@ function CheckoutStep({
                 const { color, size } = getItemMeta(it);
                 const name = it.name || it.title;
                 return (
-                  <div
-                    key={it.id}
-                    className="grid grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] items-center gap-x-3 text-[13px] text-black md:gap-x-4"
-                  >
-                    <span className="min-w-0">{name}</span>
-                    <span>{color || "—"}</span>
-                    <span>{size || "—"}</span>
-                    <span>{it.qty}</span>
-                    <span className="whitespace-nowrap">
-                      {currency(Number(it.price) * it.qty)}
-                    </span>
+                  <div key={it.id} className="text-[13px] text-black">
+                    <div className="md:hidden">
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="min-w-0 flex-1 leading-snug">
+                          {name}
+                        </span>
+                        <span className="shrink-0 whitespace-nowrap font-semibold">
+                          {currency(Number(it.price) * it.qty)}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[12px] text-[#555]">
+                        {[color || "—", size || "—", it.qty].join("／")}
+                      </p>
+                    </div>
+                    <div className="hidden grid-cols-[minmax(0,1fr)_auto_auto_auto_auto] items-center gap-x-3 md:grid md:gap-x-4">
+                      <span className="min-w-0">{name}</span>
+                      <span>{color || "—"}</span>
+                      <span>{size || "—"}</span>
+                      <span>{it.qty}</span>
+                      <span className="whitespace-nowrap">
+                        {currency(Number(it.price) * it.qty)}
+                      </span>
+                    </div>
                   </div>
                 );
               })}
