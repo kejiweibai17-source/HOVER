@@ -1,6 +1,7 @@
 // app/api/auth/login/route.ts
 import { NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
+import { applyExclusiveEmailSession } from "@/lib/socialAccount";
 
 const BASE = process.env.WC_API_BASE;
 const CK = process.env.WC_CONSUMER_KEY;
@@ -292,6 +293,7 @@ export async function POST(req: Request) {
       res.cookies.set("user_email", email, cookieOpts());
     }
     res.cookies.set("user_name", name, cookieOpts());
+    applyExclusiveEmailSession(res);
 
     return res;
   } catch (err: any) {

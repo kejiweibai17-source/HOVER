@@ -108,26 +108,30 @@ export async function GET() {
 
     const session = await getServerSession(authOptions);
     const cookieStore = cookies();
+    const authMethod = String(
+      cookieStore.get("hover_auth_method")?.value || "",
+    ).toLowerCase();
 
-    // 💡 核心修復：同步 profile 頁面的身分驗證邏輯
-    let email: string | null = session?.user?.email || null;
-    
-    if (!email) {
-      email = cookieStore.get("user_email")?.value || null;
-    }
-    
-    // 🚨 這是之前漏掉的！解碼 LINE 登入用的 auth_token
-    if (!email) {
+    let email: string | null = null;
+
+    const readAuthTokenEmail = () => {
       const authToken = cookieStore.get("auth_token")?.value;
-      if (authToken) {
-        try {
-          const decoded = jwt.verify(authToken, JWT_SECRET) as any;
-          if (decoded?.email) email = decoded.email;
-        } catch (e) {
-          debugInfo.jwt_error = "auth_token verify failed";
-        }
+      if (!authToken) return null;
+      try {
+        const decoded = jwt.verify(authToken, JWT_SECRET) as any;
+        return decoded?.email ? String(decoded.email) : null;
+      } catch {
+        debugInfo.jwt_error = "auth_token verify failed";
+        return null;
       }
+    };
+
+    if (authMethod === "line" || authMethod === "facebook" || authMethod === "email") {
+      email = readAuthTokenEmail();
     }
+    if (!email) email = session?.user?.email || null;
+    if (!email) email = cookieStore.get("user_email")?.value || null;
+    if (!email) email = readAuthTokenEmail();
 
     let wpUserId: number | null = null;
     const wpJwt = cookieStore.get("jwt")?.value;

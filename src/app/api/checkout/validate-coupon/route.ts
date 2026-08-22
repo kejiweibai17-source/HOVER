@@ -51,6 +51,7 @@ export async function POST(req: Request) {
     const code = String(body.code || "").trim();
     const subtotalAfterMember = Math.max(0, Number(body.subtotalAfterMember) || 0);
     const hasMemberDiscount = Boolean(body.hasMemberDiscount);
+    const hasSaleItems = Boolean(body.hasSaleItems);
 
     if (!code) {
       return NextResponse.json(
@@ -86,6 +87,16 @@ export async function POST(req: Request) {
         {
           valid: false,
           message: "此折扣碼不可與會員折扣或其他優惠併用",
+        },
+        { status: 200, headers: noCache },
+      );
+    }
+
+    if (coupon.exclude_sale_items && hasSaleItems) {
+      return NextResponse.json(
+        {
+          valid: false,
+          message: "此折扣碼不適用於特價商品訂單",
         },
         { status: 200, headers: noCache },
       );

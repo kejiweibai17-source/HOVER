@@ -37,6 +37,7 @@ export async function POST() {
     "user_email",
     "user_name",
     "auth_token",
+    "hover_auth_method",
     "facebook_oauth_state",
     "line_oauth_state",
   ];

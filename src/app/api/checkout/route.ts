@@ -11,6 +11,11 @@ import {
 import { checkCartStock } from "@/lib/validateCartStock";
 import { fetchShippingSettings, shippingFeeFor } from "@/lib/shippingDefaults";
 import { generateCheckMacValue, getEcpayDate } from "@/lib/ecpay";
+import {
+  invoiceMetaEntries,
+  validateInvoicePreference,
+  type InvoicePreference,
+} from "@/lib/ecpay-invoice";
 
 export const runtime = "nodejs";
 
@@ -27,14 +32,42 @@ const LINEPAY_CHANNEL_ID = process.env.LINEPAY_CHANNEL_ID!;
 const LINEPAY_CHANNEL_SECRET = process.env.LINEPAY_CHANNEL_SECRET!;
 const LINEPAY_BASE_URL = process.env.LINEPAY_BASE_URL || "https://api-pay.line.me"; 
 
-interface CartItem { wcProductId: number; wcVariationId?: number; qty: number; price: number; title: string; name?: string; id?: string | number; }
+interface CartItem {
+  wcProductId: number;
+  wcVariationId?: number;
+  qty: number;
+  price: number;
+  title: string;
+  name?: string;
+  id?: string | number;
+  onSale?: boolean;
+}
 interface ContactInfo { email: string; }
 interface AddressInfo { firstName: string; lastName: string; line1: string; phone: string; storeId?: string; storeName?: string; storeAddr?: string; }
-interface RequestBody { items: CartItem[]; contact: ContactInfo; addr: AddressInfo; total: number; shipMethod: string; payMethod?: string; coupon?: { code: string; amount: number } | string | null; memberDiscount?: number; }
+interface RequestBody {
+  items: CartItem[];
+  contact: ContactInfo;
+  addr: AddressInfo;
+  total: number;
+  shipMethod: string;
+  payMethod?: string;
+  coupon?: { code: string; amount: number } | string | null;
+  memberDiscount?: number;
+  invoice?: InvoicePreference | null;
+}
 
-async function productIsOnSale(auth: string, productId: number): Promise<boolean> {
+async function productIsOnSale(
+  auth: string,
+  productId: number,
+  variationId?: number,
+): Promise<boolean> {
   try {
-    const res = await fetch(`${BASE.replace(/\/$/, "")}/wp-json/wc/v3/products/${productId}`, {
+    const root = BASE.replace(/\/$/, "");
+    const url =
+      variationId && variationId > 0
+        ? `${root}/wp-json/wc/v3/products/${productId}/variations/${variationId}`
+        : `${root}/wp-json/wc/v3/products/${productId}`;
+    const res = await fetch(url, {
       headers: { Authorization: auth },
       cache: "no-store",
     });
@@ -46,12 +79,42 @@ async function productIsOnSale(auth: string, productId: number): Promise<boolean
   }
 }
 
+/** 折扣碼用量 +1（訂單以 fee_line 套用精確折抵，不走 WC coupon_lines 重算） */
+async function bumpCouponUsage(auth: string, code: string, email: string) {
+  try {
+    const res = await fetch(
+      `${BASE.replace(/\/$/, "")}/wp-json/wc/v3/coupons?code=${encodeURIComponent(code)}`,
+      { headers: { Authorization: auth }, cache: "no-store" },
+    );
+    if (!res.ok) return;
+    const arr = await res.json();
+    if (!Array.isArray(arr) || !arr[0]?.id) return;
+    const coupon = arr[0];
+    const usedBy = Array.isArray(coupon.used_by) ? [...coupon.used_by] : [];
+    const emailLc = email.trim().toLowerCase();
+    if (emailLc && !usedBy.map((e: string) => String(e).toLowerCase()).includes(emailLc)) {
+      usedBy.push(emailLc);
+    }
+    await fetch(`${BASE.replace(/\/$/, "")}/wp-json/wc/v3/coupons/${coupon.id}`, {
+      method: "PUT",
+      headers: { Authorization: auth, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        usage_count: (Number(coupon.usage_count) || 0) + 1,
+        used_by: usedBy,
+      }),
+    });
+  } catch (e) {
+    console.error("bumpCouponUsage failed:", e);
+  }
+}
+
 async function validateCouponOnServer(
   auth: string,
   code: string,
   email: string,
   subtotalAfterMember: number,
   hasMemberDiscount: boolean,
+  hasSaleItems = false,
 ): Promise<{ amount: number; code: string } | null> {
   const res = await fetch(
     `${BASE.replace(/\/$/, "")}/wp-json/wc/v3/coupons?code=${encodeURIComponent(code)}`,
@@ -63,6 +126,7 @@ async function validateCouponOnServer(
   const coupon = arr[0];
 
   if (coupon.individual_use && hasMemberDiscount) return null;
+  if (coupon.exclude_sale_items && hasSaleItems) return null;
   if (coupon.date_expires && new Date(coupon.date_expires).getTime() < Date.now()) return null;
 
   const usageLimit = Number(coupon.usage_limit || 0);
@@ -134,6 +198,12 @@ export async function POST(req: Request) {
     }
     const coupon = couponInput && typeof couponInput === "object" ? couponInput : null;
 
+    const invoiceCheck = validateInvoicePreference(body.invoice || { type: "cloud" });
+    if (!invoiceCheck.ok) {
+      return NextResponse.json({ ok: false, message: invoiceCheck.message }, { status: 400 });
+    }
+    const invoicePref = invoiceCheck.value;
+
     // ============================================================================
     // 🛡️ 後端計價防護網 (平衡版：嚴格驗算數學邏輯，完美相容 WooCommerce 變體與外掛)
     // ============================================================================
@@ -152,8 +222,11 @@ export async function POST(req: Request) {
       const lineTotal = unit * qty;
       calculatedSubtotal += lineTotal;
       const productId = Number(item.wcProductId || item.id);
-      if (auth && productId) {
-        const onSale = await productIsOnSale(auth, productId);
+      const variationId = Number(item.wcVariationId) || 0;
+      if (typeof item.onSale === "boolean") {
+        if (!item.onSale) regularSubtotal += lineTotal;
+      } else if (auth && productId) {
+        const onSale = await productIsOnSale(auth, productId, variationId || undefined);
         if (!onSale) regularSubtotal += lineTotal;
       } else {
         regularSubtotal += lineTotal;
@@ -221,6 +294,7 @@ export async function POST(req: Request) {
     let serverCouponDiscount = 0;
     let validatedCouponCode: string | null = null;
 
+    const hasSaleItems = items.some((it) => Boolean(it.onSale));
     if (coupon?.code && auth) {
       const validated = await validateCouponOnServer(
         auth,
@@ -228,6 +302,7 @@ export async function POST(req: Request) {
         contact?.email || session?.user?.email || "",
         subtotalAfterMember,
         serverMemberDiscount > 0,
+        hasSaleItems,
       );
       if (!validated) {
         return NextResponse.json(
@@ -300,7 +375,8 @@ export async function POST(req: Request) {
       try {
         const meta_data: any[] = [
           { key: "_ecpay_trade_no", value: tradeNo },
-          { key: "_shipping_phone", value: safePhone } 
+          { key: "_shipping_phone", value: safePhone },
+          ...invoiceMetaEntries(invoicePref),
         ];
 
         let finalAddress = addr.line1;
@@ -342,9 +418,19 @@ export async function POST(req: Request) {
 
         if (validatedCouponCode) meta_data.push({ key: "_used_coupon_code", value: validatedCouponCode });
 
-        const fee_lines = [];
+        const fee_lines: { name: string; total: string }[] = [];
         if (serverMemberDiscount > 0) {
-          fee_lines.push({ name: "HOVER 臻享會員 95 折", total: String(-serverMemberDiscount) });
+          fee_lines.push({
+            name: "HOVER 臻享會員 95 折",
+            total: String(-serverMemberDiscount),
+          });
+        }
+        // 以 fee_line 套用站內已驗算的折扣碼金額，避免 WC coupon_lines 依原價重算與會員折疊加不一致
+        if (serverCouponDiscount > 0 && validatedCouponCode) {
+          fee_lines.push({
+            name: `折扣碼 ${validatedCouponCode}`,
+            total: String(-serverCouponDiscount),
+          });
         }
 
         const wcOrderPayload: Record<string, unknown> = {
@@ -370,20 +456,25 @@ export async function POST(req: Request) {
           },
           shipping_lines: [{ method_id: methodId, method_title: shippingTitle, total: String(realShippingCost) }],
           fee_lines,
-          line_items: items.map((it) => ({
-            product_id: Number(it.wcProductId || it.id),
-            ...(it.wcVariationId
-              ? { variation_id: Number(it.wcVariationId) }
-              : {}),
-            quantity: Number(it.qty),
-          })),
+          line_items: items.map((it) => {
+            const unit = toTwdInt(it.price);
+            const qty = Math.max(1, Math.round(Number(it.qty) || 0));
+            const line = unit * qty;
+            return {
+              product_id: Number(it.wcProductId || it.id),
+              ...(it.wcVariationId
+                ? { variation_id: Number(it.wcVariationId) }
+                : {}),
+              quantity: qty,
+              // 鎖定站內購物車單價，與綠界／發票金額一致
+              subtotal: String(line),
+              total: String(line),
+            };
+          }),
           meta_data,
         };
 
-        if (validatedCouponCode) {
-          wcOrderPayload.coupon_lines = [{ code: validatedCouponCode }];
-        }
-
+        // 不傳 coupon_lines：折抵已由 fee_line 精確寫入；用量於建立成功後 bump
         const wcRes = await fetch(`${BASE.replace(/\/$/, "")}/wp-json/wc/v3/orders`, {
           method: "POST",
           headers: { Authorization: auth, "Content-Type": "application/json" },
@@ -407,7 +498,44 @@ export async function POST(req: Request) {
             { status: looksLikeStock ? 409 : 400 },
           );
         }
-        if (wcData.id) orderId = wcData.id;
+        if (wcData.id) {
+          orderId = wcData.id;
+          if (validatedCouponCode) {
+            await bumpCouponUsage(
+              auth,
+              validatedCouponCode,
+              contact?.email || session?.user?.email || "",
+            );
+          }
+          // 再對齊一次：WC 總額應等於站內 secureTotal（綠界／發票同源）
+          const wcTotal = Math.round(Number(wcData.total) || 0);
+          const expected = Math.round(Number(secureTotalAmount));
+          if (Number.isFinite(wcTotal) && Math.abs(wcTotal - expected) > 1) {
+            const delta = expected - wcTotal;
+            console.warn(
+              `[checkout] WC total reconcile #${orderId}: wc=${wcTotal} expected=${expected} delta=${delta}`,
+            );
+            await fetch(`${BASE.replace(/\/$/, "")}/wp-json/wc/v3/orders/${orderId}`, {
+              method: "PUT",
+              headers: { Authorization: auth, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                fee_lines: [
+                  ...(Array.isArray(wcData.fee_lines)
+                    ? wcData.fee_lines.map((f: any) => ({
+                        id: f.id,
+                        name: f.name,
+                        total: f.total,
+                      }))
+                    : []),
+                  { name: "優惠金額校正", total: String(delta) },
+                ],
+                meta_data: [
+                  { key: "_hover_secure_total", value: String(expected) },
+                ],
+              }),
+            });
+          }
+        }
       } catch (wcErr) {
         console.error("WC 訂單建立失敗", wcErr);
       }

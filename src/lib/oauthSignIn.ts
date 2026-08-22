@@ -4,7 +4,7 @@
  * when that fetch fails, it redirects to /api/auth/error → login?error=undefined.
  */
 export async function oauthSignIn(
-  provider: "google" | "facebook",
+  provider: "google",
   callbackUrl: string,
 ): Promise<void> {
   const csrfRes = await fetch("/api/auth/csrf", {

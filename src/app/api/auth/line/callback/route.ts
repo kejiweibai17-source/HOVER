@@ -14,6 +14,10 @@ import {
   safeNextPath,
   sessionCookieOpts,
 } from "@/lib/lineAuth";
+import {
+  applyExclusiveCustomSession,
+  upsertSocialCustomer,
+} from "@/lib/socialAccount";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,25 +31,12 @@ const JWT_SECRET =
   process.env.JWT_SECRET ||
   "";
 
-function basicAuth() {
-  if (!CK || !CS) return undefined;
-  return "Basic " + Buffer.from(`${CK}:${CS}`).toString("base64");
-}
-
-function authHeaders() {
-  const auth = basicAuth();
-  if (!auth) return null;
-  return {
-    Authorization: auth,
-    "Content-Type": "application/json",
-  };
-}
-
 type LineProfile = {
   sub: string;
   email?: string;
   name?: string;
   picture?: string;
+  email_verified?: boolean;
 };
 
 async function exchangeLineToken(code: string) {
@@ -84,7 +75,6 @@ async function exchangeLineToken(code: string) {
 
   const profile = (await verifyRes.json().catch(() => ({}))) as LineProfile & {
     error?: string;
-    error_description?: string;
   };
 
   if (!verifyRes.ok || !profile?.sub) {
@@ -93,84 +83,6 @@ async function exchangeLineToken(code: string) {
   }
 
   return profile;
-}
-
-async function findCustomerByEmail(email: string) {
-  const headers = authHeaders();
-  if (!headers) return null;
-
-  const res = await fetch(
-    `${BASE}/wp-json/wc/v3/customers?email=${encodeURIComponent(email)}&role=all`,
-    { headers, cache: "no-store" },
-  );
-  if (!res.ok) return null;
-  const arr = (await res.json().catch(() => [])) as unknown[];
-  return Array.isArray(arr) && arr.length > 0 ? (arr[0] as Record<string, unknown>) : null;
-}
-
-async function upsertLineCustomer(profile: LineProfile) {
-  const headers = authHeaders();
-  if (!headers) throw new Error("woo_config_missing");
-
-  const lineUserId = String(profile.sub);
-  const email = String(profile.email || "").trim().toLowerCase() ||
-    lineSyntheticEmail(lineUserId);
-  const name = String(profile.name || "").trim();
-  const picture = String(profile.picture || "").trim();
-  const [first, ...rest] = name.split(/\s+/);
-  const last = rest.join(" ");
-
-  const metaBase = [
-    { key: "email_verified", value: "1" },
-    { key: "oauth_provider", value: "line" },
-    { key: "social_login_line_id", value: lineUserId },
-  ];
-  if (picture) metaBase.push({ key: "avatar_url", value: picture });
-  if (name) metaBase.push({ key: "oauth_display_name", value: name });
-
-  const existing = await findCustomerByEmail(email);
-  if (existing?.id) {
-    const patch: Record<string, unknown> = { meta_data: metaBase };
-    if (first && !String(existing.first_name || "").trim()) {
-      patch.first_name = first;
-      if (last) patch.last_name = last;
-    }
-    const upd = await fetch(`${BASE}/wp-json/wc/v3/customers/${existing.id}`, {
-      method: "PUT",
-      headers,
-      body: JSON.stringify(patch),
-      cache: "no-store",
-    });
-    if (upd.ok) return upd.json();
-    console.error("[line/callback] update failed:", await upd.text().catch(() => ""));
-    return existing;
-  }
-
-  const createRes = await fetch(`${BASE}/wp-json/wc/v3/customers`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      email,
-      username: email,
-      first_name: first || "",
-      last_name: last || "",
-      password:
-        Math.random().toString(36).slice(2, 12) +
-        Math.random().toString(36).slice(2, 12),
-      meta_data: metaBase,
-    }),
-    cache: "no-store",
-  });
-
-  if (createRes.ok) return createRes.json();
-
-  const errText = await createRes.text().catch(() => "");
-  if (errText.includes("registration-error-email-exists")) {
-    const again = await findCustomerByEmail(email);
-    if (again) return again;
-  }
-  console.error("[line/callback] create failed:", errText);
-  throw new Error("create_user_failed");
 }
 
 export async function GET(req: Request) {
@@ -185,7 +97,8 @@ export async function GET(req: Request) {
   const stateFromQuery = decodeLineState(stateParam);
   const state = stateFromCookie || stateFromQuery;
   const nextPath = safeNextPath(state?.next);
-  const from: "login" | "register" = state?.from === "register" ? "register" : "login";
+  const from: "login" | "register" =
+    state?.from === "register" ? "register" : "login";
 
   if (error || !code) {
     return redirectWithLineError(from, "line_login_failed", nextPath);
@@ -205,7 +118,6 @@ export async function GET(req: Request) {
   }
 
   if (!JWT_SECRET) {
-    console.error("[line/callback] missing RESET_TOKEN_SECRET / NEXTAUTH_SECRET");
     return redirectWithLineError(from, "line_config", nextPath);
   }
 
@@ -215,9 +127,23 @@ export async function GET(req: Request) {
 
   try {
     const profile = await exchangeLineToken(code);
-    const user = await upsertLineCustomer(profile);
+    const lineUserId = String(profile.sub);
+    const rawEmail = String(profile.email || "").trim().toLowerCase();
 
-    const email = String(user?.email || profile.email || "").trim().toLowerCase();
+    const user = await upsertSocialCustomer({
+      provider: "line",
+      providerUserId: lineUserId,
+      email: rawEmail,
+      name: profile.name,
+      picture: profile.picture,
+      emailVerified: Boolean(profile.email_verified || rawEmail),
+    });
+
+    const email = String(
+      user?.email || rawEmail || lineSyntheticEmail(lineUserId),
+    )
+      .trim()
+      .toLowerCase();
     const name =
       String(user?.first_name || profile.name || "").trim() ||
       email.split("@")[0] ||
@@ -234,7 +160,7 @@ export async function GET(req: Request) {
         role: user.role || "customer",
         name,
         provider: "line",
-        lineUserId: profile.sub,
+        lineUserId,
       },
       JWT_SECRET,
       { expiresIn: "7d" },
@@ -245,6 +171,7 @@ export async function GET(req: Request) {
     const response = NextResponse.redirect(redirectTo);
     const cookieOpts = sessionCookieOpts();
 
+    applyExclusiveCustomSession(response, "line");
     response.cookies.set("auth_token", sessionToken, cookieOpts);
     response.cookies.set("user_email", email, cookieOpts);
     response.cookies.set("user_name", name, cookieOpts);

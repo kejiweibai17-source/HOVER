@@ -1,8 +1,11 @@
 // src/lib/auth-options.ts
 import type { AuthOptions } from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
-import FacebookProvider from "next-auth/providers/facebook";
 import { cookies } from "next/headers";
+import {
+  clearCustomAuthCookiesInRequest,
+  upsertSocialCustomer,
+} from "@/lib/socialAccount";
 
 /** ===== WooCommerce 基本設定 ===== */
 const BASE = process.env.WC_API_BASE || "";
@@ -24,124 +27,10 @@ function getAuthHeaders() {
   };
 }
 
-/** 以 email upsert Woo 客戶（沒有就建立；已有則同步 OAuth 姓名/大頭貼/來源） */
-async function upsertWooCustomer(
-  email: string,
-  name?: string,
-  avatarUrl?: string,
-  provider?: string | null,
-) {
-  if (!hasWooConfig()) return null;
-
-  const headers = getAuthHeaders();
-  const [first, ...rest] = String(name || "").trim().split(/\s+/);
-  const last = rest.join(" ");
-  const oauthProvider = String(provider || "").trim().toLowerCase();
-
-  const q = await fetch(
-    `${BASE}/wp-json/wc/v3/customers?email=${encodeURIComponent(email)}&role=all`,
-    { headers, cache: "no-store" },
-  );
-  const arr = (await q.json().catch(() => [])) || [];
-
-  if (Array.isArray(arr) && arr.length > 0) {
-    const existing = arr[0];
-    const patch: Record<string, unknown> = {};
-    const meta: Array<{ key: string; value: string }> = [];
-
-    if (first && !String(existing.first_name || "").trim()) {
-      patch.first_name = first;
-      if (last) patch.last_name = last;
-    }
-
-    if (avatarUrl) {
-      meta.push({ key: "avatar_url", value: avatarUrl });
-    }
-    if (name?.trim()) {
-      meta.push({ key: "oauth_display_name", value: name.trim() });
-    }
-    if (oauthProvider) {
-      meta.push({ key: "oauth_provider", value: oauthProvider });
-    }
-
-    if (Object.keys(patch).length > 0 || meta.length > 0) {
-      if (meta.length > 0) patch.meta_data = meta;
-      const upd = await fetch(`${BASE}/wp-json/wc/v3/customers/${existing.id}`, {
-        method: "PUT",
-        headers,
-        body: JSON.stringify(patch),
-      });
-      if (upd.ok) return upd.json();
-      const errText = await upd.text().catch(() => "");
-      console.error("Woo customer update failed:", errText);
-    }
-
-    return existing;
-  }
-
-  const meta_data: Array<{ key: string; value: string }> = [
-    { key: "email_verified", value: "1" },
-  ];
-  if (avatarUrl) meta_data.push({ key: "avatar_url", value: avatarUrl });
-  if (name?.trim()) meta_data.push({ key: "oauth_display_name", value: name.trim() });
-  if (oauthProvider) meta_data.push({ key: "oauth_provider", value: oauthProvider });
-
-  const r = await fetch(`${BASE}/wp-json/wc/v3/customers`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      email,
-      username: email,
-      first_name: first || "",
-      last_name: last || "",
-      password: Math.random().toString(36).slice(2, 12),
-      meta_data,
-    }),
-  });
-
-  if (!r.ok) {
-    const t = await r.text();
-    // WordPress 已有同 email 帳號但 WC email 查詢漏掉時，再試 role=all 搜尋
-    if (t.includes("registration-error-email-exists")) {
-      const retry = await fetch(
-        `${BASE}/wp-json/wc/v3/customers?email=${encodeURIComponent(email)}&role=all`,
-        { headers, cache: "no-store" },
-      );
-      const retryArr = (await retry.json().catch(() => [])) || [];
-      if (Array.isArray(retryArr) && retryArr.length > 0) {
-        const existing = retryArr[0];
-        const patch: Record<string, unknown> = {};
-        const meta: Array<{ key: string; value: string }> = [];
-        if (first && !String(existing.first_name || "").trim()) {
-          patch.first_name = first;
-          if (last) patch.last_name = last;
-        }
-        if (avatarUrl) meta.push({ key: "avatar_url", value: avatarUrl });
-        if (name?.trim()) meta.push({ key: "oauth_display_name", value: name.trim() });
-        if (oauthProvider) meta.push({ key: "oauth_provider", value: oauthProvider });
-        if (Object.keys(patch).length > 0 || meta.length > 0) {
-          if (meta.length > 0) patch.meta_data = meta;
-          const upd = await fetch(`${BASE}/wp-json/wc/v3/customers/${existing.id}`, {
-            method: "PUT",
-            headers,
-            body: JSON.stringify(patch),
-          });
-          if (upd.ok) return upd.json();
-        }
-        return existing;
-      }
-    }
-    throw new Error(`Woo upsert failed: ${t}`);
-  }
-  return r.json();
-}
-
 async function fetchWooCustomerById(id: number) {
   if (!hasWooConfig()) return null;
-
-  const headers = getAuthHeaders();
   const r = await fetch(`${BASE}/wp-json/wc/v3/customers/${id}`, {
-    headers,
+    headers: getAuthHeaders(),
     cache: "no-store",
   });
   if (!r.ok) return null;
@@ -282,27 +171,7 @@ if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
   );
 }
 
-if (process.env.FACEBOOK_CLIENT_ID && process.env.FACEBOOK_CLIENT_SECRET) {
-  providers.push(
-    FacebookProvider({
-      clientId: process.env.FACEBOOK_CLIENT_ID,
-      clientSecret: process.env.FACEBOOK_CLIENT_SECRET,
-      authorization: {
-        params: {
-          scope: "email public_profile",
-        },
-      },
-      profile(profile) {
-        return {
-          id: profile.id,
-          name: profile.name,
-          email: profile.email,
-          image: profile.picture?.data?.url,
-        };
-      },
-    }),
-  );
-}
+// Facebook 僅走自訂 /api/auth/facebook/*，避免與 NextAuth 雙路徑衝突
 
 export const authOptions: AuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
@@ -315,23 +184,40 @@ export const authOptions: AuthOptions = {
   providers,
   callbacks: {
     async signIn({ user, account }) {
+      // Google 登入：清掉 LINE／FB 的 auth_token，只留 NextAuth
+      if (account?.provider === "google") {
+        clearCustomAuthCookiesInRequest();
+      }
+
       if (!user?.email) {
         console.warn("OAuth user has no email, skip Woo upsert");
         return true;
       }
 
       if (!hasWooConfig()) {
-        console.warn("WooCommerce API keys missing — OAuth login proceeds without sync");
+        console.warn(
+          "WooCommerce API keys missing — OAuth login proceeds without sync",
+        );
         return true;
       }
 
       try {
-        const customer = await upsertWooCustomer(
-          user.email,
-          user.name || undefined,
-          user.image || undefined,
-          account?.provider || null,
-        );
+        const providerId = String(
+          account?.providerAccountId || user.id || "",
+        ).trim();
+        if (!providerId) {
+          console.warn("OAuth missing providerAccountId");
+          return true;
+        }
+
+        const customer = await upsertSocialCustomer({
+          provider: "google",
+          providerUserId: providerId,
+          email: String(user.email).trim().toLowerCase(),
+          name: user.name || undefined,
+          picture: user.image || undefined,
+          emailVerified: true,
+        });
         if (customer) {
           try {
             await handleReferralIfAny(customer);
@@ -340,7 +226,7 @@ export const authOptions: AuthOptions = {
           }
         }
       } catch (e) {
-        console.error("upsertWooCustomer error (login not blocked):", e);
+        console.error("upsertSocialCustomer error (login not blocked):", e);
       }
 
       return true;

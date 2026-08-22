@@ -81,6 +81,9 @@ function resolveAuthProviderFromMeta(customer: any): string | null {
     meta.find((m) => m.key === "oauth_provider")?.value,
   );
   if (fromKey) return fromKey;
+  if (meta.find((m) => m.key === "social_login_google_id")?.value) {
+    return "google";
+  }
   if (meta.find((m) => m.key === "social_login_facebook_id")?.value) {
     return "facebook";
   }
@@ -94,10 +97,15 @@ async function resolveAuthProvider(
   session: any,
   customer: any,
 ): Promise<string | null> {
+  const cookieStore = cookies();
+  const authMethod = normalizeAuthProvider(
+    cookieStore.get("hover_auth_method")?.value,
+  );
+  if (authMethod) return authMethod;
+
   const fromSession = normalizeAuthProvider(session?.authProvider);
   if (fromSession) return fromSession;
 
-  const cookieStore = cookies();
   const authToken = cookieStore.get("auth_token")?.value;
   if (authToken) {
     try {
@@ -112,8 +120,6 @@ async function resolveAuthProvider(
   const fromMeta = resolveAuthProviderFromMeta(customer);
   if (fromMeta) return fromMeta;
 
-  // NextAuth session 存在 = 社群登入（本站 Email 登入不走 NextAuth）
-  // 舊 session 可能尚未寫入 provider，預設標示為 Google
   if (session?.user?.email) return "google";
 
   return null;
@@ -127,8 +133,38 @@ async function getAuthenticatedEmail() {
 
   const session = await getServerSession(authOptions);
   const cookieStore = cookies();
+  const authMethod = String(
+    cookieStore.get("hover_auth_method")?.value || "",
+  ).toLowerCase();
+
+  const readAuthTokenEmail = () => {
+    const authToken = cookieStore.get("auth_token")?.value;
+    if (!authToken) return null;
+    try {
+      const decoded = jwt.verify(authToken, JWT_SECRET) as any;
+      return decoded?.email ? String(decoded.email) : null;
+    } catch (e) {
+      console.error("auth_token verify failed:", e);
+      return null;
+    }
+  };
+
+  // 單一作用中登入方式：LINE／FB／email 優先看 auth_token；Google 優先看 NextAuth
+  if (authMethod === "line" || authMethod === "facebook" || authMethod === "email") {
+    const fromToken = readAuthTokenEmail();
+    if (fromToken) return fromToken;
+  }
 
   let email: string | null = session?.user?.email || null;
+
+  if (!email && authMethod !== "google") {
+    const fromToken = readAuthTokenEmail();
+    if (fromToken) email = fromToken;
+  }
+
+  if (!email) {
+    email = session?.user?.email || null;
+  }
 
   if (!email) {
     const emailCookie = cookieStore.get("user_email");
@@ -136,15 +172,7 @@ async function getAuthenticatedEmail() {
   }
 
   if (!email) {
-    const authToken = cookieStore.get("auth_token")?.value;
-    if (authToken) {
-      try {
-        const decoded = jwt.verify(authToken, JWT_SECRET) as any;
-        if (decoded?.email) email = decoded.email;
-      } catch (e) {
-        console.error("auth_token verify failed:", e);
-      }
-    }
+    email = readAuthTokenEmail();
   }
 
   if (!email) {
@@ -169,11 +197,28 @@ async function getAuthenticatedEmail() {
 
 /** Mutations must use a signed session/token, never the unsigned email cookie. */
 async function getVerifiedAuthenticatedEmail() {
+  const cookieStore = cookies();
+  const authMethod = String(
+    cookieStore.get("hover_auth_method")?.value || "",
+  ).toLowerCase();
+
+  if (authMethod === "line" || authMethod === "facebook" || authMethod === "email") {
+    const authToken = cookieStore.get("auth_token")?.value;
+    if (authToken) {
+      try {
+        const decoded = jwt.verify(authToken, JWT_SECRET) as any;
+        const tokenEmail = String(decoded?.email || "").trim().toLowerCase();
+        if (tokenEmail) return tokenEmail;
+      } catch {
+        // fall through
+      }
+    }
+  }
+
   const session = await getServerSession(authOptions);
   const sessionEmail = String(session?.user?.email || "").trim().toLowerCase();
   if (sessionEmail) return sessionEmail;
 
-  const cookieStore = cookies();
   const authToken = cookieStore.get("auth_token")?.value;
   if (authToken) {
     try {

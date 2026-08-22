@@ -4,7 +4,6 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   Fragment,
 } from "react";
@@ -13,7 +12,6 @@ import { Link } from "next-view-transitions";
 import { useRouter } from "next/navigation";
 import { useWishlistStore } from "@/lib/wishlistStore";
 import { formatProductPrice } from "@/lib/utils";
-import { LineChart, BarChart } from "@mui/x-charts";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePathname } from "next/navigation";
 import HoverIcon from "@/components/hover/HoverIcon";
@@ -23,9 +21,7 @@ import { useShippingSettings } from "@/lib/useShippingSettings";
 import {
   Home,
   Package,
-  Users,
   Tag,
-  BarChart2,
   Settings,
   Bell,
   ChevronLeft,
@@ -462,130 +458,6 @@ function AccountTabButton({ active, onClick, children }) {
 }
 
 // ============================================================================
-// 負責呈現後台訂單圖表的元件
-// ============================================================================
-function MemberAnalytics({ orders, customer }) {
-  if (!orders || orders.length === 0)
-    return (
-      <div className="mt-3 rounded-lg border border-dashed border-slate-200 bg-slate-50/60 px-4 py-3 text-xs text-slate-500">
-        尚無足夠訂單資料可供分析。
-      </div>
-    );
-  const totalAmount = orders.reduce((sum, o) => sum + (o.total || 0), 0);
-  const orderCount = orders.length;
-  const avgAmount = orderCount > 0 ? totalAmount / orderCount : 0;
-  const monthLabels = [];
-  const monthTotalsMap = {};
-  orders.forEach((o) => {
-    const d = new Date(o.date_created);
-    if (isNaN(d.getTime())) return;
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-    if (!monthLabels.includes(key)) monthLabels.push(key);
-    monthTotalsMap[key] = (monthTotalsMap[key] || 0) + (o.total || 0);
-  });
-  monthLabels.sort();
-  const monthTotals = monthLabels.map((m) => monthTotalsMap[m] || 0);
-  const productMap = {};
-  orders.forEach((o) =>
-    o.line_items.forEach((it) => {
-      productMap[it.name] = (productMap[it.name] || 0) + (it.quantity || 0);
-    }),
-  );
-  const productEntries = Object.entries(productMap)
-    .sort((a, b) => b[1] - a[1])
-    .slice(0, 5);
-  const productLabels = productEntries.map(([name]) => name);
-  const productQty = productEntries.map(([, q]) => q);
-
-  return (
-    <div className="mt-4 space-y-3 w-full">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <div className="rounded-lg border bg-white px-3 py-2 shadow-sm">
-          <div className="text-[11px] text-slate-500">訂單數</div>
-          <div className="mt-1 text-lg font-semibold text-slate-800 break-all">
-            {orderCount}
-          </div>
-        </div>
-        <div className="rounded-lg border bg-white px-3 py-2 shadow-sm">
-          <div className="text-[11px] text-slate-500">累計消費</div>
-          <div className="mt-1 text-lg font-semibold text-slate-800 break-all">
-            {formatNTD(totalAmount)}
-          </div>
-        </div>
-        <div className="rounded-lg border bg-white px-3 py-2 shadow-sm">
-          <div className="text-[11px] text-slate-500">平均客單價</div>
-          <div className="mt-1 text-lg font-semibold text-slate-800 break-all">
-            {orderCount === 0 ? "—" : formatNTD(avgAmount)}
-          </div>
-        </div>
-        <div className="rounded-lg border bg-white px-3 py-2 shadow-sm">
-          <div className="text-[11px] text-slate-500">推薦註冊</div>
-          <div className="mt-1 text-lg font-semibold text-amber-700 break-all">
-            {customer.referredCount || 0}
-          </div>
-        </div>
-        <div className="rounded-lg border bg-white px-3 py-2 shadow-sm">
-          <div className="text-[11px] text-slate-500">成功首單</div>
-          <div className="mt-1 text-lg font-semibold text-amber-700 break-all">
-            {customer.rewardedCount || 0}
-          </div>
-        </div>
-        <div className="rounded-lg border bg-white px-3 py-2 shadow-sm">
-          <div className="text-[11px] text-slate-500">已賺推薦金</div>
-          <div className="mt-1 text-lg font-semibold text-amber-700 break-all">
-            {formatNTD(customer.referralEarned || 0)}
-          </div>
-        </div>
-      </div>
-      <div className="grid gap-3 md:grid-cols-2">
-        <div className="rounded-lg border bg-white px-3 py-2 shadow-sm overflow-hidden w-full">
-          <div className="mb-1 text-[11px] font-semibold text-slate-600">
-            每月消費趨勢
-          </div>
-          {monthLabels.length === 0 ? (
-            <p className="text-xs text-slate-400">尚無資料。</p>
-          ) : (
-            <div className="h-48 sm:h-52 w-full">
-              <LineChart
-                xAxis={[
-                  { scaleType: "point", data: monthLabels, label: "月份" },
-                ]}
-                series={[
-                  {
-                    data: monthTotals,
-                    label: "消費金額",
-                    valueFormatter: (v) => formatNTD(Number(v)),
-                  },
-                ]}
-                margin={{ left: 40, right: 10, top: 20, bottom: 30 }}
-              />
-            </div>
-          )}
-        </div>
-        <div className="rounded-lg border bg-white px-3 py-2 shadow-sm overflow-hidden w-full">
-          <div className="mb-1 text-[11px] font-semibold text-slate-600">
-            最常購買商品 TOP 5
-          </div>
-          {productLabels.length === 0 ? (
-            <p className="text-xs text-slate-400">尚無資料。</p>
-          ) : (
-            <div className="h-48 sm:h-52 w-full">
-              <BarChart
-                layout="horizontal"
-                xAxis={[{ label: "數量" }]}
-                yAxis={[{ scaleType: "band", data: productLabels }]}
-                series={[{ data: productQty, label: "數量", color: "#008060" }]}
-                margin={{ left: 80, right: 10, top: 20, bottom: 30 }}
-              />
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ============================================================================
 // 主頁面 AccountPage
 // ============================================================================
 
@@ -621,17 +493,7 @@ export default function AccountPage() {
   const [claimedCode, setClaimedCode] = useState(null);
   const [showAllReferralCoupons, setShowAllReferralCoupons] = useState(false);
 
-  const [isAdmin, setIsAdmin] = useState(false);
-  const [adminData, setAdminData] = useState([]);
-  const [adminLoading, setAdminLoading] = useState(false);
-  const [adminError, setAdminError] = useState("");
-
-  const [expandedId, setExpandedId] = useState(null);
   const [expandedUserOrderId, setExpandedUserOrderId] = useState(null);
-  const [expandedOrders, setExpandedOrders] = useState([]);
-  const [expandedOrdersLoading, setExpandedOrdersLoading] = useState(false);
-  const [expandedOrdersError, setExpandedOrdersError] = useState("");
-  const adminLoadedOnceRef = useRef(false);
 
   const [birthdayInput, setBirthdayInput] = useState("");
   const [isSettingBirthday, setIsSettingBirthday] = useState(false);
@@ -678,25 +540,10 @@ export default function AccountPage() {
           address: nextCustomer.billing_address || nextCustomer.address || "",
         });
         setMembership(data.membership || null);
-        const roles = Array.isArray(data?.customer?.roles)
-          ? data.customer.roles
-          : [];
-        const role = String(data?.customer?.role || "");
-        const adminFlag =
-          Boolean(data?.customer?.isAdmin) ||
-          Boolean(data?.isAdmin) ||
-          roles.includes("administrator") ||
-          roles.includes("admin") ||
-          roles.includes("網站管理員") ||
-          role === "administrator" ||
-          role === "admin" ||
-          role === "網站管理員";
-        setIsAdmin(adminFlag);
       } else {
         setLoggedIn(false);
         setCustomer(null);
         setMembership(null);
-        setIsAdmin(false);
         setAuthProvider(null);
       }
     } catch {
@@ -767,10 +614,15 @@ export default function AccountPage() {
 
   useEffect(() => {
     const tab = new URLSearchParams(window.location.search).get("tab");
-    if (tab && ["profile", "orders", "favorites", "admin"].includes(tab)) {
+    if (tab === "admin") {
+      router.replace("/account", { scroll: false });
+      setActiveTab("profile");
+      return;
+    }
+    if (tab && ["profile", "orders", "favorites"].includes(tab)) {
       setActiveTab(tab);
     }
-  }, []);
+  }, [router]);
 
   useEffect(() => {
     if (loggedIn) {
@@ -1091,211 +943,6 @@ export default function AccountPage() {
     return d.getMonth() === now.getMonth();
   }, [customer?.birthday]);
 
-  const loadAdminCustomers = useCallback(async () => {
-    setAdminLoading(true);
-    setAdminError("");
-    try {
-      const res = await fetch("/api/admin/customers", { cache: "no-store" });
-      const js = await res.json();
-      if (!res.ok || !js.ok) {
-        setAdminData([]);
-        setAdminError(
-          `伺服器拒絕 (${res.status}): ${js?.message || "請檢查後端 API 的權限設定"}`,
-        );
-        return;
-      }
-      setAdminData(js.customers || []);
-      adminLoadedOnceRef.current = true;
-    } catch (e) {
-      setAdminError(e?.message || "讀取會員名單時發生錯誤");
-    } finally {
-      setAdminLoading(false);
-    }
-  }, []);
-
-  const toggleExpandAdminRow = async (customerId, email) => {
-    if (expandedId === customerId) {
-      setExpandedId(null);
-      setExpandedOrders([]);
-      setExpandedOrdersError("");
-      return;
-    }
-    setExpandedId(customerId);
-    setExpandedOrders([]);
-    setExpandedOrdersError("");
-    setExpandedOrdersLoading(true);
-    try {
-      const qs = new URLSearchParams({ customerId: String(customerId) });
-      if (email) qs.set("email", email);
-      const res = await fetch(`/api/admin/customer-orders?${qs.toString()}`, {
-        cache: "no-store",
-      });
-      const js = await res.json();
-      if (!res.ok || !js.ok)
-        throw new Error(`(${res.status}) ${js?.message || "讀取訂單失敗"}`);
-      setExpandedOrders(js.orders || []);
-    } catch (e) {
-      setExpandedOrders([]);
-      setExpandedOrdersError(e?.message || "讀取訂單失敗");
-    } finally {
-      setExpandedOrdersLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (
-      !loggedIn ||
-      !isAdmin ||
-      activeTab !== "admin" ||
-      adminLoadedOnceRef.current
-    )
-      return;
-    loadAdminCustomers();
-  }, [activeTab, isAdmin, loggedIn, loadAdminCustomers]);
-
-  const adminFiltered = useMemo(() => {
-    const keyword = searchQuery.trim().toLowerCase();
-    if (!keyword || activeTab !== "admin") return adminData;
-    return adminData.filter(
-      (c) =>
-        c.name.toLowerCase().includes(keyword) ||
-        c.email.toLowerCase().includes(keyword) ||
-        (c.username || "").toLowerCase().includes(keyword),
-    );
-  }, [searchQuery, adminData, activeTab]);
-
-  const totalMembers = adminData.length;
-  const totalRevenue = adminData.reduce((s, c) => s + c.totalSpent, 0);
-  const totalReferred = adminData.reduce(
-    (s, c) => s + (c.referredCount || 0),
-    0,
-  );
-  const totalReferralEarned = adminData.reduce(
-    (s, c) => s + (c.referralEarned || 0),
-    0,
-  );
-
-  const renderExpandedOrdersAdmin = () => {
-    if (expandedOrdersLoading)
-      return (
-        <p className="text-xs text-slate-500 py-4 text-center">載入訂單中…</p>
-      );
-    if (expandedOrdersError)
-      return (
-        <p className="text-xs text-rose-600 py-4 text-center">
-          {expandedOrdersError}
-        </p>
-      );
-    if (expandedOrders.length === 0)
-      return (
-        <p className="text-xs text-slate-500 py-4 text-center">
-          目前尚無任何訂單。
-        </p>
-      );
-
-    return (
-      <div className="mt-2 rounded-lg border bg-slate-50 overflow-x-auto">
-        <table className="min-w-[600px] w-full text-xs text-left">
-          <thead className="bg-slate-100 text-slate-500">
-            <tr>
-              <th className="px-3 py-2 font-semibold">訂單編號</th>
-              <th className="px-3 py-2 font-semibold">日期</th>
-              <th className="px-3 py-2 font-semibold">狀態</th>
-              <th className="px-3 py-2 font-semibold">付款資訊</th>
-              <th className="px-3 py-2 text-right font-semibold">金額</th>
-              <th className="px-3 py-2 font-semibold w-1/4">品項</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-200">
-            {expandedOrders.map((o) => {
-              const parsedMeta = parseMetaDataForPayment(o.meta_data || []);
-              const noteInfo = extractInfoFromNote(o.customer_note || "");
-              const cvsCode =
-                parsedMeta.cvs_code ||
-                o.payment_info?.cvs_code ||
-                noteInfo?.cvs_code;
-              const atmAccount =
-                parsedMeta.atm_account ||
-                o.payment_info?.atm_account ||
-                noteInfo?.atm_account;
-              const bankCode =
-                parsedMeta.bank_code ||
-                o.payment_info?.bank_code ||
-                noteInfo?.bank_code;
-              const rawExpireDate =
-                parsedMeta.expire_date ||
-                o.payment_info?.expire_date ||
-                noteInfo?.expire_date ||
-                "依綠界規定";
-
-              const displayExpireDate =
-                rawExpireDate !== "依綠界規定" &&
-                /^\d{4}[-/]\d{2}[-/]\d{2}$/.test(rawExpireDate)
-                  ? `${rawExpireDate.replace(/-/g, "/")} 23:59:59`
-                  : rawExpireDate;
-
-              const pTitle = o.payment_method_title || "標準支付";
-
-              return (
-                <tr key={o.id} className="hover:bg-gray-100 transition-colors">
-                  <td className="px-3 py-3 align-top font-medium text-slate-700 whitespace-nowrap">
-                    #{o.number}
-                  </td>
-                  <td className="px-3 py-3 align-top text-slate-500 whitespace-nowrap">
-                    {new Date(o.date_created).toLocaleDateString("zh-TW")}
-                  </td>
-                  <td className="px-3 py-3 align-top">
-                    <StatusPill status={o.status} type="order" />
-                  </td>
-                  <td className="px-3 py-3 align-top max-w-[150px]">
-                    <div
-                      className="font-semibold text-slate-700 truncate"
-                      title={pTitle}
-                    >
-                      {pTitle}
-                    </div>
-                    {atmAccount && (
-                      <div className="mt-1 text-[10px] text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100 inline-block">
-                        ATM: {bankCode} - {atmAccount}
-                      </div>
-                    )}
-                    {cvsCode && (
-                      <div className="mt-1 text-[10px] text-blue-700 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-100 inline-block">
-                        CVS: {cvsCode}
-                      </div>
-                    )}
-                  </td>
-                  <td className="px-3 py-3 align-top text-right font-semibold whitespace-nowrap">
-                    {formatNTD(o.total)}
-                  </td>
-                  <td className="px-3 py-3 align-top min-w-[150px]">
-                    <div className="flex flex-col gap-1">
-                      {o.line_items.slice(0, 2).map((it, idx) => (
-                        <span
-                          key={idx}
-                          className="text-slate-600 truncate text-[11px]"
-                          title={it.name}
-                        >
-                          {it.name}{" "}
-                          <span className="text-slate-400">×{it.quantity}</span>
-                        </span>
-                      ))}
-                      {o.line_items.length > 2 && (
-                        <span className="text-slate-400 text-[10px]">
-                          ...等 {o.line_items.length} 項
-                        </span>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-    );
-  };
-
   if (loading) {
     return (
       <div className="flex min-h-[60vh] items-center justify-center bg-hover-bg">
@@ -1346,7 +993,6 @@ export default function AccountPage() {
 
   const getSearchPlaceholder = () => {
     if (activeTab === "orders") return "搜尋訂單...";
-    if (activeTab === "admin") return "搜尋會員...";
     return "搜尋代碼...";
   };
 
@@ -1379,14 +1025,6 @@ export default function AccountPage() {
             >
               收藏
             </AccountTabButton>
-            {isAdmin && (
-              <AccountTabButton
-                active={activeTab === "admin"}
-                onClick={() => switchTab("admin")}
-              >
-                會員管理
-              </AccountTabButton>
-            )}
           </div>
           <button
             type="button"
@@ -1404,7 +1042,7 @@ export default function AccountPage() {
         </div>
 
         {/* Mobile search */}
-        {(activeTab === "orders" || activeTab === "profile" || activeTab === "admin") && (
+        {(activeTab === "orders" || activeTab === "profile") && (
           <div className="relative mb-6 md:hidden">
             <HoverIcon name="search" size={40} className="absolute left-0 top-1/2 -translate-y-1/2 opacity-50" alt="" />
             <input
@@ -2306,246 +1944,6 @@ export default function AccountPage() {
                           </tbody>
                         </table>
                       </div>
-                )}
-              </div>
-            )}
-
-            {/* Admin Tab 內容 */}
-            {activeTab === "admin" && (
-              <div className="w-full">
-                {!isAdmin && (
-                  <ShellCard title="權限不足">
-                    <p className="text-xs sm:text-sm text-rose-600 bg-rose-50 p-3 sm:p-4 rounded-md border border-rose-200 break-words">
-                      權限不足或是後端尚未開放，目前僅可瀏覽這段錯誤訊息。
-                      <br />
-                      請檢查 <code>/api/admin/customers</code> 權限。
-                    </p>
-                  </ShellCard>
-                )}
-
-                {isAdmin && (
-                  <>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-4 sm:mb-6 w-full">
-                      <div className="bg-white border border-[#c9cccf] rounded-lg p-4 sm:p-5 shadow-sm flex flex-col gap-1 w-full">
-                        <span className="text-[10px] sm:text-xs text-[#6d7175] font-medium uppercase tracking-wider">
-                          總會員數
-                        </span>
-                        <span className="text-xl sm:text-2xl font-bold text-[#202223] break-all">
-                          {totalMembers}
-                        </span>
-                      </div>
-                      <div className="bg-white border border-[#c9cccf] rounded-lg p-4 sm:p-5 shadow-sm flex flex-col gap-1 w-full">
-                        <span className="text-[10px] sm:text-xs text-[#6d7175] font-medium uppercase tracking-wider">
-                          累計總營收
-                        </span>
-                        <span className="text-xl sm:text-2xl font-bold text-[#202223] break-all">
-                          {formatNTD(totalRevenue)}
-                        </span>
-                      </div>
-                      <div className="bg-white border border-[#c9cccf] rounded-lg p-4 sm:p-5 shadow-sm flex flex-col gap-1 w-full">
-                        <span className="text-[10px] sm:text-xs text-[#6d7175] font-medium uppercase tracking-wider">
-                          全站推薦註冊
-                        </span>
-                        <span className="text-xl sm:text-2xl font-bold text-amber-700 break-all">
-                          {totalReferred}
-                        </span>
-                      </div>
-                      <div className="bg-white border border-[#c9cccf] rounded-lg p-4 sm:p-5 shadow-sm flex flex-col gap-1 w-full">
-                        <span className="text-[10px] sm:text-xs text-[#6d7175] font-medium uppercase tracking-wider">
-                          全站推薦金支出
-                        </span>
-                        <span className="text-xl sm:text-2xl font-bold text-amber-700 break-all">
-                          {formatNTD(totalReferralEarned)}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="bg-white border border-[#c9cccf] rounded-lg shadow-sm overflow-hidden w-full">
-                      <div className="px-4 sm:px-5 py-4 border-b border-[#c9cccf] flex items-center justify-between bg-[#f9fafb]">
-                        <h2 className="text-sm sm:text-base font-semibold text-[#202223]">
-                          會員列表與詳細分析
-                        </h2>
-                        <span className="text-[10px] sm:text-xs font-medium text-[#6d7175] bg-[#e4e5e7] px-2 sm:px-3 py-1 sm:py-1.5 rounded-full whitespace-nowrap">
-                          顯示 {adminFiltered.length} / {adminData.length} 筆
-                        </span>
-                      </div>
-
-                      <div className="p-3 sm:p-5 w-full">
-                        {adminLoading && (
-                          <p className="text-xs sm:text-sm text-[#6d7175] py-4 text-center">
-                            載入中...
-                          </p>
-                        )}
-                        {!adminLoading && adminError && (
-                          <p className="text-xs sm:text-sm text-rose-600 bg-rose-50 p-4 rounded-md border border-rose-200 shadow-sm break-words">
-                            <strong>錯誤</strong>：{adminError}
-                          </p>
-                        )}
-                        {!adminLoading &&
-                          !adminError &&
-                          adminFiltered.length === 0 && (
-                            <p className="text-xs sm:text-sm text-[#6d7175] py-6 text-center border border-dashed border-[#c9cccf] rounded bg-[#f9fafb]">
-                              找不到符合條件的會員。
-                            </p>
-                          )}
-
-                        {!adminLoading &&
-                          !adminError &&
-                          adminFiltered.length > 0 && (
-                            <div className="overflow-x-auto rounded-lg border border-[#c9cccf] w-full">
-                              <table className="min-w-[800px] w-full text-xs sm:text-sm text-left">
-                                <thead className="bg-[#F58A9C] text-[10px] sm:text-xs uppercase text-slate-50 border-b border-[#c9cccf]">
-                                  <tr>
-                                    <th className="px-4 py-3 sm:py-4 font-semibold">
-                                      會員
-                                    </th>
-                                    <th className="px-4 py-3 sm:py-4 font-semibold">
-                                      Email
-                                    </th>
-                                    <th className="px-4 py-3 sm:py-4 font-semibold">
-                                      城市
-                                    </th>
-                                    <th className="px-4 py-3 sm:py-4 font-semibold text-right">
-                                      訂單數
-                                    </th>
-                                    <th className="px-4 py-3 sm:py-4 font-semibold text-right">
-                                      累計消費
-                                    </th>
-                                    <th className="px-4 py-3 sm:py-4 font-semibold text-right">
-                                      推薦金
-                                    </th>
-                                    <th className="px-4 py-3 sm:py-4 font-semibold text-center">
-                                      等級
-                                    </th>
-                                    <th className="px-4 py-3 sm:py-4 font-semibold text-center">
-                                      圖表
-                                    </th>
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-[#ebebeb]">
-                                  {adminFiltered.map((c) => (
-                                    <Fragment key={c.id}>
-                                      <tr
-                                        className="hover:bg-[#f9fafb] cursor-pointer transition-colors group"
-                                        onClick={() =>
-                                          toggleExpandAdminRow(c.id, c.email)
-                                        }
-                                      >
-                                        <td className="px-4 py-3 sm:py-4 align-middle">
-                                          <div className="font-semibold text-[#2c6ecb] group-hover:underline truncate max-w-[120px] sm:max-w-[150px]">
-                                            {c.name || "—"}
-                                          </div>
-                                          {c.username && (
-                                            <div className="text-[10px] sm:text-xs text-[#6d7175] mt-0.5 truncate max-w-[120px]">
-                                              @{c.username}
-                                            </div>
-                                          )}
-                                        </td>
-                                        <td
-                                          className="px-4 py-3 sm:py-4 align-middle text-slate-700 truncate max-w-[150px] sm:max-w-[200px]"
-                                          title={c.email}
-                                        >
-                                          {c.email}
-                                        </td>
-                                        <td className="px-4 py-3 sm:py-4 align-middle text-slate-700 whitespace-nowrap">
-                                          {c.billingCountry || ""}{" "}
-                                          {c.billingCity || ""}
-                                        </td>
-                                        <td className="px-4 py-3 sm:py-4 align-middle text-right">
-                                          {c.ordersCount}
-                                        </td>
-                                        <td className="px-4 py-3 sm:py-4 align-middle text-right font-bold text-[#202223] whitespace-nowrap">
-                                          {formatNTD(c.totalSpent)}
-                                        </td>
-                                        <td className="px-4 py-3 sm:py-4 align-middle text-right font-semibold text-amber-700 whitespace-nowrap">
-                                          {formatNTD(c.referralEarned || 0)}
-                                        </td>
-                                        <td className="px-4 py-3 sm:py-4 align-middle text-center">
-                                          <span
-                                            className={`inline-flex items-center rounded-full px-2 py-0.5 sm:px-3 sm:py-1 text-[10px] sm:text-xs font-bold uppercase whitespace-nowrap ${c.tier.includes("VIP") ? "bg-indigo-100 text-indigo-700 border border-indigo-200" : c.tier.includes("金") ? "bg-amber-100 text-amber-700 border border-amber-200" : "bg-slate-50 text-slate-500 border border-slate-200"}`}
-                                          >
-                                            {c.tier.replace("貴賓", "")}
-                                          </span>
-                                        </td>
-                                        {/* 💡 修正展開/收起按鈕排版 */}
-                                        <td className="px-4 py-3 sm:py-4 align-middle text-center w-24">
-                                          <button
-                                            className={`inline-flex items-center justify-center gap-1 w-16 px-2 py-1.5 text-[10px] sm:text-xs font-medium border rounded shadow-sm transition-colors ${expandedId === c.id ? "bg-[#1a1a1a] text-white border-black" : "bg-white text-[#202223] border-[#c9cccf] hover:bg-[#f6f6f7]"}`}
-                                            onClick={(e) => {
-                                              e.stopPropagation();
-                                              toggleExpandAdminRow(
-                                                c.id,
-                                                c.email,
-                                              );
-                                            }}
-                                          >
-                                            <BarChart2
-                                              size={12}
-                                              className={
-                                                expandedId === c.id
-                                                  ? "text-white"
-                                                  : "text-[#008060]"
-                                              }
-                                            />
-                                            <span>
-                                              {expandedId === c.id
-                                                ? "收起"
-                                                : "分析"}
-                                            </span>
-                                          </button>
-                                        </td>
-                                      </tr>
-
-                                      {expandedId === c.id && (
-                                        <tr className="bg-slate-50/60">
-                                          <td
-                                            colSpan={8}
-                                            className="p-3 sm:p-6 border-t border-[#c9cccf] w-full"
-                                          >
-                                            <div className="bg-white border border-[#c9cccf] rounded-lg p-3 sm:p-5 shadow-sm w-full overflow-hidden">
-                                              <div className="font-bold text-[#202223] text-sm sm:text-lg mb-3 flex flex-wrap items-center gap-2 border-b border-[#ebebeb] pb-2 sm:pb-3 w-full">
-                                                <Users
-                                                  size={18}
-                                                  className="text-[#008060] shrink-0"
-                                                />
-                                                <span className="truncate break-all max-w-full">
-                                                  {c.name || c.username}{" "}
-                                                  的圖表與資料
-                                                </span>
-                                              </div>
-
-                                              <div className="w-full max-w-full overflow-hidden">
-                                                <MemberAnalytics
-                                                  orders={expandedOrders}
-                                                  customer={c}
-                                                />
-                                              </div>
-
-                                              <div className="mt-6 sm:mt-8 border-t border-[#ebebeb] pt-4 sm:pt-6 w-full">
-                                                <div className="font-bold text-[#202223] mb-3 sm:mb-4 text-sm sm:text-base flex items-center gap-2">
-                                                  <Package
-                                                    size={16}
-                                                    className="text-gray-500 shrink-0"
-                                                  />{" "}
-                                                  詳細訂單列表
-                                                </div>
-                                                <div className="w-full max-w-full overflow-hidden">
-                                                  {renderExpandedOrdersAdmin()}
-                                                </div>
-                                              </div>
-                                            </div>
-                                          </td>
-                                        </tr>
-                                      )}
-                                    </Fragment>
-                                  ))}
-                                </tbody>
-                              </table>
-                            </div>
-                          )}
-                      </div>
-                    </div>
-                  </>
                 )}
               </div>
             )}

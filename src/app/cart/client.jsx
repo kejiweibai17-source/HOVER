@@ -24,6 +24,12 @@ import {
 import { useCartStore } from "@/lib/cartStore";
 import { DEFAULT_SHIPPING } from "@/lib/shippingDefaults";
 import { useShippingSettings } from "@/lib/useShippingSettings";
+import {
+  isValidLoveCode,
+  isValidMobileCarrier,
+  isValidTwTaxId,
+  normalizeMobileCarrier,
+} from "@/lib/invoicePreference";
 
 // ✅ 內建輕量版：台灣縣市與鄉鎮區字典
 const TW_CITIES = {
@@ -1120,6 +1126,7 @@ function CheckoutStep({
           code,
           subtotalAfterMember,
           hasMemberDiscount: (pricing.memberDiscountAmount || 0) > 0,
+          hasSaleItems: items.some((it) => Boolean(it.onSale)),
         }),
       });
       const data = await res.json();
@@ -1230,6 +1237,21 @@ function CheckoutStep({
       if (!addr.storeId) e.store = "請選擇配送門市";
     }
 
+    if (invoiceType === "carrier") {
+      if (!isValidMobileCarrier(carrierCode)) {
+        e.invoice = "請輸入正確手機條碼（/ 開頭共 8 碼）";
+      }
+    } else if (invoiceType === "triple") {
+      if (!String(invoiceTitle || "").trim()) e.invoice = "請填寫發票抬頭";
+      else if (!isValidTwTaxId(invoiceTaxId)) {
+        e.invoice = "請輸入正確統一編號（8 碼）";
+      }
+    } else if (invoiceType === "donate") {
+      if (!isValidLoveCode(donateCode)) {
+        e.invoice = "請輸入正確愛心碼（3～7 位數字）";
+      }
+    }
+
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -1251,9 +1273,11 @@ function CheckoutStep({
       // 🚀 關鍵防護：確保 wcProductId 絕對有值
       items: items.map((it) => ({
         wcProductId: it.wcProductId || it.id,
+        wcVariationId: it.wcVariationId || undefined,
         qty: it.qty,
         price: it.price,
         title: it.name || it.title,
+        onSale: Boolean(it.onSale),
       })),
       contact: { email: contact.email.trim() },
       addr: {
@@ -1273,6 +1297,25 @@ function CheckoutStep({
       total: checkoutPricing.total,
       memberDiscount: checkoutPricing.memberDiscountAmount,
       couponDiscount: checkoutPricing.couponDiscount,
+      invoice: {
+        type: invoiceType,
+        carrierCode:
+          invoiceType === "carrier"
+            ? normalizeMobileCarrier(carrierCode)
+            : undefined,
+        companyName:
+          invoiceType === "triple"
+            ? String(invoiceTitle || "").trim()
+            : undefined,
+        taxId:
+          invoiceType === "triple"
+            ? String(invoiceTaxId || "").trim()
+            : undefined,
+        loveCode:
+          invoiceType === "donate"
+            ? String(donateCode || "").trim()
+            : undefined,
+      },
     };
 
     try {
@@ -1503,11 +1546,21 @@ function CheckoutStep({
                   onChange={() => {
                     setInvoiceType(opt.id);
                     setDonateListOpen(false);
+                    if (errors.invoice) {
+                      setErrors((prev) => {
+                        const next = { ...prev };
+                        delete next.invoice;
+                        return next;
+                      });
+                    }
                   }}
                   label={opt.label}
                 />
               ))}
             </div>
+            {errors.invoice && (
+              <p className="mt-2 text-[12px] text-red-600">{errors.invoice}</p>
+            )}
 
             {invoiceType === "cloud" && (
               <p className="mt-4 text-[12px] text-[#888]">
@@ -1518,7 +1571,7 @@ function CheckoutStep({
             {invoiceType === "carrier" && (
               <div className="mt-4">
                 <HoverUnderlineInput
-                  placeholder="請輸入手機條碼"
+                  placeholder="請輸入手機條碼（例：/ABC+123）"
                   value={carrierCode}
                   onChange={(e) => setCarrierCode(e.target.value)}
                 />

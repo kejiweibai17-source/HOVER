@@ -30,6 +30,9 @@ function resolveSocialProvider(customer: any): "google" | "facebook" | "line" | 
     meta.find((m) => m.key === "oauth_provider")?.value,
   );
   if (fromKey) return fromKey;
+  if (meta.find((m) => m.key === "social_login_google_id")?.value) {
+    return "google";
+  }
   if (meta.find((m) => m.key === "social_login_facebook_id")?.value) {
     return "facebook";
   }
