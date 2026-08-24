@@ -87,9 +87,46 @@ const MOCK_GALLERY = [
 ];
 
 const GALLERY_IMAGE_COUNT = 8;
+/** 對齊 Woo 商品圖（常見 1080×1350） */
+const GALLERY_ASPECT_RATIO = "4/5";
 
-function normalizeGalleryImages(images: string[]): string[] {
-  const source = images.length > 0 ? images : MOCK_GALLERY;
+function isValidGallerySrc(src: unknown): src is string {
+  const value = String(src || "").trim();
+  if (!value) return false;
+  return (
+    value.startsWith("/") ||
+    value.startsWith("http://") ||
+    value.startsWith("https://")
+  );
+}
+
+function isNonProductGalleryImage(src: string): boolean {
+  return /尺寸表|size[-_ ]?guide|size[-_ ]?chart|量測|measurement/i.test(
+    decodeURIComponent(src),
+  );
+}
+
+function normalizeGalleryImages(
+  images: string[],
+  excludeUrls: string[] = [],
+): string[] {
+  const exclude = new Set(
+    excludeUrls.map((url) => String(url || "").trim()).filter(Boolean),
+  );
+  const cleaned = (images || [])
+    .map((src) => String(src || "").trim())
+    .filter(isValidGallerySrc)
+    .filter((src) => !isNonProductGalleryImage(src))
+    .filter((src) => !exclude.has(src));
+
+  const seen = new Set<string>();
+  const unique = cleaned.filter((src) => {
+    if (seen.has(src)) return false;
+    seen.add(src);
+    return true;
+  });
+
+  const source = unique.length > 0 ? unique : MOCK_GALLERY;
   // 有幾張顯示幾張，不重複補滿；最多取 8 張
   return source.slice(0, GALLERY_IMAGE_COUNT);
 }
@@ -130,6 +167,53 @@ function Accordion({
   );
 }
 
+function GalleryImageSlot({
+  src,
+  alt,
+  isMobile,
+  priority = false,
+  loading = "lazy",
+}: {
+  src: string;
+  alt: string;
+  isMobile: boolean;
+  priority?: boolean;
+  loading?: "eager" | "lazy";
+}) {
+  const [failed, setFailed] = useState(false);
+  if (failed || !isValidGallerySrc(src)) return null;
+
+  return (
+    <div
+      className="relative w-full overflow-hidden bg-white"
+      style={{ aspectRatio: GALLERY_ASPECT_RATIO }}
+    >
+      {isMobile ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt={alt}
+          className="absolute inset-0 h-full w-full object-contain"
+          loading={loading}
+          decoding="async"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <Image
+          src={src}
+          alt={alt}
+          fill
+          unoptimized
+          sizes="(max-width: 768px) 100vw, 50vw"
+          className="object-contain"
+          priority={priority}
+          onError={() => setFailed(true)}
+        />
+      )}
+    </div>
+  );
+}
+
 function ProductGallery({
   images,
   name,
@@ -141,44 +225,25 @@ function ProductGallery({
   part?: "all" | "hero" | "rest";
   variant?: "desktop" | "mobile";
 }) {
-  const gallery = useMemo(() => normalizeGalleryImages(images), [images]);
   const isMobile = variant === "mobile";
   const visible =
     part === "hero"
-      ? gallery.slice(0, 1)
+      ? images.slice(0, 1)
       : part === "rest"
-        ? gallery.slice(1, GALLERY_IMAGE_COUNT)
-        : gallery.slice(0, GALLERY_IMAGE_COUNT);
+        ? images.slice(1, GALLERY_IMAGE_COUNT)
+        : images.slice(0, GALLERY_IMAGE_COUNT);
 
   return (
     <div className="flex flex-col gap-2">
       {visible.map((src, i) => (
-        <div
+        <GalleryImageSlot
           key={`${part}-${src}-${i}`}
-          className="relative w-full overflow-hidden bg-[#e8e6e2]"
-          style={{ aspectRatio: "3/4" }}
-        >
-          {isMobile ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={src}
-              alt={`${name} ${part === "rest" ? i + 2 : i + 1}`}
-              className="absolute inset-0 h-full w-full object-contain"
-              loading={i === 0 && part === "hero" ? "eager" : "lazy"}
-              decoding="async"
-            />
-          ) : (
-            <Image
-              src={src}
-              alt={`${name} ${part === "rest" ? i + 2 : i + 1}`}
-              fill
-              unoptimized
-              sizes="(max-width: 768px) 100vw, 50vw"
-              className="object-contain"
-              priority={i === 0 && part !== "rest"}
-            />
-          )}
-        </div>
+          src={src}
+          alt={`${name} ${part === "rest" ? i + 2 : i + 1}`}
+          isMobile={isMobile}
+          priority={i === 0 && part !== "rest"}
+          loading={i === 0 && part === "hero" ? "eager" : "lazy"}
+        />
       ))}
     </div>
   );
@@ -609,12 +674,19 @@ export default function ProductClient({ product }: ProductProps) {
   }, [maxQty, qty]);
 
   const gallery = useMemo(() => {
+    const excludeUrls = [product.sizeGuide?.imageUrl].filter(Boolean) as string[];
+    let images = baseGallery;
     if (selectedSize) {
       const fromVariation = (matchedVariation?.gallery || []).filter(Boolean);
-      if (fromVariation.length) return fromVariation;
+      if (fromVariation.length) images = fromVariation;
     }
-    return baseGallery;
-  }, [selectedSize, matchedVariation, baseGallery]);
+    return normalizeGalleryImages(images, excludeUrls);
+  }, [
+    selectedSize,
+    matchedVariation,
+    baseGallery,
+    product.sizeGuide?.imageUrl,
+  ]);
 
   const displayPrice = matchedVariation
     ? matchedVariation.salePrice ?? matchedVariation.price
