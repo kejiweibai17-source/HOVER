@@ -5,7 +5,6 @@ import React, {
   useEffect,
   useMemo,
   useState,
-  Fragment,
 } from "react";
 import Image from "next/image";
 import { Link } from "next-view-transitions";
@@ -49,6 +48,61 @@ function cn(...arr) {
 }
 function formatMoneyNT(n) {
   return `NT$ ${Number(n || 0).toLocaleString("zh-TW")}`;
+}
+function formatMoneyDot(n) {
+  return `NT.${Number(n || 0).toLocaleString("zh-TW")}`;
+}
+function formatOrderDate(value, withTime = false) {
+  if (!value) return "—";
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return "—";
+  const y = d.getFullYear();
+  const m = d.getMonth() + 1;
+  const day = d.getDate();
+  if (!withTime) return `${y}/${m}/${day}`;
+  const hh = String(d.getHours()).padStart(2, "0");
+  const mm = String(d.getMinutes()).padStart(2, "0");
+  return `${y}/${String(m).padStart(2, "0")}/${String(day).padStart(2, "0")} ${hh}:${mm}`;
+}
+function getOrderStatusLabel(status) {
+  const s = String(status || "").toLowerCase();
+  if (s === "completed") return "已到貨";
+  if (s === "processing" || s === "paid") return "處理中";
+  if (s === "pending" || s === "on-hold" || s === "待付款" || s === "waiting-payment")
+    return "待付款";
+  if (s === "cancelled" || s === "canceled") return "已取消";
+  if (s === "refunded") return "已退款";
+  if (s === "failed") return "失敗";
+  return status || "—";
+}
+function getPaymentStatusLabel(order) {
+  const s = String(order?.status || "").toLowerCase();
+  if (s === "pending" || s === "on-hold" || s === "waiting-payment" || s === "待付款")
+    return "待付款";
+  if (s === "cancelled" || s === "canceled" || s === "failed") return "未付款";
+  if (s === "refunded") return "已退款";
+  if (order?.date_paid || s === "processing" || s === "completed" || s === "paid")
+    return "已付款";
+  return "—";
+}
+function getMetaValue(metaData, keys = []) {
+  if (!Array.isArray(metaData)) return "";
+  const wanted = keys.map((k) => String(k).toLowerCase());
+  for (const item of metaData) {
+    const key = String(item?.key || "").toLowerCase();
+    if (!wanted.some((k) => key === k || key.endsWith(k))) continue;
+    const val = Array.isArray(item.value) ? item.value[0] : item.value;
+    const str = String(val ?? "").trim();
+    if (str) return str;
+  }
+  return "";
+}
+function getItemVariantText(item) {
+  const metas = Array.isArray(item?.meta_data) ? item.meta_data : [];
+  const values = metas
+    .map((m) => String(m?.value || "").trim())
+    .filter(Boolean);
+  return values.join(" / ");
 }
 const formatNTD = (val) => "NT$" + Math.round(val || 0).toLocaleString("zh-TW");
 function codeUpper(code) {
@@ -333,7 +387,31 @@ function HoverSectionAction({ children, onClick, disabled = false }) {
 
 const HOVER_LINE_URL = "https://line.me/R/ti/p/@330kefmm";
 
-function OrderDetail({ order }) {
+function OrderStatusBadge({ label }) {
+  return (
+    <span className="inline-flex items-center rounded-full bg-[#d8ebe4] px-3 py-1 text-[12px] font-medium text-[#2a514d]">
+      {label}
+    </span>
+  );
+}
+
+function PaymentStatusBadge({ label }) {
+  const unpaid = label === "待付款" || label === "未付款";
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center rounded-full px-3 py-1 text-[12px] font-medium",
+        unpaid
+          ? "bg-[#ffea8a] text-[#8a6116]"
+          : "bg-[#d7e8f5] text-[#2a5a7a]",
+      )}
+    >
+      {label}
+    </span>
+  );
+}
+
+function OrderDetail({ order, onBack }) {
   const shippingSettings = useShippingSettings();
   const shipping = order.shipping || {};
   const billing = order.billing || {};
@@ -342,97 +420,453 @@ function OrderDetail({ order }) {
     `${billing.last_name || ""}${billing.first_name || ""}`.trim() ||
     "—";
   const phone = shipping.phone || billing.phone || "—";
+  const storeId = getMetaValue(order.meta_data, [
+    "_shipping_cvs_store_ID",
+    "_shipping_cvs_store_id",
+    "shipping_cvs_store_ID",
+  ]);
+  const storeName = getMetaValue(order.meta_data, [
+    "_shipping_cvs_store_name",
+    "shipping_cvs_store_name",
+  ]);
+  const storeAddress = getMetaValue(order.meta_data, [
+    "_shipping_cvs_store_address",
+    "shipping_cvs_store_address",
+  ]);
   const addressParts = [
-    shipping.postcode || billing.postcode,
     shipping.state || billing.state,
     shipping.city || billing.city,
     shipping.address_1 || billing.address_1,
     shipping.address_2 || billing.address_2,
   ].filter(Boolean);
-  const address = addressParts.join(" ") || "—";
+  const homeAddress = addressParts.join("") || "—";
   const shippingMethod =
     order.shipping_lines?.[0]?.method_title || "依訂單配送方式";
+  const isCvs =
+    Boolean(storeId || storeName) ||
+    /超商|cvs|全家|7-?11|萊爾富|ok/i.test(shippingMethod);
   const shippingTotal = Number(order.shipping_total || 0);
+  const discountTotal = Number(order.discount_total || 0);
+  const itemsSubtotal = (order.line_items || []).reduce(
+    (sum, item) => sum + Number(item.subtotal || item.total || 0),
+    0,
+  );
+  const threshold = Number(shippingSettings.freeShipThreshold || 2000);
+  const freeNote =
+    shippingTotal === 0 || discountTotal > 0
+      ? `滿 NT.2,000 免運`
+      : "";
+  const discountDisplay =
+    discountTotal > 0
+      ? discountTotal
+      : shippingTotal === 0
+        ? Number(shippingSettings.homeDeliveryFee || shippingSettings.cvsFee || 85)
+        : 0;
+  const orderStatusLabel = getOrderStatusLabel(order.status);
+  const paymentStatusLabel = getPaymentStatusLabel(order);
+  const paymentTitle = order.payment_method_title || "—";
+  const paidAt = formatOrderDate(order.date_paid || order.date_created, true);
+  const invoiceDate = formatOrderDate(
+    order.date_paid || order.date_created,
+    false,
+  ).replace(
+    /(\d+)\/(\d+)\/(\d+)/,
+    (_, y, m, d) =>
+      `${y}/${String(m).padStart(2, "0")}/${String(d).padStart(2, "0")}`,
+  );
+
+  const InfoRow = ({ label, children, className = "", valueClassName = "" }) => (
+    <div className={cn("flex items-start justify-between gap-4 py-2.5", className)}>
+      <span className="w-[88px] shrink-0 text-[13px] text-[#8a8a8a]">{label}</span>
+      <div
+        className={cn(
+          "min-w-0 flex-1 text-right text-[13px] leading-relaxed text-[#222]",
+          valueClassName,
+        )}
+      >
+        {children}
+      </div>
+    </div>
+  );
 
   return (
-    <div className="bg-white text-[12px] text-[#333] md:text-[13px]">
-      <div className="grid grid-cols-[minmax(0,1fr)_56px_86px] border-b border-[#d2d2d2] py-3 text-[#555] md:grid-cols-[minmax(0,1fr)_120px_160px]">
-        <span>商品名稱</span>
-        <span className="text-center">數量</span>
-        <span className="text-right">小計</span>
+    <div className="w-full text-[#222]">
+      {/* Header */}
+      <div className="relative mb-5 flex items-center justify-center">
+        <button
+          type="button"
+          onClick={onBack}
+          className="absolute left-0 inline-flex items-center gap-0.5 text-[13px] text-[#666] transition-opacity hover:opacity-70"
+          aria-label="返回訂單列表"
+        >
+          <ChevronLeft size={18} strokeWidth={1.5} />
+          <span className="hidden sm:inline">返回</span>
+        </button>
+        <h2 className="text-[20px] font-semibold tracking-wide text-black">
+          我的訂單
+        </h2>
       </div>
 
-      {order.line_items?.map((item, index) => (
-        <div
-          key={`${order.id}-${item.name}-${index}`}
-          className="grid grid-cols-[minmax(0,1fr)_56px_86px] items-center border-b border-[#d2d2d2] py-5 md:grid-cols-[minmax(0,1fr)_120px_160px]"
-        >
-          <div className="flex min-w-0 items-center gap-3 md:gap-5">
-            <div className="relative h-[90px] w-[74px] shrink-0 overflow-hidden bg-white md:h-[112px] md:w-[92px]">
-              {item.image ? (
-                <Image
-                  src={item.image}
-                  alt={item.name}
-                  fill
-                  sizes="92px"
-                  className="object-contain"
-                />
-              ) : (
-                <div className="flex h-full items-center justify-center bg-[#f5f5f3] text-[10px] text-[#aaa]">
-                  HOVER
-                </div>
-              )}
+      {/* ── Mobile summary card (圖一) ── */}
+      <section className="mb-4 overflow-hidden rounded-lg border border-[#e4e4e4] bg-white md:hidden">
+        <div className="space-y-0 px-4 py-2">
+          <InfoRow label="訂單編號">
+            <span className="font-semibold text-[#2a514d]">
+              {order.number || order.id}
+            </span>
+          </InfoRow>
+          <InfoRow label="訂單日期">
+            {formatOrderDate(order.date_created, true)}
+          </InfoRow>
+          <InfoRow label="訂單狀態">
+            <OrderStatusBadge label={orderStatusLabel} />
+          </InfoRow>
+          <InfoRow label="付款狀態">
+            <PaymentStatusBadge label={paymentStatusLabel} />
+          </InfoRow>
+          <InfoRow label="總金額">
+            <span className="font-medium">{formatMoneyDot(order.total)}</span>
+          </InfoRow>
+        </div>
+        <div className="px-4 pb-4 pt-2">
+          <a
+            href={HOVER_LINE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex h-11 w-full items-center justify-center rounded-md bg-[#2a514d] text-[14px] tracking-wide text-white transition-opacity hover:opacity-90"
+          >
+            聯繫客服
+          </a>
+        </div>
+      </section>
+
+      {/* ── Desktop summary ── */}
+      <section className="mb-8 hidden border border-[#d9d9d9] bg-white px-6 py-5 md:block">
+        <div className="flex items-center justify-between gap-6">
+          <div className="grid flex-1 grid-cols-5 gap-6">
+            <div>
+              <p className="mb-1 text-[12px] text-[#888]">訂單編號</p>
+              <p className="text-[15px] font-semibold text-[#2a514d]">
+                {order.number || order.id}
+              </p>
             </div>
-            <div className="min-w-0 leading-[1.8]">
-              <p className="break-words font-medium text-black">{item.name}</p>
-              {item.meta_data?.map((meta) => (
-                <p key={`${meta.key}-${meta.value}`} className="text-[#555]">
-                  {meta.value}
-                </p>
-              ))}
-              <p className="mt-1 text-[#555]">
-                {formatMoneyNT(Number(item.price || item.subtotal || item.total))}
+            <div>
+              <p className="mb-1 text-[12px] text-[#888]">訂單日期</p>
+              <p className="text-[14px]">
+                {formatOrderDate(order.date_created, true)}
+              </p>
+            </div>
+            <div>
+              <p className="mb-1 text-[12px] text-[#888]">訂單狀態</p>
+              <OrderStatusBadge label={orderStatusLabel} />
+            </div>
+            <div>
+              <p className="mb-1 text-[12px] text-[#888]">付款狀態</p>
+              <PaymentStatusBadge label={paymentStatusLabel} />
+            </div>
+            <div>
+              <p className="mb-1 text-[12px] text-[#888]">總金額</p>
+              <p className="text-[15px] font-semibold">
+                {formatMoneyDot(order.total)}
               </p>
             </div>
           </div>
-          <p className="text-center">{item.quantity}</p>
-          <p className="text-right">{formatMoneyNT(Number(item.total))}</p>
+          <a
+            href={HOVER_LINE_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-flex h-11 shrink-0 items-center justify-center bg-[#2a514d] px-6 text-[13px] tracking-wide text-white transition-opacity hover:opacity-85"
+          >
+            聯繫客服
+          </a>
         </div>
-      ))}
+      </section>
 
-      <div className="border-b border-[#d2d2d2] py-4">
-        <div className="grid grid-cols-[minmax(0,1fr)_160px] gap-4 py-2">
-          <span>運費</span>
-          <span className="text-right">
-            {shippingTotal === 0
-              ? `消費滿NT$${shippingSettings.freeShipThreshold.toLocaleString("zh-TW")}免運`
-              : formatMoneyNT(shippingTotal)}
-          </span>
+      {/* ── Mobile product card (圖一) ── */}
+      <section className="mb-4 overflow-hidden rounded-lg border border-[#e4e4e4] bg-white md:hidden">
+        <div className="px-4 pb-4 pt-4">
+          <h3 className="mb-4 text-[15px] font-semibold text-black">商品資訊</h3>
+          <div className="space-y-4">
+            {(order.line_items || []).map((item, index) => {
+              const variant = getItemVariantText(item);
+              return (
+                <div
+                  key={`${order.id}-m-${index}`}
+                  className="flex gap-3"
+                >
+                  <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden bg-[#f5f5f3]">
+                    {item.image ? (
+                      <Image
+                        src={item.image}
+                        alt={item.name}
+                        fill
+                        sizes="72px"
+                        className="object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-[10px] text-[#aaa]">
+                        HOVER
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex min-w-0 flex-1 flex-col justify-between">
+                    <div className="min-w-0">
+                      <p className="text-[14px] font-medium leading-snug text-black">
+                        {item.name}
+                      </p>
+                      {variant ? (
+                        <p className="mt-1 text-[12px] text-[#888]">
+                          {variant.replace(/\s*\/\s*/g, " / ")}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="mt-2 flex items-end justify-between gap-2">
+                      <p className="text-[12px] text-[#888]">
+                        數量：{item.quantity}
+                      </p>
+                      <p className="shrink-0 text-[14px] font-medium text-black">
+                        {formatMoneyDot(item.total)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="mt-4 space-y-2.5 border-t border-[#eee] pt-4 text-[13px]">
+            <div className="flex justify-between gap-4">
+              <span className="text-[#8a8a8a]">商品小計</span>
+              <span>{formatMoneyDot(itemsSubtotal)}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-[#8a8a8a]">運費</span>
+              <span>{formatMoneyDot(shippingTotal)}</span>
+            </div>
+            <div className="flex justify-between gap-4">
+              <span className="text-[#8a8a8a]">
+                折扣{freeNote ? `（${freeNote}）` : ""}
+              </span>
+              <span className="text-[#2a514d]">
+                {discountDisplay > 0
+                  ? `-${formatMoneyDot(discountDisplay)}`
+                  : formatMoneyDot(0)}
+              </span>
+            </div>
+            <div className="flex justify-between gap-4 border-t border-[#eee] pt-3">
+              <span className="font-semibold text-black">訂單總額</span>
+              <span className="text-[16px] font-semibold text-black">
+                {formatMoneyDot(order.total)}
+              </span>
+            </div>
+          </div>
         </div>
-        <div className="grid grid-cols-[minmax(0,1fr)_160px] gap-4 py-2 font-medium">
-          <span>總金額</span>
-          <span className="text-right">
-            {formatMoneyNT(Number(order.total))}
-          </span>
+      </section>
+
+      {/* ── Desktop products ── */}
+      <section className="mb-8 hidden md:block">
+        <h3 className="mb-4 text-[15px] font-semibold text-black">商品資訊</h3>
+        <div className="mb-3 grid grid-cols-[minmax(0,1fr)_72px_110px_110px] border-b border-[#ddd] pb-2 text-[12px] text-[#888]">
+          <span>商品</span>
+          <span className="text-center">數量</span>
+          <span className="text-right">單價</span>
+          <span className="text-right">小計</span>
         </div>
-      </div>
+        <div className="space-y-5">
+          {(order.line_items || []).map((item, index) => {
+            const variant = getItemVariantText(item);
+            const unit =
+              Number(item.price || 0) ||
+              (Number(item.quantity) > 0
+                ? Number(item.subtotal || item.total || 0) /
+                  Number(item.quantity)
+                : 0);
+            return (
+              <div
+                key={`${order.id}-d-${index}`}
+                className="grid grid-cols-[minmax(0,1fr)_72px_110px_110px] items-center gap-4 border-b border-[#eee] pb-5"
+              >
+                <div className="flex min-w-0 items-center gap-4">
+                  <div className="relative h-[84px] w-[72px] shrink-0 overflow-hidden bg-[#f7f7f5]">
+                    {item.image ? (
+                      <Image
+                        src={item.image}
+                        alt={item.name}
+                        fill
+                        sizes="72px"
+                        className="object-cover"
+                      />
+                    ) : (
+                      <div className="flex h-full items-center justify-center text-[10px] text-[#aaa]">
+                        HOVER
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[14px] font-medium text-black">
+                      {item.name}
+                    </p>
+                    {variant ? (
+                      <p className="mt-1 text-[12px] text-[#777]">
+                        {variant.replace(/\s*\/\s*/g, " / ")}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+                <p className="text-center text-[14px]">{item.quantity}</p>
+                <p className="text-right text-[14px]">{formatMoneyDot(unit)}</p>
+                <p className="text-right text-[14px] font-medium">
+                  {formatMoneyDot(item.total)}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+        <div className="mt-6 flex justify-end">
+          <div className="w-full max-w-[280px] space-y-2 text-[13px]">
+            <div className="flex justify-between gap-6">
+              <span className="text-[#777]">商品小計</span>
+              <span>{formatMoneyDot(itemsSubtotal)}</span>
+            </div>
+            <div className="flex justify-between gap-6">
+              <span className="text-[#777]">運費</span>
+              <span>{formatMoneyDot(shippingTotal)}</span>
+            </div>
+            <div className="flex justify-between gap-6">
+              <span className="text-[#777]">
+                折扣{freeNote ? `（${freeNote}）` : ""}
+              </span>
+              <span className="text-[#2a514d]">
+                {discountDisplay > 0
+                  ? `-${formatMoneyDot(discountDisplay)}`
+                  : formatMoneyDot(0)}
+              </span>
+            </div>
+            <div className="flex justify-between gap-6 border-t border-[#ddd] pt-3 text-[16px] font-semibold">
+              <span>訂單總額</span>
+              <span className="text-[#2a514d]">
+                {formatMoneyDot(order.total)}
+              </span>
+            </div>
+          </div>
+        </div>
+      </section>
 
-      <div className="space-y-2 px-1 py-7 leading-[1.8]">
-        <p>收件人：{recipient} / {phone}</p>
-        <p>配送地址：{address}</p>
-        <p>配送方式：{shippingMethod}</p>
-        <p>發票抬頭：電子發票</p>
-        <p>備註：{order.customer_note || "—"}</p>
-      </div>
+      {/* ── Mobile shipping card (圖一) ── */}
+      <section className="mb-4 overflow-hidden rounded-lg border border-[#e4e4e4] bg-white md:hidden">
+        <div className="px-4 py-4">
+          <h3 className="mb-3 text-[15px] font-semibold text-black">
+            收件 / 配送資訊
+          </h3>
+          <div className="divide-y divide-[#f0f0f0]">
+            <InfoRow label="收件人">{recipient}</InfoRow>
+            <InfoRow label="手機號碼">{phone}</InfoRow>
+            {isCvs ? (
+              <>
+                <InfoRow label="取件門市">
+                  <span className="break-words">
+                    {storeName || "—"}
+                    {storeId ? `（${storeId}）` : ""}
+                  </span>
+                </InfoRow>
+                <InfoRow label="取件地址" valueClassName="text-left">
+                  {storeAddress || homeAddress}
+                </InfoRow>
+              </>
+            ) : (
+              <InfoRow label="收件地址" valueClassName="text-left">
+                {homeAddress}
+              </InfoRow>
+            )}
+          </div>
+          <div className="mt-1 divide-y divide-[#f0f0f0] border-t border-[#eee] pt-1">
+            <InfoRow label="配送方式">{shippingMethod}</InfoRow>
+            <InfoRow label="發票類型">電子發票</InfoRow>
+            <InfoRow label="發票開立日期">{invoiceDate}</InfoRow>
+          </div>
+        </div>
+      </section>
 
-      <a
-        href={HOVER_LINE_URL}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="flex min-h-11 w-full items-center justify-center bg-[#2a514d] px-5 py-3 text-center text-[12px] tracking-[0.04em] text-white transition-opacity hover:opacity-85"
-      >
-        （如有問題請留言給客服）
-      </a>
+      {/* ── Desktop shipping ── */}
+      <section className="mb-8 hidden border border-[#d9d9d9] bg-white px-6 py-5 md:block">
+        <h3 className="mb-4 text-[15px] font-semibold text-black">
+          收件 / 配送資訊
+        </h3>
+        <div className="grid grid-cols-2 gap-8 text-[13px] leading-relaxed">
+          <div className="space-y-3">
+            <p>
+              <span className="text-[#888]">收件人</span>
+              <span className="ml-3 text-black">{recipient}</span>
+            </p>
+            <p>
+              <span className="text-[#888]">手機號碼</span>
+              <span className="ml-3 text-black">{phone}</span>
+            </p>
+            {isCvs ? (
+              <>
+                <p>
+                  <span className="text-[#888]">取件門市</span>
+                  <span className="ml-3 text-black">
+                    {storeName || "—"}
+                    {storeId ? `（${storeId}）` : ""}
+                  </span>
+                </p>
+                <p>
+                  <span className="text-[#888]">取件地址</span>
+                  <span className="ml-3 text-black">
+                    {storeAddress || homeAddress}
+                  </span>
+                </p>
+              </>
+            ) : (
+              <p>
+                <span className="text-[#888]">收件地址</span>
+                <span className="ml-3 text-black">{homeAddress}</span>
+              </p>
+            )}
+          </div>
+          <div className="space-y-3">
+            <p>
+              <span className="text-[#888]">配送方式</span>
+              <span className="ml-3 text-black">{shippingMethod}</span>
+            </p>
+            <p>
+              <span className="text-[#888]">發票類型</span>
+              <span className="ml-3 text-black">電子發票</span>
+            </p>
+            <p>
+              <span className="text-[#888]">發票開立日期</span>
+              <span className="ml-3 text-black">{invoiceDate}</span>
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Mobile payment card (圖一) ── */}
+      <section className="mb-2 overflow-hidden rounded-lg border border-[#e4e4e4] bg-white md:hidden">
+        <div className="px-4 py-4">
+          <h3 className="mb-3 text-[15px] font-semibold text-black">付款資訊</h3>
+          <div className="divide-y divide-[#f0f0f0]">
+            <InfoRow label="付款方式">{paymentTitle}</InfoRow>
+            <InfoRow label="付款時間">{paidAt}</InfoRow>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Desktop payment ── */}
+      <section className="hidden border border-[#d9d9d9] bg-white px-6 py-5 md:block">
+        <h3 className="mb-4 text-[15px] font-semibold text-black">付款資訊</h3>
+        <div className="space-y-3 text-[13px] leading-relaxed">
+          <p>
+            <span className="text-[#888]">付款方式</span>
+            <span className="ml-3 text-black">{paymentTitle}</span>
+          </p>
+          <p>
+            <span className="text-[#888]">付款時間</span>
+            <span className="ml-3 text-black">{paidAt}</span>
+          </p>
+        </div>
+      </section>
     </div>
   );
 }
@@ -460,6 +894,179 @@ function AccountTabButton({ active, onClick, children }) {
 // ============================================================================
 // 主頁面 AccountPage
 // ============================================================================
+
+
+/** 設計稿示範訂單（圖二列表 + 圖一詳情） */
+const DEMO_ACCOUNT_ORDERS = [
+  {
+    id: 1352,
+    number: "1352",
+    status: "processing",
+    date_created: "2026-06-10T14:32:00",
+    date_paid: "2026-06-10T14:32:00",
+    total: "1680",
+    currency: "TWD",
+    payment_method_title: "ATM",
+    customer_note: "",
+    billing: {
+      first_name: "昆壁",
+      last_name: "葉",
+      phone: "0939767977",
+      email: "demo@hover.tw",
+    },
+    shipping: {
+      first_name: "昆壁",
+      last_name: "葉",
+      phone: "0939767977",
+      address_1: "府中路 29-1 號 1 樓",
+      city: "板橋區",
+      state: "新北市",
+      postcode: "220",
+    },
+    shipping_total: "85",
+    discount_total: "85",
+    shipping_lines: [{ method_title: "全家超商取貨", total: "85" }],
+    coupon_lines: [],
+    payment_info: {},
+    meta_data: [
+      { key: "_shipping_cvs_store_ID", value: "002816" },
+      { key: "_shipping_cvs_store_name", value: "全家 板橋板農店" },
+      {
+        key: "_shipping_cvs_store_address",
+        value: "新北市板橋區府中路 29-1 號 1 樓",
+      },
+    ],
+    line_items: [
+      {
+        name: "經典刺繡短袖 T 恤",
+        quantity: 1,
+        total: "1680",
+        subtotal: "1680",
+        price: 1680,
+        image: "/images/hover/product-1.jpg",
+        product_id: 1001,
+        sku: "HOVER-TEE-001",
+        variation_id: 0,
+        meta_data: [
+          { key: "尺寸", value: "S" },
+          { key: "顏色", value: "黑" },
+        ],
+      },
+    ],
+  },
+  {
+    id: 1351,
+    number: "1351",
+    status: "processing",
+    date_created: "2026-08-22T11:20:00",
+    date_paid: "2026-08-22T11:20:00",
+    total: "1765",
+    currency: "TWD",
+    payment_method_title: "信用卡",
+    customer_note: "",
+    billing: {
+      first_name: "昆壁",
+      last_name: "葉",
+      phone: "0939767977",
+      email: "demo@hover.tw",
+    },
+    shipping: {
+      first_name: "昆壁",
+      last_name: "葉",
+      phone: "0939767977",
+      address_1: "府中路 29-1 號 1 樓",
+      city: "板橋區",
+      state: "新北市",
+      postcode: "220",
+    },
+    shipping_total: "85",
+    discount_total: "0",
+    shipping_lines: [{ method_title: "全家超商取貨", total: "85" }],
+    coupon_lines: [],
+    payment_info: {},
+    meta_data: [
+      { key: "_shipping_cvs_store_ID", value: "002816" },
+      { key: "_shipping_cvs_store_name", value: "全家 板橋板農店" },
+      {
+        key: "_shipping_cvs_store_address",
+        value: "新北市板橋區府中路 29-1 號 1 樓",
+      },
+    ],
+    line_items: [
+      {
+        name: "經典刺繡短袖 T 恤",
+        quantity: 1,
+        total: "1680",
+        subtotal: "1680",
+        price: 1680,
+        image: "/images/hover/product-1.jpg",
+        product_id: 1001,
+        sku: "HOVER-TEE-001",
+        variation_id: 0,
+        meta_data: [
+          { key: "尺寸", value: "M" },
+          { key: "顏色", value: "黑" },
+        ],
+      },
+    ],
+  },
+  {
+    id: 1320,
+    number: "1320",
+    status: "completed",
+    date_created: "2026-08-16T09:05:00",
+    date_paid: "2026-08-16T09:05:00",
+    total: "1765",
+    currency: "TWD",
+    payment_method_title: "綠界科技 ECPay",
+    customer_note: "",
+    billing: {
+      first_name: "昆壁",
+      last_name: "葉",
+      phone: "0939767977",
+      email: "demo@hover.tw",
+    },
+    shipping: {
+      first_name: "昆壁",
+      last_name: "葉",
+      phone: "0939767977",
+      address_1: "府中路 29-1 號 1 樓",
+      city: "板橋區",
+      state: "新北市",
+      postcode: "220",
+    },
+    shipping_total: "85",
+    discount_total: "0",
+    shipping_lines: [{ method_title: "全家超商取貨", total: "85" }],
+    coupon_lines: [],
+    payment_info: {},
+    meta_data: [
+      { key: "_shipping_cvs_store_ID", value: "002816" },
+      { key: "_shipping_cvs_store_name", value: "全家 板橋板農店" },
+      {
+        key: "_shipping_cvs_store_address",
+        value: "新北市板橋區府中路 29-1 號 1 樓",
+      },
+    ],
+    line_items: [
+      {
+        name: "經典刺繡短袖 T 恤",
+        quantity: 1,
+        total: "1680",
+        subtotal: "1680",
+        price: 1680,
+        image: "/images/hover/product-2.jpg",
+        product_id: 1001,
+        sku: "HOVER-TEE-001",
+        variation_id: 0,
+        meta_data: [
+          { key: "尺寸", value: "L" },
+          { key: "顏色", value: "米白" },
+        ],
+      },
+    ],
+  },
+];
 
 export default function AccountPage() {
   const router = useRouter();
@@ -493,7 +1100,7 @@ export default function AccountPage() {
   const [claimedCode, setClaimedCode] = useState(null);
   const [showAllReferralCoupons, setShowAllReferralCoupons] = useState(false);
 
-  const [expandedUserOrderId, setExpandedUserOrderId] = useState(null);
+  const [selectedOrderId, setSelectedOrderId] = useState(null);
 
   const [birthdayInput, setBirthdayInput] = useState("");
   const [isSettingBirthday, setIsSettingBirthday] = useState(false);
@@ -562,12 +1169,13 @@ export default function AccountPage() {
         cache: "no-store",
         credentials: "include",
       });
-      const data = await res.json();
-      setOrders(data.orders || []);
-      setExpandedUserOrderId((prev) => prev ?? data.orders?.[0]?.id ?? null);
-      setOrdersDebug(data.debug || null);
+      const data = await res.json().catch(() => ({}));
+      const remote = Array.isArray(data?.orders) ? data.orders : [];
+      // TODO: 對稿完成後改回只用 remote；目前注入設計稿三筆訂單
+      setOrders(DEMO_ACCOUNT_ORDERS);
+      setOrdersDebug(data?.debug || { demo: true, remoteCount: remote.length });
     } catch {
-      setOrders([]);
+      setOrders(DEMO_ACCOUNT_ORDERS);
     } finally {
       setOrdersLoading(false);
     }
@@ -885,6 +1493,7 @@ export default function AccountPage() {
     (tab) => {
       setActiveTab(tab);
       setSearchQuery("");
+      setSelectedOrderId(null);
       const url = tab === "profile" ? "/account" : `/account?tab=${tab}`;
       router.replace(url, { scroll: false });
     },
@@ -1042,7 +1651,7 @@ export default function AccountPage() {
         </div>
 
         {/* Mobile search */}
-        {(activeTab === "orders" || activeTab === "profile") && (
+        {((activeTab === "orders" && !selectedOrderId) || activeTab === "profile") && (
           <div className="relative mb-6 md:hidden">
             <HoverIcon name="search" size={40} className="absolute left-0 top-1/2 -translate-y-1/2 opacity-50" alt="" />
             <input
@@ -1546,13 +2155,37 @@ export default function AccountPage() {
               </>
             )}
 
-            {/* 訂單 Tab 內容 */}
+            {/* 訂單 Tab 內容：兩層（列表 → 詳情） */}
             {activeTab === "orders" && (
               <div className="w-full">
                 {ordersLoading ? (
                   <p className="py-12 text-center text-sm text-[#888]">
                     載入訂單中...
                   </p>
+                ) : selectedOrderId ? (
+                  (() => {
+                    const selected = orders.find((o) => String(o.id) === String(selectedOrderId));
+                    if (!selected) {
+                      return (
+                        <div className="py-16 text-center">
+                          <p className="mb-4 text-sm text-[#888]">找不到此訂單。</p>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedOrderId(null)}
+                            className="text-[13px] text-[#2a514d] underline"
+                          >
+                            返回訂單列表
+                          </button>
+                        </div>
+                      );
+                    }
+                    return (
+                      <OrderDetail
+                        order={selected}
+                        onBack={() => setSelectedOrderId(null)}
+                      />
+                    );
+                  })()
                 ) : filteredOrders.length === 0 ? (
                   <div className="py-16 text-center">
                     <p className="text-sm text-[#888]">
@@ -1562,388 +2195,79 @@ export default function AccountPage() {
                     </p>
                   </div>
                 ) : (
-                  <div className="overflow-x-auto bg-white">
-                    <table className="w-full min-w-[680px] border-collapse text-left text-[12px] md:text-[13px]">
-                      <thead>
-                        <tr className="border-b border-[#ccc] text-center text-[#333]">
-                          <th className="px-3 pb-3 font-normal">訂單編號</th>
-                          <th className="px-3 pb-3 font-normal">日期</th>
-                          <th className="px-3 pb-3 font-normal">狀態</th>
-                          <th className="px-3 pb-3 font-normal">總金額</th>
-                          <th className="px-3 pb-3 font-normal">付款方式</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredOrders.map((o) => {
-                          const parsedMeta = parseMetaDataForPayment(
-                            o.meta_data || [],
-                          );
-                          const noteInfo = extractInfoFromNote(
-                            o.customer_note || "",
-                          );
-                          const cvsCode =
-                            parsedMeta.cvs_code ||
-                            o.payment_info?.cvs_code ||
-                            noteInfo?.cvs_code;
-                          const atmAccount =
-                            parsedMeta.atm_account ||
-                            o.payment_info?.atm_account ||
-                            noteInfo?.atm_account;
-                          const bankCode =
-                            parsedMeta.bank_code ||
-                            o.payment_info?.bank_code ||
-                            noteInfo?.bank_code;
-                          const barcode1 =
-                            parsedMeta.barcode1 || o.payment_info?.barcode1;
-                          const barcode2 =
-                            parsedMeta.barcode2 || o.payment_info?.barcode2;
-                          const barcode3 =
-                            parsedMeta.barcode3 || o.payment_info?.barcode3;
-                          const rawExpireDate =
-                            parsedMeta.expire_date ||
-                            o.payment_info?.expire_date ||
-                            noteInfo?.expire_date ||
-                            "依綠界規定";
+                  <>
+                    {/* Desktop / tablet table — 圖二 */}
+                    <div className="hidden overflow-x-auto bg-white sm:block">
+                      <table className="w-full min-w-[680px] border-collapse text-center text-[13px]">
+                        <thead>
+                          <tr className="border-y border-[#e5e5e5] text-[12px] text-[#aaaaaa]">
+                            <th className="px-3 py-3 font-normal">訂單編號</th>
+                            <th className="px-3 py-3 font-normal">日期</th>
+                            <th className="px-3 py-3 font-normal">狀態</th>
+                            <th className="px-3 py-3 font-normal">總金額</th>
+                            <th className="px-3 py-3 font-normal">付款方式</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {filteredOrders.map((o, idx) => (
+                            <tr
+                              key={o.id}
+                              onClick={() => setSelectedOrderId(o.id)}
+                              className={cn(
+                                "cursor-pointer border-b border-[#eeeeee] text-[13px] text-[#222] transition-colors hover:bg-[#f5f5f5]",
+                                idx % 2 === 1 ? "bg-[#fafafa]" : "bg-white",
+                              )}
+                            >
+                              <td className="px-3 py-4">{o.number || o.id}</td>
+                              <td className="px-3 py-4">
+                                {formatOrderDate(o.date_created)}
+                              </td>
+                              <td className="px-3 py-4">
+                                {getOrderStatusLabel(o.status)}
+                              </td>
+                              <td className="px-3 py-4">
+                                {formatMoneyNT(Number(o.total))}
+                              </td>
+                              <td className="px-3 py-4">
+                                {o.payment_method_title || "—"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
 
-                          const displayExpireDate =
-                            rawExpireDate !== "依綠界規定" &&
-                            /^\d{4}[-/]\d{2}[-/]\d{2}$/.test(rawExpireDate)
-                              ? `${rawExpireDate.replace(/-/g, "/")} 23:59:59`
-                              : rawExpireDate;
-
-                          const pTitle = o.payment_method_title || "標準支付";
-                          const isPendingPayment =
-                            o.status === "pending" ||
-                            o.status === "待付款" ||
-                            o.status === "waiting-payment" ||
-                            o.status === "on-hold";
-
-                          const statusLabel = (() => {
-                            const s = String(o.status || "").toLowerCase();
-                            if (s === "completed") return "已到貨";
-                            if (s === "processing" || s === "paid") return "處理中";
-                            if (s === "pending" || s === "on-hold" || s === "待付款")
-                              return "待付款";
-                            if (s === "cancelled") return "已取消";
-                            return o.status;
-                          })();
-
-                          return (
-                            <Fragment key={o.id}>
-                              <tr
-                                onClick={() =>
-                                  setExpandedUserOrderId(
-                                    expandedUserOrderId === o.id ? null : o.id,
-                                  )
-                                }
-                                className="cursor-pointer border-b border-[#ccc] text-center transition-colors hover:bg-[#fafafa]"
-                              >
-                                <td className="px-3 py-4">
-                                  <span className="text-[#2a514d] hover:underline">
-                                    {o.number}
-                                  </span>
-                                </td>
-                                <td className="px-3 py-4 text-[#333]">
-                                  {new Date(o.date_created).toLocaleDateString(
-                                    "zh-TW",
-                                  )}
-                                </td>
-                                <td className="px-3 py-4">{statusLabel}</td>
-                                <td className="px-3 py-4 font-medium">
-                                  {formatMoneyNT(Number(o.total))}
-                                </td>
-                                <td className="px-3 py-4 text-[#333]">{pTitle}</td>
-                              </tr>
-
-                              {expandedUserOrderId === o.id && (
-                                <tr className="bg-white">
-                                  <td colSpan={5} className="px-0 py-0">
-                                        <OrderDetail order={o} />
-                                        <div
-                                          className="grid md:grid-cols-2 gap-6 sm:gap-8"
-                                          style={{ display: "none" }}
-                                          aria-hidden
-                                        >
-                                          <div className="flex flex-col gap-3 sm:gap-4 w-full">
-                                            <h4 className="font-bold text-[#202223] flex items-center gap-2">
-                                              <CreditCard
-                                                size={18}
-                                                className="text-blue-600"
-                                              />{" "}
-                                              付款詳情
-                                            </h4>
-                                            {(() => {
-                                              const isCancelled =
-                                                o.status === "cancelled" ||
-                                                o.status === "已取消";
-                                              let isTimeExpired = false;
-                                              if (
-                                                rawExpireDate &&
-                                                rawExpireDate !== "依綠界規定"
-                                              ) {
-                                                const dateStr =
-                                                  rawExpireDate.replace(
-                                                    /-/g,
-                                                    "/",
-                                                  );
-                                                const hasTime =
-                                                  dateStr.includes(":");
-                                                const expDate = new Date(
-                                                  dateStr,
-                                                );
-                                                if (
-                                                  !hasTime &&
-                                                  !isNaN(expDate.getTime())
-                                                ) {
-                                                  expDate.setHours(
-                                                    23,
-                                                    59,
-                                                    59,
-                                                    999,
-                                                  );
-                                                }
-                                                if (!isNaN(expDate.getTime())) {
-                                                  isTimeExpired =
-                                                    new Date().getTime() >
-                                                    expDate.getTime();
-                                                }
-                                              }
-
-                                              if (isCancelled) {
-                                                return (
-                                                  <div className="bg-rose-50 border border-rose-200 text-rose-700 rounded-lg p-4 sm:p-5 shadow-sm text-center">
-                                                    <p className="font-bold text-sm sm:text-base mb-1">
-                                                      訂單已取消
-                                                    </p>
-                                                    <p className="text-[11px] sm:text-xs opacity-80">
-                                                      若您仍需購買，請重新下單。
-                                                    </p>
-                                                  </div>
-                                                );
-                                              }
-
-                                              if (isPendingPayment && cvsCode) {
-                                                return (
-                                                  <div
-                                                    className={cn(
-                                                      "rounded-lg p-4 sm:p-5 shadow-lg border relative overflow-hidden",
-                                                      isTimeExpired
-                                                        ? "bg-gray-100 border-gray-300 text-gray-500"
-                                                        : "bg-emerald-600 border-emerald-700 text-white",
-                                                    )}
-                                                  >
-                                                    {isTimeExpired && (
-                                                      <div className="absolute inset-0 flex items-center justify-center bg-white/60 backdrop-blur-[1px] z-10">
-                                                        <div className="bg-rose-600 text-white px-4 py-2 rounded-full font-bold shadow-md transform -rotate-12 border-2 border-white">
-                                                          繳費已逾期
-                                                        </div>
-                                                      </div>
-                                                    )}
-                                                    <p className="text-[11px] sm:text-xs opacity-80 mb-1">
-                                                      超商繳費代碼 (CVS)
-                                                    </p>
-                                                    <div className="text-xl sm:text-2xl font-mono font-black tracking-widest flex items-center justify-between mb-4 bg-black/10 px-3 py-2 rounded w-full break-all">
-                                                      {cvsCode}
-                                                      <button
-                                                        onClick={(e) => {
-                                                          e.stopPropagation();
-                                                          navigator.clipboard.writeText(
-                                                            cvsCode,
-                                                          );
-                                                          alert(
-                                                            "已複製超商代碼",
-                                                          );
-                                                        }}
-                                                        className="hover:scale-110 active:scale-95 transition-transform shrink-0 ml-2"
-                                                        title="複製代碼"
-                                                      >
-                                                        <Copy size={20} />
-                                                      </button>
-                                                    </div>
-                                                    <div className="text-[11px] sm:text-xs space-y-1 sm:space-y-1.5 opacity-90">
-                                                      <p className="flex flex-wrap items-center justify-between gap-1">
-                                                        <span>適用超商：</span>
-                                                        <span className="font-medium text-right w-full sm:w-auto">
-                                                          7-11, 全家, 萊爾富, OK
-                                                        </span>
-                                                      </p>
-                                                      <p className="flex flex-wrap items-center justify-between gap-1 pt-2 border-t border-current/20 mt-2">
-                                                        <span className="flex items-center gap-1">
-                                                          <Calendar size={14} />{" "}
-                                                          繳費期限：
-                                                        </span>
-                                                        <span className="font-bold text-right w-full sm:w-auto">
-                                                          {displayExpireDate}
-                                                        </span>
-                                                      </p>
-                                                    </div>
-                                                  </div>
-                                                );
-                                              }
-
-                                              if (
-                                                isPendingPayment &&
-                                                atmAccount
-                                              ) {
-                                                return (
-                                                  <div
-                                                    className={cn(
-                                                      "rounded-lg p-4 sm:p-5 shadow-lg border relative overflow-hidden",
-                                                      isTimeExpired
-                                                        ? "bg-gray-100 border-gray-300 text-gray-500"
-                                                        : "bg-indigo-600 border-indigo-700 text-white",
-                                                    )}
-                                                  >
-                                                    {isTimeExpired && (
-                                                      <div className="absolute inset-0 flex items-center justify-center bg-white/60 backdrop-blur-[1px] z-10">
-                                                        <div className="bg-rose-600 text-white px-4 py-2 rounded-full font-bold shadow-md transform -rotate-12 border-2 border-white">
-                                                          繳費已逾期
-                                                        </div>
-                                                      </div>
-                                                    )}
-                                                    <div className="flex flex-col sm:flex-row sm:justify-between items-start sm:items-end gap-3 mb-4 w-full">
-                                                      <div>
-                                                        <p className="text-[11px] sm:text-xs opacity-80 mb-1">
-                                                          銀行代碼
-                                                        </p>
-                                                        <div className="text-xl font-bold flex items-center gap-2">
-                                                          <Landmark
-                                                            size={20}
-                                                            className="opacity-80"
-                                                          />
-                                                          {bankCode ||
-                                                            "請見信件"}
-                                                        </div>
-                                                      </div>
-                                                      <div className="w-full sm:w-auto sm:text-right border-t sm:border-t-0 border-white/20 pt-2 sm:pt-0">
-                                                        <p className="text-[11px] sm:text-xs opacity-80 mb-0.5">
-                                                          應付金額
-                                                        </p>
-                                                        <p className="text-lg sm:text-xl font-bold text-yellow-300">
-                                                          {formatMoneyNT(
-                                                            Number(o.total),
-                                                          )}
-                                                        </p>
-                                                      </div>
-                                                    </div>
-                                                    <p className="text-[11px] sm:text-xs opacity-80 mb-1">
-                                                      專屬虛擬帳號 (ATM)
-                                                    </p>
-                                                    <div className="text-lg sm:text-2xl font-mono font-black tracking-widest flex items-center justify-between bg-black/15 px-3 py-2.5 rounded-md mb-4 w-full break-all">
-                                                      <span className="truncate pr-2">
-                                                        {atmAccount}
-                                                      </span>
-                                                      <button
-                                                        onClick={(e) => {
-                                                          e.stopPropagation();
-                                                          navigator.clipboard.writeText(
-                                                            atmAccount,
-                                                          );
-                                                          alert(
-                                                            "已複製虛擬帳號",
-                                                          );
-                                                        }}
-                                                        className="hover:scale-110 active:scale-95 transition-transform bg-white/20 p-2 rounded shrink-0"
-                                                        title="複製帳號"
-                                                      >
-                                                        <Copy size={16} />
-                                                      </button>
-                                                    </div>
-                                                    <div className="flex flex-col sm:flex-row sm:items-center justify-between pt-3 border-t border-current/20 text-[11px] sm:text-xs gap-1">
-                                                      <span className="flex items-center gap-1 opacity-90">
-                                                        <Calendar size={14} />{" "}
-                                                        繳費期限：
-                                                      </span>
-                                                      <span className="font-bold sm:text-right">
-                                                        {displayExpireDate}
-                                                      </span>
-                                                    </div>
-                                                  </div>
-                                                );
-                                              }
-
-                                              return (
-                                                <div className="text-sm text-gray-600 bg-white border border-gray-200 p-4 rounded-md shadow-sm w-full">
-                                                  <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center mb-2 pb-2 border-b border-gray-100 gap-1">
-                                                    <span>付款方式：</span>
-                                                    <span className="font-bold text-gray-900 break-words">
-                                                      {pTitle}
-                                                    </span>
-                                                  </div>
-                                                  {o.status === "processing" ||
-                                                  o.status === "已完成" ||
-                                                  o.status === "completed" ? (
-                                                    <div className="flex items-center gap-2 text-emerald-600 bg-emerald-50 p-2.5 rounded mt-2">
-                                                      <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></div>
-                                                      <span className="font-bold text-[11px] sm:text-xs">
-                                                        付款已成功，系統處理中
-                                                      </span>
-                                                    </div>
-                                                  ) : (
-                                                    <p className="text-[11px] sm:text-xs opacity-70 mt-2 leading-relaxed">
-                                                      此訂單目前無須額外繳費代碼。
-                                                      <br className="md:hidden" />
-                                                      若有疑問請聯繫客服。
-                                                    </p>
-                                                  )}
-                                                </div>
-                                              );
-                                            })()}
-                                          </div>
-
-                                          <div className="flex flex-col gap-3 sm:gap-4 w-full mt-2 md:mt-0">
-                                            <h4 className="font-bold text-[#202223] flex items-center gap-2">
-                                              <Info
-                                                size={18}
-                                                className="text-gray-600"
-                                              />{" "}
-                                              訂單品項
-                                            </h4>
-                                            <div className="bg-white border border-gray-200 rounded-lg overflow-hidden w-full">
-                                              {o.line_items.map((item, idx) => (
-                                                <div
-                                                  key={idx}
-                                                  className="p-3 sm:px-4 sm:py-3 flex justify-between border-b border-gray-100 last:border-0 hover:bg-gray-50 transition-colors gap-2"
-                                                >
-                                                  <div className="min-w-0 pr-2">
-                                                    <p className="text-[13px] sm:text-sm font-bold text-gray-900 truncate">
-                                                      {item.name}
-                                                    </p>
-                                                    <p className="text-[11px] sm:text-xs text-gray-500 mt-1">
-                                                      數量: {item.quantity}
-                                                    </p>
-                                                  </div>
-                                                  <p className="text-[13px] sm:text-sm font-mono font-medium text-gray-700 shrink-0 self-center">
-                                                    {item.total
-                                                      ? formatMoneyNT(
-                                                          Number(item.total),
-                                                        )
-                                                      : ""}
-                                                  </p>
-                                                </div>
-                                              ))}
-                                              <div className="bg-gray-50 p-3 sm:px-4 sm:py-3 flex justify-between items-center border-t border-gray-200">
-                                                <span className="font-bold text-gray-700 text-xs sm:text-sm">
-                                                  訂單總計
-                                                </span>
-                                                <span className="text-base sm:text-lg font-black text-emerald-700">
-                                                  {formatMoneyNT(
-                                                    Number(o.total),
-                                                  )}
-                                                </span>
-                                              </div>
-                                            </div>
-                                          </div>
-                                        </div>
-                                      </td>
-                                    </tr>
-                                  )}
-                                </Fragment>
-                              );
-                            })}
-                          </tbody>
-                        </table>
-                      </div>
+                    {/* Mobile list cards — 圖二資訊結構 */}
+                    <div className="space-y-0 divide-y divide-[#e8e8e8] border-y border-[#ddd] bg-white sm:hidden">
+                      {filteredOrders.map((o) => (
+                        <button
+                          key={o.id}
+                          type="button"
+                          onClick={() => setSelectedOrderId(o.id)}
+                          className="flex w-full items-center justify-between gap-3 px-1 py-4 text-left"
+                        >
+                          <div className="min-w-0">
+                            <p className="text-[14px] font-medium text-black">
+                              #{o.number || o.id}
+                            </p>
+                            <p className="mt-1 text-[12px] text-[#888]">
+                              {formatOrderDate(o.date_created)} ·{" "}
+                              {getOrderStatusLabel(o.status)}
+                            </p>
+                            <p className="mt-1 text-[12px] text-[#666]">
+                              {o.payment_method_title || "—"}
+                            </p>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <span className="text-[14px] font-medium">
+                              {formatMoneyNT(Number(o.total))}
+                            </span>
+                            <ChevronRight size={16} className="text-[#bbb]" />
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </>
                 )}
               </div>
             )}

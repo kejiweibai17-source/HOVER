@@ -217,6 +217,7 @@ export async function GET() {
       number: o.number,
       status: o.status,
       date_created: o.date_created,
+      date_paid: o.date_paid || o.date_completed || null,
       total: o.total,
       currency: o.currency,
       payment_method_title: o.payment_method_title || "標準支付",
