@@ -37,6 +37,19 @@ function extractPaymentDetails(metaData: any[]) {
   return Object.keys(info).length > 0 ? info : undefined;
 }
 
+function extractMetaValue(metaData: any[], keys: string[]): string {
+  if (!Array.isArray(metaData)) return "";
+  const wanted = keys.map((k) => String(k).toLowerCase());
+  for (const item of metaData) {
+    const key = String(item?.key || "").toLowerCase();
+    if (!wanted.includes(key)) continue;
+    const val = Array.isArray(item.value) ? item.value[0] : item.value;
+    const str = String(val ?? "").trim();
+    if (str) return str;
+  }
+  return "";
+}
+
 // 強化搜尋邏輯
 async function fetchAllUserOrders(auth: string, customerId: number | null, email: string | null, debugInfo: any) {
   let allOrders: any[] = [];
@@ -235,6 +248,18 @@ export async function GET() {
         discount: line.discount || "0",
       })),
       payment_info: extractPaymentDetails(o.meta_data || []),
+      logistics_phase: extractMetaValue(o.meta_data || [], [
+        "_hel_LogisticsPhase",
+        "hel_LogisticsPhase",
+      ]),
+      logistics_rtn_code: extractMetaValue(o.meta_data || [], [
+        "_hel_RtnCode",
+        "hel_RtnCode",
+      ]),
+      logistics_rtn_msg: extractMetaValue(o.meta_data || [], [
+        "_hel_RtnMsg",
+        "hel_RtnMsg",
+      ]),
       meta_data: o.meta_data || [],
       line_items: (o.line_items || []).map((it: any) => ({
         name: it.name,

@@ -11,7 +11,7 @@ const STATUS_MAP: Record<string, string> = {
   pending: "待付款",
   processing: "處理中",
   "on-hold": "保留/等候中",
-  completed: "已完成",
+  completed: "已出貨",
   cancelled: "已取消",
   refunded: "已退款",
   failed: "付款失敗",

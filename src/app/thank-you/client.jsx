@@ -2,49 +2,103 @@
 
 import { Suspense, useEffect, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import HoverIcon from "@/components/hover/HoverIcon";
 import { useSearchParams } from "next/navigation";
+import { useCartStore } from "@/lib/cartStore";
+import { clearCheckoutSession } from "@/lib/checkoutSession";
+
+/** 已付款／進入出貨流程的狀態：不再顯示 ATM 繳費資訊 */
+const PAID_STATUSES = new Set(["processing", "completed"]);
 
 function ThankYouContent() {
   const searchParams = useSearchParams();
   const orderId = searchParams.get("orderId") || "";
   const [atm, setAtm] = useState(null);
+  const [status, setStatus] = useState("");
+  const [statusChinese, setStatusChinese] = useState("");
+  const clearCart = useCartStore((s) => s.clearCart);
+
+  // 下單成功落地：清購物車與結帳草稿（含 ATM／刷卡從綠界導回）
+  useEffect(() => {
+    clearCheckoutSession();
+    clearCart();
+  }, [clearCart]);
 
   useEffect(() => {
     if (!orderId) return;
     let cancelled = false;
-    let timer;
+    let retryTimer;
+    let pollTimer;
+    let pollCount = 0;
+
+    const applyOrder = (data) => {
+      const nextStatus = String(data?.status || "");
+      const info = data?.payment_info || {};
+      setStatus(nextStatus);
+      setStatusChinese(data?.status_chinese || "");
+
+      if (PAID_STATUSES.has(nextStatus)) {
+        setAtm(null);
+        return "paid";
+      }
+
+      if (info.atm_account) {
+        setAtm({
+          bank: info.bank_code || "",
+          account: info.atm_account,
+          expire: info.expire_date || "",
+          amount: data.total,
+        });
+        return "atm";
+      }
+
+      setAtm(null);
+      return nextStatus ? "ok" : "empty";
+    };
 
     const load = async () => {
       try {
         const res = await fetch(`/api/orders/${orderId}`, { cache: "no-store" });
-        if (!res.ok) return false;
+        if (!res.ok) return "empty";
         const data = await res.json();
-        const info = data.payment_info || {};
-        if (!cancelled && info.atm_account) {
-          setAtm({
-            bank: info.bank_code || "",
-            account: info.atm_account,
-            expire: info.expire_date || "",
-            amount: data.total,
-          });
-          return true;
-        }
+        if (cancelled) return "empty";
+        return applyOrder(data);
       } catch {
-        /* 取號資料可能尚未回寫 */
+        /* 取號／回寫可能尚未完成 */
+        return "empty";
       }
-      return false;
     };
 
-    load().then((ok) => {
-      if (!ok && !cancelled) timer = setTimeout(load, 1500);
+    load().then((result) => {
+      if (cancelled) return;
+      // 虛擬帳號尚未回寫時再試一次
+      if (result === "empty") {
+        retryTimer = setTimeout(() => {
+          load();
+        }, 1500);
+      }
+      // 仍待付款時輪詢，模擬付款後刷新／停留本頁可更新為已付款
+      if (result === "atm" || result === "empty") {
+        pollTimer = setInterval(async () => {
+          if (cancelled) return;
+          pollCount += 1;
+          const r = await load();
+          if (r === "paid" || pollCount >= 40) {
+            clearInterval(pollTimer);
+          }
+        }, 3000);
+      }
     });
 
     return () => {
       cancelled = true;
-      if (timer) clearTimeout(timer);
+      if (retryTimer) clearTimeout(retryTimer);
+      if (pollTimer) clearInterval(pollTimer);
     };
   }, [orderId]);
+
+  const isPaid = PAID_STATUSES.has(status);
 
   return (
     <div className="bg-hover-bg">
@@ -56,13 +110,32 @@ function ThankYouContent() {
         {orderId && (
           <p className="mt-5 text-[14px] tracking-[0.04em] text-[#888]">
             訂單編號 {orderId}
+            {statusChinese ? ` · ${statusChinese}` : ""}
           </p>
         )}
         <p className="mt-4 max-w-md text-[13px] leading-relaxed text-[#666]">
           訂單通知會寄到您結帳時填寫的信箱。若您為會員，亦可至會員中心查看訂單。
         </p>
 
-        {atm && (
+        {isPaid && (
+          <div className="mt-8 w-full max-w-md border border-[#2a514d]/30 bg-white px-6 py-5 text-left text-[13px] text-black">
+            <p className="mb-2 font-semibold tracking-[0.08em] text-[#2a514d]">
+              付款已確認
+            </p>
+            <p>訂單狀態：{statusChinese || "處理中"}</p>
+            <p className="mt-3 text-[12px] text-[#888]">
+              我們已收到您的款項，將盡快為您準備出貨。
+            </p>
+            <Link
+              href="/account?tab=orders"
+              className="mt-4 inline-block text-[13px] text-[#2a514d] underline underline-offset-2"
+            >
+              前往會員中心查看訂單
+            </Link>
+          </div>
+        )}
+
+        {!isPaid && atm && (
           <div className="mt-8 w-full max-w-md border border-[#ddd] bg-white px-6 py-5 text-left text-[13px] text-black">
             <p className="mb-3 font-semibold tracking-[0.08em]">ATM 繳費資訊</p>
             <p>應付金額：NT$ {atm.amount}</p>
@@ -70,7 +143,7 @@ function ThankYouContent() {
             <p>虛擬帳號：{atm.account}</p>
             {atm.expire ? <p>繳費期限：{atm.expire}</p> : null}
             <p className="mt-3 text-[12px] text-[#888]">
-              相同資訊已寄到您的信箱，請於期限內完成轉帳。
+              相同資訊已寄到您的信箱，請於期限內完成轉帳。完成後重新整理本頁即可更新狀態。
             </p>
           </div>
         )}

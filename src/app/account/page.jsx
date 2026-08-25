@@ -64,16 +64,33 @@ function formatOrderDate(value, withTime = false) {
   const mm = String(d.getMinutes()).padStart(2, "0");
   return `${y}/${String(m).padStart(2, "0")}/${String(day).padStart(2, "0")} ${hh}:${mm}`;
 }
-function getOrderStatusLabel(status) {
-  const s = String(status || "").toLowerCase();
-  if (s === "completed") return "已到貨";
-  if (s === "processing" || s === "paid") return "處理中";
-  if (s === "pending" || s === "on-hold" || s === "待付款" || s === "waiting-payment")
-    return "待付款";
+function getOrderStatusLabel(orderOrStatus) {
+  const order =
+    orderOrStatus && typeof orderOrStatus === "object" ? orderOrStatus : null;
+  const s = String(order ? order.status : orderOrStatus || "").toLowerCase();
+  const phase = String(order?.logistics_phase || "").toLowerCase();
+  const statusKey = s.replace(/_/g, "-");
+
   if (s === "cancelled" || s === "canceled") return "已取消";
   if (s === "refunded") return "已退款";
   if (s === "failed") return "失敗";
-  return status || "—";
+  if (s === "pending" || s === "on-hold" || s === "待付款" || s === "waiting-payment")
+    return "待付款";
+
+  // 綠界／RY 貨態 meta 優先
+  if (phase === "arrived" || phase === "picked") return "已到貨";
+  if (phase === "unclaimed") return "逾期未取";
+  if (phase === "shipped") return "已出貨";
+
+  // RY Tools 訂單狀態 slug（無 meta 時也能顯示）
+  if (statusKey.includes("at-cvs") || statusKey.includes("wait-pick")) return "已到貨";
+  if (statusKey.includes("out-cvs") || statusKey.includes("overdue")) return "逾期未取";
+  if (statusKey.includes("transport")) return "已出貨";
+
+  // 後台手動標「完成」＝已出貨（尚無物流到貨回報時）
+  if (s === "completed") return "已出貨";
+  if (s === "processing" || s === "paid") return "處理中";
+  return (order ? order.status : orderOrStatus) || "—";
 }
 function getPaymentStatusLabel(order) {
   const s = String(order?.status || "").toLowerCase();
@@ -206,10 +223,20 @@ function StatusPill({ status, type = "order" }) {
       label = "處理中";
       tone = "bg-[#ffea8a] text-[#8a6116] border-transparent";
       dotColor = "fill-[#8a6116]";
-    } else if (s === "completed" || s === "paid" || s === "已完成") {
-      label = "已完成";
+    } else if (
+      s === "completed" ||
+      s === "paid" ||
+      s === "已完成" ||
+      s === "已出貨" ||
+      s === "已到貨"
+    ) {
+      label = s === "已到貨" ? "已到貨" : "已出貨";
       tone = "bg-[#cbe5cc] text-[#1c5c27] border-transparent";
       dotColor = "fill-[#1c5c27]";
+    } else if (s === "逾期未取") {
+      label = "逾期未取";
+      tone = "bg-[#ffd6d6] text-[#8a1f1f] border-transparent";
+      dotColor = "fill-[#8a1f1f]";
     } else if (s === "cancelled" || s === "已取消") {
       label = "已取消";
     }
@@ -413,7 +440,35 @@ function PaymentStatusBadge({ label }) {
   );
 }
 
-function OrderDetail({ order, onBack }) {
+function getOrderPaymentInfo(order) {
+  const fromApi =
+    order?.payment_info && typeof order.payment_info === "object"
+      ? order.payment_info
+      : {};
+  const fromMeta = parseMetaDataForPayment(order?.meta_data);
+  const fromNote = extractInfoFromNote(order?.customer_note) || {};
+  return {
+    bank_code: fromApi.bank_code || fromMeta.bank_code || fromNote.bank_code || "",
+    atm_account:
+      fromApi.atm_account || fromMeta.atm_account || fromNote.atm_account || "",
+    expire_date:
+      fromApi.expire_date || fromMeta.expire_date || fromNote.expire_date || "",
+    cvs_code: fromApi.cvs_code || fromMeta.cvs_code || fromNote.cvs_code || "",
+  };
+}
+
+function isAtmPaymentOrder(order) {
+  const method = String(order?.payment_method || "").toLowerCase();
+  const title = String(order?.payment_method_title || "").toLowerCase();
+  return (
+    method.includes("atm") ||
+    title.includes("atm") ||
+    title.includes("虛擬帳號") ||
+    title.includes("轉帳")
+  );
+}
+
+function OrderDetail({ order, onBack, onRefreshPayment, refreshing = false }) {
   const shippingSettings = useShippingSettings();
   const shipping = order.shipping || {};
   const billing = order.billing || {};
@@ -453,7 +508,6 @@ function OrderDetail({ order, onBack }) {
     (sum, item) => sum + Number(item.subtotal || item.total || 0),
     0,
   );
-  const threshold = Number(shippingSettings.freeShipThreshold || 2000);
   const freeNote =
     shippingTotal === 0 || discountTotal > 0
       ? `滿 NT.2,000 免運`
@@ -464,10 +518,14 @@ function OrderDetail({ order, onBack }) {
       : shippingTotal === 0
         ? Number(shippingSettings.homeDeliveryFee || shippingSettings.cvsFee || 85)
         : 0;
-  const orderStatusLabel = getOrderStatusLabel(order.status);
+  const orderStatusLabel = getOrderStatusLabel(order);
   const paymentStatusLabel = getPaymentStatusLabel(order);
   const paymentTitle = order.payment_method_title || "—";
-  const paidAt = formatOrderDate(order.date_paid || order.date_created, true);
+  const isUnpaid =
+    paymentStatusLabel === "待付款" || paymentStatusLabel === "未付款";
+  const paidAt = isUnpaid
+    ? "—"
+    : formatOrderDate(order.date_paid || order.date_created, true);
   const invoiceDate = formatOrderDate(
     order.date_paid || order.date_created,
     false,
@@ -476,6 +534,11 @@ function OrderDetail({ order, onBack }) {
     (_, y, m, d) =>
       `${y}/${String(m).padStart(2, "0")}/${String(d).padStart(2, "0")}`,
   );
+
+  const payInfo = getOrderPaymentInfo(order);
+  const isAtm = isAtmPaymentOrder(order);
+  const showAtmRemittance = isAtm && Boolean(payInfo.atm_account);
+  const showAtmPendingHint = isAtm && isUnpaid;
 
   const InfoRow = ({ label, children, className = "", valueClassName = "" }) => (
     <div className={cn("flex items-start justify-between gap-4 py-2.5", className)}>
@@ -490,6 +553,88 @@ function OrderDetail({ order, onBack }) {
       </div>
     </div>
   );
+
+  const PaymentStatusWithUpdate = () => (
+    <div className="inline-flex flex-wrap items-center justify-end gap-2">
+      <PaymentStatusBadge label={paymentStatusLabel} />
+      {showAtmPendingHint && typeof onRefreshPayment === "function" ? (
+        <button
+          type="button"
+          onClick={onRefreshPayment}
+          disabled={refreshing}
+          className="text-[12px] text-[#2a514d] underline underline-offset-2 disabled:opacity-50"
+        >
+          {refreshing ? "更新中…" : "更新"}
+        </button>
+      ) : null}
+    </div>
+  );
+
+  const AtmRemittanceBlock = ({ compact = false, side = false }) => {
+    if (!showAtmRemittance && !showAtmPendingHint) return null;
+    return (
+      <div
+        className={cn(
+          compact && "mt-3 space-y-2 border-t border-[#f0f0f0] pt-3",
+          side && "space-y-3",
+          !compact && !side && "mt-4 space-y-3 border-t border-[#eee] pt-4",
+        )}
+      >
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[13px] font-semibold tracking-[0.04em] text-black">
+            匯款資訊
+          </p>
+          {showAtmPendingHint && typeof onRefreshPayment === "function" ? (
+            <button
+              type="button"
+              onClick={onRefreshPayment}
+              disabled={refreshing}
+              className="shrink-0 bg-[#2a514d] px-3 py-1.5 text-[12px] text-white transition-opacity hover:opacity-85 disabled:opacity-50"
+            >
+              {refreshing ? "更新中…" : "更新付款狀態"}
+            </button>
+          ) : null}
+        </div>
+        {showAtmRemittance ? (
+          <div className="space-y-2 text-[13px] leading-relaxed text-black">
+            <p>
+              <span className="text-[#888]">應付金額</span>
+              <span className="ml-3 font-medium">
+                {formatMoneyDot(order.total)}
+              </span>
+            </p>
+            {payInfo.bank_code ? (
+              <p>
+                <span className="text-[#888]">銀行代碼</span>
+                <span className="ml-3">{payInfo.bank_code}</span>
+              </p>
+            ) : null}
+            <p>
+              <span className="text-[#888]">虛擬帳號</span>
+              <span className="ml-3 tracking-wide">{payInfo.atm_account}</span>
+            </p>
+            {payInfo.expire_date ? (
+              <p>
+                <span className="text-[#888]">繳費期限</span>
+                <span className="ml-3">{payInfo.expire_date}</span>
+              </p>
+            ) : null}
+            {isUnpaid ? (
+              <p className="text-[12px] text-[#888]">
+                請於期限內完成轉帳。完成後點「更新」即可同步付款狀態。
+              </p>
+            ) : (
+              <p className="text-[12px] text-[#2a514d]">此筆訂單已確認付款。</p>
+            )}
+          </div>
+        ) : (
+          <p className="text-[12px] text-[#888]">
+            虛擬帳號資料讀取中，請稍後再點更新。
+          </p>
+        )}
+      </div>
+    );
+  };
 
   return (
     <div className="w-full text-[#222]">
@@ -524,7 +669,7 @@ function OrderDetail({ order, onBack }) {
             <OrderStatusBadge label={orderStatusLabel} />
           </InfoRow>
           <InfoRow label="付款狀態">
-            <PaymentStatusBadge label={paymentStatusLabel} />
+            <PaymentStatusWithUpdate />
           </InfoRow>
           <InfoRow label="總金額">
             <span className="font-medium">{formatMoneyDot(order.total)}</span>
@@ -564,7 +709,7 @@ function OrderDetail({ order, onBack }) {
             </div>
             <div>
               <p className="mb-1 text-[12px] text-[#888]">付款狀態</p>
-              <PaymentStatusBadge label={paymentStatusLabel} />
+              <PaymentStatusWithUpdate />
             </div>
             <div>
               <p className="mb-1 text-[12px] text-[#888]">總金額</p>
@@ -852,21 +997,34 @@ function OrderDetail({ order, onBack }) {
             <InfoRow label="付款方式">{paymentTitle}</InfoRow>
             <InfoRow label="付款時間">{paidAt}</InfoRow>
           </div>
+          <AtmRemittanceBlock compact />
         </div>
       </section>
 
       {/* ── Desktop payment ── */}
       <section className="hidden border border-[#d9d9d9] bg-white px-6 py-5 md:block">
         <h3 className="mb-4 text-[15px] font-semibold text-black">付款資訊</h3>
-        <div className="space-y-3 text-[13px] leading-relaxed">
-          <p>
-            <span className="text-[#888]">付款方式</span>
-            <span className="ml-3 text-black">{paymentTitle}</span>
-          </p>
-          <p>
-            <span className="text-[#888]">付款時間</span>
-            <span className="ml-3 text-black">{paidAt}</span>
-          </p>
+        <div
+          className={cn(
+            "text-[13px] leading-relaxed",
+            showAtmRemittance || showAtmPendingHint
+              ? "grid grid-cols-2 gap-8"
+              : "space-y-3",
+          )}
+        >
+          <div className="space-y-3">
+            <p>
+              <span className="text-[#888]">付款方式</span>
+              <span className="ml-3 text-black">{paymentTitle}</span>
+            </p>
+            <p>
+              <span className="text-[#888]">付款時間</span>
+              <span className="ml-3 text-black">{paidAt}</span>
+            </p>
+          </div>
+          {(showAtmRemittance || showAtmPendingHint) && (
+            <AtmRemittanceBlock side />
+          )}
         </div>
       </section>
     </div>
@@ -897,178 +1055,6 @@ function AccountTabButton({ active, onClick, children }) {
 // 主頁面 AccountPage
 // ============================================================================
 
-
-/** 設計稿示範訂單（圖二列表 + 圖一詳情） */
-const DEMO_ACCOUNT_ORDERS = [
-  {
-    id: 1352,
-    number: "1352",
-    status: "processing",
-    date_created: "2026-06-10T14:32:00",
-    date_paid: "2026-06-10T14:32:00",
-    total: "1680",
-    currency: "TWD",
-    payment_method_title: "ATM",
-    customer_note: "",
-    billing: {
-      first_name: "昆壁",
-      last_name: "葉",
-      phone: "0939767977",
-      email: "demo@hover.tw",
-    },
-    shipping: {
-      first_name: "昆壁",
-      last_name: "葉",
-      phone: "0939767977",
-      address_1: "府中路 29-1 號 1 樓",
-      city: "板橋區",
-      state: "新北市",
-      postcode: "220",
-    },
-    shipping_total: "85",
-    discount_total: "85",
-    shipping_lines: [{ method_title: "全家超商取貨", total: "85" }],
-    coupon_lines: [],
-    payment_info: {},
-    meta_data: [
-      { key: "_shipping_cvs_store_ID", value: "002816" },
-      { key: "_shipping_cvs_store_name", value: "全家 板橋板農店" },
-      {
-        key: "_shipping_cvs_store_address",
-        value: "新北市板橋區府中路 29-1 號 1 樓",
-      },
-    ],
-    line_items: [
-      {
-        name: "經典刺繡短袖 T 恤",
-        quantity: 1,
-        total: "1680",
-        subtotal: "1680",
-        price: 1680,
-        image: "/images/hover/product-1.jpg",
-        product_id: 1001,
-        sku: "HOVER-TEE-001",
-        variation_id: 0,
-        meta_data: [
-          { key: "尺寸", value: "S" },
-          { key: "顏色", value: "黑" },
-        ],
-      },
-    ],
-  },
-  {
-    id: 1351,
-    number: "1351",
-    status: "processing",
-    date_created: "2026-08-22T11:20:00",
-    date_paid: "2026-08-22T11:20:00",
-    total: "1765",
-    currency: "TWD",
-    payment_method_title: "信用卡",
-    customer_note: "",
-    billing: {
-      first_name: "昆壁",
-      last_name: "葉",
-      phone: "0939767977",
-      email: "demo@hover.tw",
-    },
-    shipping: {
-      first_name: "昆壁",
-      last_name: "葉",
-      phone: "0939767977",
-      address_1: "府中路 29-1 號 1 樓",
-      city: "板橋區",
-      state: "新北市",
-      postcode: "220",
-    },
-    shipping_total: "85",
-    discount_total: "0",
-    shipping_lines: [{ method_title: "全家超商取貨", total: "85" }],
-    coupon_lines: [],
-    payment_info: {},
-    meta_data: [
-      { key: "_shipping_cvs_store_ID", value: "002816" },
-      { key: "_shipping_cvs_store_name", value: "全家 板橋板農店" },
-      {
-        key: "_shipping_cvs_store_address",
-        value: "新北市板橋區府中路 29-1 號 1 樓",
-      },
-    ],
-    line_items: [
-      {
-        name: "經典刺繡短袖 T 恤",
-        quantity: 1,
-        total: "1680",
-        subtotal: "1680",
-        price: 1680,
-        image: "/images/hover/product-1.jpg",
-        product_id: 1001,
-        sku: "HOVER-TEE-001",
-        variation_id: 0,
-        meta_data: [
-          { key: "尺寸", value: "M" },
-          { key: "顏色", value: "黑" },
-        ],
-      },
-    ],
-  },
-  {
-    id: 1320,
-    number: "1320",
-    status: "completed",
-    date_created: "2026-08-16T09:05:00",
-    date_paid: "2026-08-16T09:05:00",
-    total: "1765",
-    currency: "TWD",
-    payment_method_title: "綠界科技 ECPay",
-    customer_note: "",
-    billing: {
-      first_name: "昆壁",
-      last_name: "葉",
-      phone: "0939767977",
-      email: "demo@hover.tw",
-    },
-    shipping: {
-      first_name: "昆壁",
-      last_name: "葉",
-      phone: "0939767977",
-      address_1: "府中路 29-1 號 1 樓",
-      city: "板橋區",
-      state: "新北市",
-      postcode: "220",
-    },
-    shipping_total: "85",
-    discount_total: "0",
-    shipping_lines: [{ method_title: "全家超商取貨", total: "85" }],
-    coupon_lines: [],
-    payment_info: {},
-    meta_data: [
-      { key: "_shipping_cvs_store_ID", value: "002816" },
-      { key: "_shipping_cvs_store_name", value: "全家 板橋板農店" },
-      {
-        key: "_shipping_cvs_store_address",
-        value: "新北市板橋區府中路 29-1 號 1 樓",
-      },
-    ],
-    line_items: [
-      {
-        name: "經典刺繡短袖 T 恤",
-        quantity: 1,
-        total: "1680",
-        subtotal: "1680",
-        price: 1680,
-        image: "/images/hover/product-2.jpg",
-        product_id: 1001,
-        sku: "HOVER-TEE-001",
-        variation_id: 0,
-        meta_data: [
-          { key: "尺寸", value: "L" },
-          { key: "顏色", value: "米白" },
-        ],
-      },
-    ],
-  },
-];
 
 export default function AccountPage() {
   const router = useRouter();
@@ -1105,6 +1091,7 @@ export default function AccountPage() {
   const [showAllReferralCoupons, setShowAllReferralCoupons] = useState(false);
 
   const [selectedOrderId, setSelectedOrderId] = useState(null);
+  const [orderRefreshing, setOrderRefreshing] = useState(false);
 
   const [birthdayInput, setBirthdayInput] = useState("");
   const [isSettingBirthday, setIsSettingBirthday] = useState(false);
@@ -1176,15 +1163,51 @@ export default function AccountPage() {
       });
       const data = await res.json().catch(() => ({}));
       const remote = Array.isArray(data?.orders) ? data.orders : [];
-      // TODO: 對稿完成後改回只用 remote；目前注入設計稿三筆訂單
-      setOrders(DEMO_ACCOUNT_ORDERS);
-      setOrdersDebug(data?.debug || { demo: true, remoteCount: remote.length });
+      setOrders(remote);
+      setOrdersDebug(data?.debug || null);
     } catch {
-      setOrders(DEMO_ACCOUNT_ORDERS);
+      setOrders([]);
+      setOrdersDebug({ error: true });
     } finally {
       setOrdersLoading(false);
     }
   }, []);
+
+  const refreshOrderPayment = useCallback(async (orderId) => {
+    if (!orderId) return;
+    setOrderRefreshing(true);
+    try {
+      const res = await fetch(`/api/orders/${orderId}`, { cache: "no-store" });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        // 單筆失敗時退回整表刷新
+        await loadOrders();
+        return;
+      }
+      setOrders((prev) =>
+        prev.map((o) => {
+          if (String(o.id) !== String(orderId)) return o;
+          return {
+            ...o,
+            status: data.status || o.status,
+            date_paid: data.date_paid || data.date_completed || o.date_paid,
+            date_completed: data.date_completed || o.date_completed,
+            total: data.total ?? o.total,
+            payment_method_title:
+              data.payment_method_title || o.payment_method_title,
+            payment_method: data.payment_method || o.payment_method,
+            customer_note: data.customer_note || o.customer_note,
+            payment_info: data.payment_info || o.payment_info,
+            meta_data: Array.isArray(data.meta_data) ? data.meta_data : o.meta_data,
+          };
+        }),
+      );
+    } catch {
+      await loadOrders();
+    } finally {
+      setOrderRefreshing(false);
+    }
+  }, [loadOrders]);
 
   const loadReferral = useCallback(async () => {
     setReferralLoading(true);
@@ -2167,6 +2190,10 @@ export default function AccountPage() {
                       <OrderDetail
                         order={selected}
                         onBack={() => setSelectedOrderId(null)}
+                        refreshing={orderRefreshing}
+                        onRefreshPayment={() =>
+                          refreshOrderPayment(selected.id)
+                        }
                       />
                     );
                   })()
@@ -2205,7 +2232,7 @@ export default function AccountPage() {
                                 {formatOrderDate(o.date_created)}
                               </td>
                               <td className="px-3 py-4">
-                                {getOrderStatusLabel(o.status)}
+                                {getOrderStatusLabel(o)}
                               </td>
                               <td className="px-3 py-4">
                                 {formatMoneyNT(Number(o.total))}
@@ -2234,7 +2261,7 @@ export default function AccountPage() {
                             </p>
                             <p className="mt-1 text-[12px] text-[#888]">
                               {formatOrderDate(o.date_created)} ·{" "}
-                              {getOrderStatusLabel(o.status)}
+                              {getOrderStatusLabel(o)}
                             </p>
                             <p className="mt-1 text-[12px] text-[#666]">
                               {o.payment_method_title || "—"}

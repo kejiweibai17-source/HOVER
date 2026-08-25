@@ -1,7 +1,7 @@
 // app/cart/client.jsx
 "use client";
 
-import React, { useState, useEffect, useMemo, Suspense } from "react";
+import React, { useState, useEffect, useMemo, useRef, useCallback, Suspense } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Link } from "next-view-transitions";
 import { useSearchParams, useRouter } from "next/navigation";
@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import { useCartStore } from "@/lib/cartStore";
+import { clearCheckoutSession } from "@/lib/checkoutSession";
 import { DEFAULT_SHIPPING } from "@/lib/shippingDefaults";
 import { useShippingSettings } from "@/lib/useShippingSettings";
 import {
@@ -1331,12 +1332,7 @@ function CheckoutStep({
         return;
       }
       onClearCart();
-      sessionStorage.removeItem("checkout_contact");
-      sessionStorage.removeItem("checkout_addr");
-      sessionStorage.removeItem("checkout_shipMethod");
-      sessionStorage.removeItem("checkout_payMethod");
-      sessionStorage.removeItem("checkout_step");
-      sessionStorage.removeItem("checkout_items");
+      // session 清理由 onClearCart（wipeCheckoutAfterOrder）負責，避免再被 persist effect 寫回
 
       if (data.redirectUrl) {
         setIsSubmitting(false);
@@ -1876,14 +1872,36 @@ function CartContent() {
   const [payMethod, setPayMethod] = useState("atm");
   const [membership, setMembership] = useState(null);
   const [discountRate, setDiscountRate] = useState(1);
+  /** 下單成功後禁止把舊表單再寫回 sessionStorage（否則跳轉綠界前 effect 會還原草稿） */
+  const skipCheckoutPersist = useRef(false);
+
+  // 清空後若使用者又加商品進購物車，恢復草稿寫入（選店返回需要）
+  useEffect(() => {
+    if (items.length > 0) skipCheckoutPersist.current = false;
+  }, [items.length]);
+
+  const emptyAddr = useMemo(
+    () => ({
+      firstName: "",
+      lastName: "",
+      phone: "",
+      city: "",
+      district: "",
+      street: "",
+      storeId: "",
+      storeName: "",
+      storeAddr: "",
+    }),
+    [],
+  );
 
   // 🚨 【護城河 2】：載入資料與 URL 判定完美融合
   useEffect(() => {
     // 優先處理跳轉回來的資料還原
-    let _addr = { ...addr };
-    let _contact = { ...contact };
-    let _ship = "000";
-    let _pay = "card";
+    let _addr = { ...emptyAddr };
+    let _contact = { email: "" };
+    let _ship = "711";
+    let _pay = "atm";
     let _step = 1;
     let _items = [];
 
@@ -2043,14 +2061,13 @@ function CartContent() {
 
   // 🚨 【護城河 3】：任何輸入狀態改變，立刻同步至 SessionStorage
   useEffect(() => {
-    if (itemsLoaded) {
-      sessionStorage.setItem("checkout_contact", JSON.stringify(contact));
-      sessionStorage.setItem("checkout_addr", JSON.stringify(addr));
-      sessionStorage.setItem("checkout_shipMethod", shipMethod);
-      sessionStorage.setItem("checkout_payMethod", payMethod);
-      sessionStorage.setItem("checkout_step", step.toString());
-      sessionStorage.setItem("checkout_items", JSON.stringify(items)); // ✅ 商品變更也隨時存
-    }
+    if (!itemsLoaded || skipCheckoutPersist.current) return;
+    sessionStorage.setItem("checkout_contact", JSON.stringify(contact));
+    sessionStorage.setItem("checkout_addr", JSON.stringify(addr));
+    sessionStorage.setItem("checkout_shipMethod", shipMethod);
+    sessionStorage.setItem("checkout_payMethod", payMethod);
+    sessionStorage.setItem("checkout_step", step.toString());
+    sessionStorage.setItem("checkout_items", JSON.stringify(items));
   }, [contact, addr, shipMethod, payMethod, step, items, itemsLoaded]);
 
   useEffect(() => {
@@ -2091,15 +2108,23 @@ function CartContent() {
     if (typeof storeRemoveItem === "function") storeRemoveItem(id);
   };
 
-  const clearCart = () => {
+  const clearCart = useCallback(() => {
+    skipCheckoutPersist.current = true;
     setItems([]);
-    sessionStorage.removeItem("checkout_items");
+    setStep(1);
+    setContact({ email: "" });
+    setAddr(emptyAddr);
+    setShipMethod("711");
+    setPayMethod("atm");
+    clearCheckoutSession();
     if (typeof storeClearCart === "function") storeClearCart();
-  };
+  }, [emptyAddr, storeClearCart]);
 
   const goToStep = (targetStep) => {
     if (targetStep >= step) return;
-    sessionStorage.setItem("checkout_step", String(targetStep));
+    if (!skipCheckoutPersist.current) {
+      sessionStorage.setItem("checkout_step", String(targetStep));
+    }
     setStep(targetStep);
   };
 
