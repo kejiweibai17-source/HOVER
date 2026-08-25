@@ -1490,7 +1490,7 @@ function CheckoutStep({
             className="flex items-center gap-1 text-[13px] text-[#888] transition-colors hover:text-black"
           >
             <ChevronLeft className="h-4 w-4" />
-            返回購物車
+            返回購物袋
           </button>
         </div>
 
@@ -1724,70 +1724,59 @@ function CheckoutStep({
               </button>
             </div>
 
-            {isLoggedIn && (
+            {isLoggedIn && !availableLoading && availableCoupons.length > 0 && (
               <div className="mt-4">
-                <p className="text-[12px] font-medium text-[#555]">
-                  您的可用優惠碼
-                </p>
-                {availableLoading ? (
-                  <p className="mt-2 text-[11px] text-[#888]">讀取中...</p>
-                ) : availableCoupons.length === 0 ? (
-                  <p className="mt-2 text-[11px] text-[#888]">
-                    目前沒有可用的入會禮／生日禮或其他專屬折扣碼。
-                  </p>
-                ) : (
-                  <div className="mt-2 flex flex-col gap-2">
-                    {availableCoupons.map((c) => {
-                      const code = String(c.code || "").toUpperCase();
-                      const active =
-                        appliedCoupon?.code?.toUpperCase() === code;
-                      const kindText =
-                        c.kindLabel ||
-                        (c.kind === "welcome" || c.kind === "legacy"
-                          ? "入會禮"
-                          : c.kind === "birthday"
-                            ? "生日禮"
-                            : "專屬優惠");
-                      return (
-                        <button
-                          key={code}
-                          type="button"
-                          disabled={couponApplying}
-                          onClick={() => handleApplyCoupon(code)}
-                          className={`flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2.5 text-left transition-colors ${
-                            active
-                              ? "border-[#2a514d] bg-[#edf4f3]"
-                              : "border-[#e5e5e5] bg-[#fafafa] hover:border-[#2a514d]/50"
-                          }`}
-                        >
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-[10px] font-bold text-[#2a514d]">
-                                {kindText}
-                              </span>
-                              <span className="text-[12px] font-semibold text-black">
-                                折抵 NT${Number(c.amount || 0).toLocaleString()}
-                              </span>
-                            </div>
-                            <p className="mt-1 font-mono text-[12px] font-bold tracking-wide text-[#202223]">
-                              {code}
-                            </p>
-                            {Number(c.minimumAmount || 0) > 0 && (
-                              <p className="mt-0.5 text-[10px] text-[#888]">
-                                滿 NT$
-                                {Number(c.minimumAmount).toLocaleString()} 可用
-                                · 點此套用
-                              </p>
-                            )}
+                <div className="mt-2 flex flex-col gap-2">
+                  {availableCoupons.map((c) => {
+                    const code = String(c.code || "").toUpperCase();
+                    const active =
+                      appliedCoupon?.code?.toUpperCase() === code;
+                    const kindText =
+                      c.kindLabel ||
+                      (c.kind === "welcome" || c.kind === "legacy"
+                        ? "入會禮"
+                        : c.kind === "birthday"
+                          ? "生日禮"
+                          : "專屬優惠");
+                    return (
+                      <button
+                        key={code}
+                        type="button"
+                        disabled={couponApplying}
+                        onClick={() => handleApplyCoupon(code)}
+                        className={`flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2.5 text-left transition-colors ${
+                          active
+                            ? "border-[#2a514d] bg-[#edf4f3]"
+                            : "border-[#e5e5e5] bg-[#fafafa] hover:border-[#2a514d]/50"
+                        }`}
+                      >
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-[10px] font-bold text-[#2a514d]">
+                              {kindText}
+                            </span>
+                            <span className="text-[12px] font-semibold text-black">
+                              折抵 NT${Number(c.amount || 0).toLocaleString()}
+                            </span>
                           </div>
-                          <span className="shrink-0 text-[11px] font-medium text-[#2a514d]">
-                            {active ? "已套用" : "套用"}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+                          <p className="mt-1 font-mono text-[12px] font-bold tracking-wide text-[#202223]">
+                            {code}
+                          </p>
+                          {Number(c.minimumAmount || 0) > 0 && (
+                            <p className="mt-0.5 text-[10px] text-[#888]">
+                              滿 NT$
+                              {Number(c.minimumAmount).toLocaleString()} 可用
+                              · 點此套用
+                            </p>
+                          )}
+                        </div>
+                        <span className="shrink-0 text-[11px] font-medium text-[#2a514d]">
+                          {active ? "已套用" : "套用"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
 

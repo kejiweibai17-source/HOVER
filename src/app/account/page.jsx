@@ -284,7 +284,9 @@ function ShellCard({ title, right, children, className }) {
     >
       {(title || right) && (
         <header className="px-4 sm:px-5 py-4 border-b border-[#c9cccf] flex items-center justify-between">
-          <h2 className="text-base font-semibold text-[#202223]">{title}</h2>
+          <h2 className="text-[17px] font-semibold text-[#202223] sm:text-[18px]">
+            {title}
+          </h2>
           <div>{right}</div>
         </header>
       )}
@@ -356,7 +358,7 @@ function HoverUnderlineField({
   readOnly = false,
 }) {
   return (
-    <div className="pb-4">
+    <div className="pb-5 sm:pb-4">
       <input
         type={type}
         readOnly={readOnly}
@@ -364,7 +366,7 @@ function HoverUnderlineField({
         onChange={onChange}
         placeholder={label}
         className={cn(
-          "w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none focus:border-[#2a514d]",
+          "w-full border-0 border-b border-[#bbb] bg-transparent pb-2.5 pt-1.5 text-[16px] text-black placeholder-[#aaa] outline-none focus:border-[#2a514d] sm:pb-2 sm:pt-1",
           readOnly && "cursor-default opacity-70",
         )}
       />
@@ -378,7 +380,7 @@ function HoverSectionAction({ children, onClick, disabled = false }) {
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="mb-6 inline-block bg-[#2a514d] px-6 py-2.5 text-[13px] font-medium tracking-wide text-white transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
+      className="mb-6 inline-block bg-[#2a514d] px-6 py-2.5 text-[15px] font-medium tracking-wide text-white transition-opacity hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-50"
     >
       {children}
     </button>
@@ -877,7 +879,7 @@ function AccountTabButton({ active, onClick, children }) {
       type="button"
       onClick={onClick}
       className={cn(
-        "relative px-1 pb-3 text-[14px] transition-colors whitespace-nowrap",
+        "relative px-1 pb-3 text-[15px] transition-colors whitespace-nowrap sm:text-[16px]",
         active
           ? "font-semibold text-black"
           : "font-normal text-[#888] hover:text-black",
@@ -1090,6 +1092,8 @@ export default function AccountPage() {
   const [referralLoading, setReferralLoading] = useState(false);
   const [availableCoupons, setAvailableCoupons] = useState([]);
   const [availableLoading, setAvailableLoading] = useState(false);
+  const [couponFilter, setCouponFilter] = useState("usable"); // usable | used | expired
+  const [copiedCouponCode, setCopiedCouponCode] = useState(null);
   const [claimLoading, setClaimLoading] = useState({
     welcome: false,
     birthday: false,
@@ -1105,6 +1109,7 @@ export default function AccountPage() {
   const [birthdayInput, setBirthdayInput] = useState("");
   const [isSettingBirthday, setIsSettingBirthday] = useState(false);
   const [birthdayLoading, setBirthdayLoading] = useState(false);
+  const [birthdayMessage, setBirthdayMessage] = useState("");
   const [showBirthdayModal, setShowBirthdayModal] = useState(false);
   const [modalBirthdayInput, setModalBirthdayInput] = useState("");
   const [profileForm, setProfileForm] = useState({
@@ -1206,9 +1211,16 @@ export default function AccountPage() {
         credentials: "include",
       });
       const data = await res.json();
-      if (res.ok && data?.ok && Array.isArray(data.available))
-        setAvailableCoupons(data.available);
-      else setAvailableCoupons([]);
+      if (res.ok && data?.ok) {
+        const list = Array.isArray(data.coupons)
+          ? data.coupons
+          : Array.isArray(data.available)
+            ? data.available
+            : [];
+        setAvailableCoupons(list);
+      } else {
+        setAvailableCoupons([]);
+      }
     } catch {
       setAvailableCoupons([]);
     } finally {
@@ -1227,7 +1239,7 @@ export default function AccountPage() {
       setActiveTab("profile");
       return;
     }
-    if (tab && ["profile", "orders", "favorites"].includes(tab)) {
+    if (tab && ["profile", "orders", "coupons", "favorites"].includes(tab)) {
       setActiveTab(tab);
     }
   }, [router]);
@@ -1261,29 +1273,33 @@ export default function AccountPage() {
   }, [loading, loggedIn, customer]);
 
   const handleUpdateBirthday = async () => {
-    if (!birthdayInput) return alert("請選擇生日");
-    if (!confirm(`您的生日是 ${birthdayInput} 嗎？\n確認後將無法再次修改。`))
+    const value = String(birthdayInput || "").trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+      setBirthdayMessage("請先選擇生日日期");
       return;
+    }
+    setBirthdayMessage("");
     setBirthdayLoading(true);
     try {
       const res = await fetch("/api/account/profile", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ birthday: birthdayInput }),
+        credentials: "include",
+        body: JSON.stringify({ birthday: value }),
       });
-      const data = await res.json();
-      if (data.ok) {
-        alert("生日設定成功！");
-        setCustomer((prev) =>
-          prev ? { ...prev, birthday: birthdayInput } : null,
-        );
-        setIsSettingBirthday(false);
-        loadProfile();
-      } else {
-        alert(data.message || "更新失敗");
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        setBirthdayMessage(data?.message || "更新失敗，請稍後再試");
+        return;
       }
-    } catch (e) {
-      alert("系統錯誤，請稍後再試");
+      setCustomer((prev) => (prev ? { ...prev, birthday: value } : null));
+      setIsSettingBirthday(false);
+      setBirthdayInput("");
+      setBirthdayMessage("");
+      setShowBirthdayModal(false);
+      loadProfile();
+    } catch {
+      setBirthdayMessage("系統錯誤，請稍後再試");
     } finally {
       setBirthdayLoading(false);
     }
@@ -1494,6 +1510,8 @@ export default function AccountPage() {
       setActiveTab(tab);
       setSearchQuery("");
       setSelectedOrderId(null);
+      setCouponFilter("usable");
+      setCopiedCouponCode(null);
       const url = tab === "profile" ? "/account" : `/account?tab=${tab}`;
       router.replace(url, { scroll: false });
     },
@@ -1501,24 +1519,43 @@ export default function AccountPage() {
   );
 
   const sortedCoupons = useMemo(() => {
-    return [...availableCoupons].sort(
-      (a, b) => pickCouponCreatedAt(b) - pickCouponCreatedAt(a),
-    );
+    const seen = new Set();
+    return [...availableCoupons]
+      .filter((c) => {
+        const code = String(c?.code || "").toUpperCase();
+        if (!code || seen.has(code)) return false;
+        seen.add(code);
+        return true;
+      })
+      .sort((a, b) => pickCouponCreatedAt(b) - pickCouponCreatedAt(a));
   }, [availableCoupons]);
 
   const filteredCoupons = useMemo(() => {
-    let base = sortedCoupons;
-    if (searchQuery && activeTab === "profile") {
+    let base = sortedCoupons.filter((c) => {
+      const status = c.status || "usable";
+      return status === couponFilter;
+    });
+    if (searchQuery && activeTab === "coupons") {
       const q = searchQuery.toLowerCase();
       base = base.filter(
-        (c) => c.code.toLowerCase().includes(q) || String(c.amount).includes(q),
+        (c) =>
+          String(c.code || "").toLowerCase().includes(q) ||
+          String(c.kindLabel || "").toLowerCase().includes(q) ||
+          String(c.amount).includes(q),
       );
     }
-    const previewLimit = 6;
-    return showAllReferralCoupons || (searchQuery && activeTab === "profile")
-      ? base
-      : base.slice(0, previewLimit);
-  }, [sortedCoupons, showAllReferralCoupons, searchQuery, activeTab]);
+    return base;
+  }, [sortedCoupons, couponFilter, searchQuery, activeTab]);
+
+  const handleCopyCoupon = useCallback((code) => {
+    const value = String(code || "").toUpperCase();
+    if (!value) return;
+    navigator.clipboard.writeText(value).catch(() => {});
+    setCopiedCouponCode(value);
+    window.setTimeout(() => {
+      setCopiedCouponCode((prev) => (prev === value ? null : prev));
+    }, 1800);
+  }, []);
 
   const ambassadorCoupons = useMemo(
     () => sortedCoupons.filter((c) => isAmbassadorCoupon(c.code, c.kind)),
@@ -1600,22 +1637,17 @@ export default function AccountPage() {
     );
   }
 
-  const getSearchPlaceholder = () => {
-    if (activeTab === "orders") return "搜尋訂單...";
-    return "搜尋代碼...";
-  };
-
   return (
     <div className="min-h-screen bg-hover-bg pb-16 text-black">
-      <div className="mx-auto max-w-[960px] px-4 py-10 sm:px-6 sm:py-14">
+      <div className="mx-auto max-w-[1140px] px-4 py-6 sm:px-6 sm:py-14 lg:px-8">
         {/* Page title */}
-        <h1 className="mb-8 text-center text-[22px] font-semibold tracking-wide sm:text-[26px]">
+        <h1 className="mb-6 text-center text-[26px] font-semibold tracking-wide sm:mb-8 sm:text-[30px]">
           我的會員中心
         </h1>
 
         {/* Tab bar + logout */}
-        <div className="mb-8 flex items-end justify-between gap-4 border-b border-[#ccc]">
-          <div className="flex gap-6 overflow-x-auto pb-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:gap-10">
+        <div className="mb-6 flex items-end justify-between gap-4 border-b border-[#ccc] sm:mb-8 sm:gap-10 md:gap-14">
+          <div className="flex min-w-0 flex-1 gap-4 overflow-x-auto pb-0 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:gap-8 md:gap-10">
             <AccountTabButton
               active={activeTab === "profile"}
               onClick={() => switchTab("profile")}
@@ -1626,7 +1658,14 @@ export default function AccountPage() {
               active={activeTab === "orders"}
               onClick={() => switchTab("orders")}
             >
-              訂單查詢/申請退貨
+              <span className="md:hidden">訂單</span>
+              <span className="hidden md:inline">訂單查詢/申請退貨</span>
+            </AccountTabButton>
+            <AccountTabButton
+              active={activeTab === "coupons"}
+              onClick={() => switchTab("coupons")}
+            >
+              優惠券
             </AccountTabButton>
             <AccountTabButton
               active={activeTab === "favorites"}
@@ -1643,82 +1682,62 @@ export default function AccountPage() {
               useAuthStore.getState().resetAuth();
               router.replace("/login?next=/account");
             }}
-            className="mb-3 flex shrink-0 items-center gap-1.5 text-[13px] text-[#c0392b] transition-opacity hover:opacity-70"
+            className="mb-3 ml-3 flex shrink-0 items-center gap-1.5 text-[15px] text-[#c0392b] transition-opacity hover:opacity-70 sm:ml-6 sm:text-[15px]"
           >
-            <LogOut size={15} strokeWidth={1.5} />
+            <LogOut size={16} strokeWidth={1.5} />
             登出
           </button>
         </div>
-
-        {/* Mobile search */}
-        {((activeTab === "orders" && !selectedOrderId) || activeTab === "profile") && (
-          <div className="relative mb-6 md:hidden">
-            <HoverIcon name="search" size={40} className="absolute left-0 top-1/2 -translate-y-1/2 opacity-50" alt="" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder={getSearchPlaceholder()}
-              className="w-full border-0 border-b border-[#bbb] bg-transparent py-2 pl-7 text-sm outline-none focus:border-black"
-            />
-          </div>
-        )}
 
         <div className="w-full">
             {/* 個人資料 Tab */}
             {activeTab === "profile" && (
               <>
                 {/* Summary row */}
-                <div className="mb-10 flex flex-col gap-6 border-b border-[#ddd] pb-8 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="sm:max-w-[280px]">
-                    <div className="mb-3 inline-block border border-[#ccc] bg-white px-4 py-2 text-[13px] font-medium">
+                <div className="mb-8 flex flex-col gap-6 border-b border-[#ddd] pb-8 sm:mb-10 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="sm:max-w-[320px]">
+                    <div className="mb-3 inline-block border border-[#ccc] bg-white px-4 py-2 text-[15px] font-medium sm:text-[15px]">
                       {getTierDisplay(membership?.tierName, membership)}
                       {membership?.tierLabelEn && (
-                        <span className="ml-2 text-[11px] font-normal text-[#888]">
+                        <span className="ml-2 text-[12px] font-normal text-[#888]">
                           {membership.tierLabelEn}
                         </span>
                       )}
                     </div>
-                    <p className="text-[13px] leading-relaxed text-[#555]">
-                      {membership?.renewNeedAmount != null && membership?.exclusiveActive
-                        ? `臻享效期內再消費 NT$${membership.renewNeedAmount.toLocaleString()} 即可續會`
-                        : membership?.nextNeedAmount != null && membership?.nextTierName
-                          ? `近 12 個月再消費 NT$${membership.nextNeedAmount.toLocaleString()} 即可升級 ${getTierDisplay(membership.nextTierName)}`
-                          : membership?.exclusiveActive
-                            ? "您已是臻享會員，享正價商品 95 折"
-                            : "註冊即為品牌好友，永久有效"}
+                    <p className="text-[14px] leading-relaxed text-[#555] sm:text-[14px]">
+                      近 12 個月累積消費滿 NT$10,000，即可升級為臻享會員
                     </p>
                     <Link
                       href="/membership"
-                      className="mt-2 inline-flex items-center gap-1 text-[12px] text-[#555] underline-offset-2 hover:underline"
+                      className="mt-2 inline-flex items-center gap-1 text-[13px] text-[#555] underline-offset-2 hover:underline"
                     >
                       了解品牌與會員制度 ▶
                     </Link>
                   </div>
-                  <div className="grid flex-1 grid-cols-2 gap-6 sm:grid-cols-4 sm:gap-4">
+                  <div className="grid flex-1 grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-4 sm:gap-4">
                     <div>
-                      <p className="mb-1 text-[11px] text-[#888]">累積消費總額</p>
-                      <p className="text-[15px] font-semibold">
+                      <p className="mb-1 text-[12px] text-[#888]">累積消費總額</p>
+                      <p className="text-[16px] font-semibold sm:text-[17px]">
                         {formatMoneyNT(orderStats.totalSpent)}
                       </p>
                     </div>
                     <div>
-                      <p className="mb-1 text-[11px] text-[#888]">訂單總數</p>
-                      <p className="text-[15px] font-semibold">{orderStats.total}</p>
+                      <p className="mb-1 text-[12px] text-[#888]">訂單總數</p>
+                      <p className="text-[16px] font-semibold sm:text-[17px]">{orderStats.total}</p>
                     </div>
                     <div>
-                      <p className="mb-1 text-[11px] text-[#888]">已完成訂單</p>
-                      <p className="text-[15px] font-semibold">{orderStats.completed}</p>
+                      <p className="mb-1 text-[12px] text-[#888]">已完成訂單</p>
+                      <p className="text-[16px] font-semibold sm:text-[17px]">{orderStats.completed}</p>
                     </div>
                     <div>
-                      <p className="mb-1 text-[11px] text-[#888]">待付款</p>
-                      <p className="text-[15px] font-semibold">{orderStats.pending}</p>
+                      <p className="mb-1 text-[12px] text-[#888]">待付款</p>
+                      <p className="text-[16px] font-semibold sm:text-[17px]">{orderStats.pending}</p>
                     </div>
                   </div>
                 </div>
 
                 {/* Profile + password columns */}
-                <div className="mb-12 grid grid-cols-1 gap-10 md:grid-cols-2 md:gap-16">
+                <div className="mb-10 grid grid-cols-1 gap-10 md:mb-12 md:grid-cols-2 md:gap-16">
                   <div>
                     <HoverSectionAction
                       onClick={handleProfileAction}
@@ -1757,12 +1776,81 @@ export default function AccountPage() {
                       value={customer?.email || "—"}
                       readOnly
                     />
-                    <HoverUnderlineField
-                      label="生日"
-                      value={customer?.birthday || "未設定"}
-                      type={customer?.birthday ? "date" : "text"}
-                      readOnly
-                    />
+                    {customer?.birthday ? (
+                      <HoverUnderlineField
+                        label="生日"
+                        value={customer.birthday}
+                        type="date"
+                        readOnly
+                      />
+                    ) : (
+                      <div className="pb-5 sm:pb-4">
+                        {!isSettingBirthday ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBirthdayMessage("");
+                              setIsSettingBirthday(true);
+                            }}
+                            className="text-left transition-opacity hover:opacity-70"
+                          >
+                            <span className="block text-[16px] text-[#2a514d] underline underline-offset-2 sm:text-[15px]">
+                              設定生日
+                            </span>
+                            <span className="mt-1 block text-[12px] text-[#888]">
+                              設定完成後將無法修改
+                            </span>
+                          </button>
+                        ) : (
+                          <div className="space-y-3">
+                            <div>
+                              <p className="text-[16px] font-medium text-black sm:text-[15px]">
+                                設定生日
+                              </p>
+                              <p className="mt-1 text-[12px] text-[#888]">
+                                設定完成後將無法修改
+                              </p>
+                            </div>
+                            <input
+                              type="date"
+                              value={birthdayInput}
+                              onChange={(e) => {
+                                setBirthdayInput(e.target.value);
+                                if (birthdayMessage) setBirthdayMessage("");
+                              }}
+                              max={new Date().toISOString().slice(0, 10)}
+                              className="box-border min-h-[44px] w-full border-0 border-b border-[#bbb] bg-transparent px-0 py-2 text-[16px] text-black outline-none focus:border-black"
+                            />
+                            {birthdayMessage && (
+                              <p className="text-[12px] text-red-600">
+                                {birthdayMessage}
+                              </p>
+                            )}
+                            <div className="flex items-center gap-4 pt-1">
+                              <button
+                                type="button"
+                                onClick={handleUpdateBirthday}
+                                disabled={birthdayLoading}
+                                className="min-h-[40px] bg-[#2a514d] px-5 py-2 text-[14px] text-white hover:bg-[#1e3d3a] disabled:opacity-50"
+                              >
+                                {birthdayLoading ? "儲存中..." : "確認"}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setIsSettingBirthday(false);
+                                  setBirthdayInput("");
+                                  setBirthdayMessage("");
+                                }}
+                                className="min-h-[40px] text-[14px] text-[#888] hover:text-black"
+                              >
+                                取消
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <HoverUnderlineField
                       label="地址"
                       value={profileForm.address}
@@ -1785,53 +1873,14 @@ export default function AccountPage() {
                         {profileMessage}
                       </p>
                     )}
-                    {!customer?.birthday && (
-                      <div className="mt-4">
-                        {!isSettingBirthday ? (
-                          <button
-                            type="button"
-                            onClick={() => setIsSettingBirthday(true)}
-                            className="text-[13px] text-[#2a514d] underline underline-offset-2 hover:opacity-70"
-                          >
-                            設定生日（設定後無法修改）
-                          </button>
-                        ) : (
-                          <div className="space-y-3">
-                            <input
-                              type="date"
-                              value={birthdayInput}
-                              onChange={(e) => setBirthdayInput(e.target.value)}
-                              className="w-full border-0 border-b border-[#bbb] bg-transparent pb-2 text-sm outline-none focus:border-black"
-                            />
-                            <div className="flex gap-3">
-                              <button
-                                type="button"
-                                onClick={handleUpdateBirthday}
-                                disabled={birthdayLoading}
-                                className="bg-[#2a514d] px-4 py-2 text-[13px] text-white hover:bg-[#1e3d3a] disabled:opacity-50"
-                              >
-                                {birthdayLoading ? "儲存中..." : "確認"}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setIsSettingBirthday(false)}
-                                className="text-[13px] text-[#888] hover:text-black"
-                              >
-                                取消
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
                   </div>
                   <div>
                     {authProvider ? (
                       <>
-                        <div className="mb-6 inline-block bg-[#2a514d] px-6 py-2.5 text-[13px] font-medium tracking-wide text-white">
+                        <p className="mb-4 text-[15px] font-semibold tracking-wide text-black sm:text-[16px]">
                           登入方式
-                        </div>
-                        <p className="text-[14px] leading-relaxed text-[#333]">
+                        </p>
+                        <p className="text-[14px] leading-relaxed text-[#333] sm:text-[15px]">
                           您以{" "}
                           {authProvider === "google"
                             ? "Google"
@@ -1869,7 +1918,7 @@ export default function AccountPage() {
                                 }))
                               }
                               inputClassName={cn(
-                                "w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none focus:border-[#2a514d]",
+                                "w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[16px] text-black placeholder-[#aaa] outline-none focus:border-[#2a514d]",
                                 !passwordEditing && "cursor-default opacity-70",
                               )}
                             />
@@ -1887,7 +1936,7 @@ export default function AccountPage() {
                                 }))
                               }
                               inputClassName={cn(
-                                "w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none focus:border-[#2a514d]",
+                                "w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[16px] text-black placeholder-[#aaa] outline-none focus:border-[#2a514d]",
                                 !passwordEditing && "cursor-default opacity-70",
                               )}
                             />
@@ -1910,7 +1959,7 @@ export default function AccountPage() {
                                 }
                               }}
                               inputClassName={cn(
-                                "w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none focus:border-[#2a514d]",
+                                "w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[16px] text-black placeholder-[#aaa] outline-none focus:border-[#2a514d]",
                                 !passwordEditing && "cursor-default opacity-70",
                               )}
                             />
@@ -1929,7 +1978,7 @@ export default function AccountPage() {
                         )}
                         <Link
                           href="/forgot-password"
-                          className="mt-4 inline-block text-[13px] text-[#2a514d] underline underline-offset-2 hover:opacity-70"
+                          className="mt-4 inline-block text-[15px] text-[#2a514d] underline underline-offset-2 hover:opacity-70"
                         >
                           忘記密碼？前往重設
                         </Link>
@@ -1937,222 +1986,157 @@ export default function AccountPage() {
                     )}
                   </div>
                 </div>
-
-                {/* 獎勵與優惠券 */}
-                <div>
-                  <ShellCard title="獎勵與優惠券">
-                      <div className="flex flex-col gap-4">
-                        <div className="flex items-center justify-between border-b border-[#ebebeb] pb-3">
-                          <div className="min-w-0 pr-3">
-                            <p className="text-sm font-medium text-[#202223]">
-                              入會禮（購物金）
-                            </p>
-                            <p className="text-xs font-bold text-amber-600 mt-0.5">
-                              NT$ {membership?.welcomeGift ?? membership?.upgradeGift ?? 0}
-                            </p>
-                            <p className="text-[10px] text-[#6d7175] mt-0.5">
-                              單筆滿 NT$1,000 可使用 · 註冊後自動發放
-                            </p>
-                            {(() => {
-                              const welcome = availableCoupons.find(
-                                (c) =>
-                                  c.kind === "welcome" || c.kind === "legacy",
-                              );
-                              return welcome ? (
-                                <p className="mt-1.5 font-mono text-[12px] font-bold text-[#202223] break-all">
-                                  {String(welcome.code).toUpperCase()}
-                                </p>
-                              ) : null;
-                            })()}
-                          </div>
-                          {(membership?.welcomeGift ?? membership?.upgradeGift) ? (
-                            claimed.welcome ||
-                            availableCoupons.some(
-                              (c) =>
-                                c.kind === "welcome" || c.kind === "legacy",
-                            ) ? (
-                              <span className="px-3 py-1.5 rounded-md text-xs font-bold bg-gray-100 text-gray-400 border border-gray-200 shrink-0">
-                                已發放
-                              </span>
-                            ) : (
-                              <button
-                                onClick={() => handleClaim("welcome")}
-                                disabled={claimLoading.welcome}
-                                className="px-3 py-1.5 rounded-md text-xs font-bold transition-all border shadow-sm bg-white text-[#202223] border-[#c9cccf] hover:bg-[#f6f6f7] shrink-0"
-                              >
-                                {claimLoading.welcome ? "處理中..." : "領取入會禮"}
-                              </button>
-                            )
-                          ) : (
-                            <span className="text-xs text-[#6d7175]">—</span>
-                          )}
-                        </div>
-
-                        <div className="flex items-center justify-between border-b border-[#ebebeb] pb-3">
-                          <div className="min-w-0 pr-3">
-                            <p className="text-sm font-medium text-[#202223]">
-                              生日禮
-                            </p>
-                            <p className="text-xs font-bold text-rose-600 mt-0.5">
-                              {membership?.birthdayCredit ?? 0} 元
-                            </p>
-                            {(() => {
-                              const bday = availableCoupons.find(
-                                (c) => c.kind === "birthday",
-                              );
-                              return bday ? (
-                                <p className="mt-1.5 font-mono text-[12px] font-bold text-[#202223] break-all">
-                                  {String(bday.code).toUpperCase()}
-                                </p>
-                              ) : null;
-                            })()}
-                          </div>
-                          {customer?.birthday && membership?.birthdayCredit ? (
-                            claimed.birthday ||
-                            availableCoupons.some((c) => c.kind === "birthday") ? (
-                              <span className="px-3 py-1.5 rounded-md text-xs font-bold bg-gray-100 text-gray-400 border border-gray-200 shrink-0">
-                                已發放
-                              </span>
-                            ) : isCurrentMonthBirthday ? (
-                              <button
-                                onClick={() => handleClaim("birthday")}
-                                disabled={claimLoading.birthday}
-                                className="px-3 py-1.5 rounded-md text-xs font-bold transition-all border shadow-sm bg-white text-[#202223] border-[#c9cccf] hover:bg-[#f6f6f7] shrink-0"
-                              >
-                                {claimLoading.birthday ? "處理中..." : "領取好禮"}
-                              </button>
-                            ) : (
-                              <span className="text-[10px] bg-[#f9fafb] border border-[#e1e3e5] text-[#6d7175] px-2 py-1 rounded text-center whitespace-nowrap">
-                                限 {getBirthMonthLabel(customer.birthday)} 領取
-                              </span>
-                            )
-                          ) : null}
-                        </div>
-
-                        {claimMessage && (
-                          <div
-                            className={cn(
-                              "p-3 rounded-md border text-sm animate-in fade-in",
-                              claimStatus === "success"
-                                ? "bg-[#cbe5cc]/30 border-[#1c5c27]/20 text-[#1c5c27]"
-                                : "bg-rose-50 border-rose-200 text-rose-700",
-                            )}
-                          >
-                            <p className="font-bold">{claimMessage}</p>
-                            {claimedCode && (
-                              <p className="text-xs mt-1 font-mono bg-white/50 px-1.5 py-0.5 rounded border border-current w-fit break-all">
-                                折扣碼: {claimedCode}
-                              </p>
-                            )}
-                          </div>
-                        )}
-
-                        <div className="mt-1">
-                          <div className="flex justify-between items-center mb-3">
-                            <span className="text-sm font-bold text-[#202223]">
-                              可用優惠碼
-                            </span>
-                            <button
-                              onClick={loadAvailableCoupons}
-                              className="text-xs text-[#2c6ecb] hover:underline"
-                            >
-                              刷新清單
-                            </button>
-                          </div>
-                          <p className="text-[11px] text-[#6d7175] mb-3 leading-relaxed">
-                            入會禮、生日禮會自動發放至此。結帳時請手動輸入或複製折扣碼。
-                          </p>
-                          {availableLoading ? (
-                            <p className="text-xs text-[#6d7175] py-2">
-                              讀取中...
-                            </p>
-                          ) : filteredCoupons.length === 0 ? (
-                            <p className="text-xs text-[#6d7175] bg-[#f9fafb] p-3 rounded-md border border-[#e1e3e5] text-center leading-relaxed">
-                              目前沒有可用優惠碼。
-                              <br />
-                              新會員入會禮註冊後自動入帳；生日禮於生日月發放。
-                            </p>
-                          ) : (
-                            <div className="flex flex-col gap-2.5 w-full">
-                              {filteredCoupons.map((c) => {
-                                const kindText =
-                                  c.kindLabel ||
-                                  (c.kind === "welcome" || c.kind === "legacy"
-                                    ? "入會禮"
-                                    : c.kind === "birthday"
-                                      ? "生日禮"
-                                      : c.kind === "promo"
-                                        ? "活動優惠"
-                                        : c.kind === "ref_friend"
-                                          ? "推薦禮"
-                                          : "折扣券");
-                                const expiresLabel = c.expires
-                                  ? new Date(c.expires).toLocaleDateString(
-                                      "zh-TW",
-                                      {
-                                        year: "numeric",
-                                        month: "2-digit",
-                                        day: "2-digit",
-                                      },
-                                    )
-                                  : null;
-                                const minAmt =
-                                  Number(c.minimumAmount || 0) || 0;
-                                return (
-                                  <div
-                                    key={c.code}
-                                    className="border border-[#c9cccf] rounded-md p-3 bg-[#f9fafb] hover:shadow-sm w-full"
-                                  >
-                                    <div className="flex justify-between items-start gap-2">
-                                      <div className="min-w-0">
-                                        <div className="flex flex-wrap items-center gap-2">
-                                          <span className="inline-flex items-center rounded-full bg-white border border-[#e1e3e5] px-2 py-0.5 text-[10px] font-bold text-[#2a514d]">
-                                            {kindText}
-                                          </span>
-                                          <span className="font-bold text-rose-600 text-sm">
-                                            {formatMoneyNT(c.amount)}
-                                          </span>
-                                        </div>
-                                        <p className="mt-2 font-mono text-[13px] font-bold tracking-wide text-[#202223] break-all">
-                                          {String(c.code || "").toUpperCase()}
-                                        </p>
-                                        <p className="mt-1 text-[11px] text-[#6d7175] leading-relaxed">
-                                          {minAmt > 0
-                                            ? `滿 NT$${minAmt.toLocaleString()} 可用`
-                                            : "無最低消費"}
-                                          {expiresLabel
-                                            ? ` · 效期至 ${expiresLabel}`
-                                            : ""}
-                                        </p>
-                                      </div>
-                                      <button
-                                        type="button"
-                                        title="複製折扣碼"
-                                        onClick={() => {
-                                          navigator.clipboard.writeText(
-                                            String(c.code || "").toUpperCase(),
-                                          );
-                                          setClaimMessage("已複製折扣碼");
-                                          setClaimStatus("success");
-                                          setClaimedCode(
-                                            String(c.code || "").toUpperCase(),
-                                          );
-                                        }}
-                                        className="text-[#5c5f62] hover:text-[#008060] bg-white border border-[#c9cccf] p-2 rounded shadow-sm shrink-0"
-                                      >
-                                        <Copy size={16} />
-                                      </button>
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </ShellCard>
-                </div>
               </>
+            )}
+
+            {/* 優惠券 Tab */}
+            {activeTab === "coupons" && (
+              <div className="w-full">
+                <div className="mb-6 flex items-center justify-between gap-4">
+                  <h2 className="text-[18px] font-semibold tracking-wide text-black sm:text-[20px]">
+                    我的優惠券
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={loadAvailableCoupons}
+                    className="text-[13px] text-[#2a514d] underline-offset-2 hover:underline"
+                  >
+                    重新整理
+                  </button>
+                </div>
+
+                <div className="mb-6 flex gap-6 border-b border-[#ddd] sm:gap-8">
+                  {[
+                    { id: "usable", label: "可使用" },
+                    { id: "used", label: "已使用" },
+                    { id: "expired", label: "已過期" },
+                  ].map((item) => {
+                    const active = couponFilter === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => setCouponFilter(item.id)}
+                        className={cn(
+                          "relative pb-3 text-[14px] transition-colors sm:text-[15px]",
+                          active
+                            ? "font-semibold text-black"
+                            : "font-normal text-[#888] hover:text-black",
+                        )}
+                      >
+                        {item.label}
+                        {active && (
+                          <span className="absolute bottom-0 left-0 right-0 h-[2px] bg-black" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {availableLoading ? (
+                  <p className="py-12 text-center text-[14px] text-[#888]">
+                    讀取中...
+                  </p>
+                ) : filteredCoupons.length === 0 ? (
+                  <p className="py-12 text-center text-[14px] text-[#888]">
+                    {couponFilter === "usable"
+                      ? "目前沒有可使用的優惠券。"
+                      : couponFilter === "used"
+                        ? "目前沒有已使用的優惠券。"
+                        : "目前沒有已過期的優惠券。"}
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    {filteredCoupons.map((c) => {
+                      const code = String(c.code || "").toUpperCase();
+                      const name =
+                        c.kindLabel ||
+                        (c.kind === "welcome" || c.kind === "legacy"
+                          ? "入會禮"
+                          : c.kind === "birthday"
+                            ? Number(c.amount) >= 300
+                              ? "臻享會員生日禮"
+                              : "品牌好友生日禮"
+                            : "專屬優惠");
+                      const expiresLabel = c.expires
+                        ? new Date(c.expires).toLocaleDateString("zh-TW", {
+                            year: "numeric",
+                            month: "2-digit",
+                            day: "2-digit",
+                          })
+                        : "無期限";
+                      const minAmt = Number(c.minimumAmount || 0) || 0;
+                      const status =
+                        c.statusLabel ||
+                        (c.status === "used"
+                          ? "已使用"
+                          : c.status === "expired"
+                            ? "已過期"
+                            : "可使用");
+                      const copied = copiedCouponCode === code;
+                      return (
+                        <div
+                          key={code}
+                          className="border border-[#ddd] bg-white p-4 sm:p-5"
+                        >
+                          <div className="mb-3 flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p className="text-[15px] font-semibold text-black">
+                                {name}
+                              </p>
+                              <p className="mt-1 text-[18px] font-bold text-[#c0392b]">
+                                {formatMoneyNT(c.amount)}
+                              </p>
+                            </div>
+                            <span
+                              className={cn(
+                                "shrink-0 border px-2.5 py-1 text-[12px] font-medium",
+                                c.status === "usable"
+                                  ? "border-[#2a514d] text-[#2a514d]"
+                                  : "border-[#ccc] text-[#888]",
+                              )}
+                            >
+                              {status}
+                            </span>
+                          </div>
+                          <div className="space-y-1 text-[13px] text-[#555]">
+                            <p>
+                              使用門檻：
+                              {minAmt > 0
+                                ? `單筆滿 NT$${minAmt.toLocaleString()}`
+                                : "無最低消費"}
+                            </p>
+                            <p>有效期限：{expiresLabel}</p>
+                          </div>
+                          <div className="mt-4 flex items-center justify-between gap-3 border-t border-[#eee] pt-3">
+                            <p className="min-w-0 break-all font-mono text-[14px] font-bold tracking-wide text-black">
+                              {code}
+                            </p>
+                            <div className="relative shrink-0">
+                              <button
+                                type="button"
+                                title="複製折扣碼"
+                                onClick={() => handleCopyCoupon(code)}
+                                className="border border-[#ccc] bg-white p-2 text-[#555] transition-colors hover:border-[#2a514d] hover:text-[#2a514d]"
+                              >
+                                <Copy size={16} />
+                              </button>
+                              <span
+                                className={cn(
+                                  "pointer-events-none absolute -top-7 right-0 whitespace-nowrap text-[11px] text-[#2a514d] transition-opacity duration-200",
+                                  copied ? "opacity-100" : "opacity-0",
+                                )}
+                              >
+                                已複製
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             )}
 
             {/* 訂單 Tab 內容：兩層（列表 → 詳情） */}
@@ -2187,20 +2171,18 @@ export default function AccountPage() {
                     );
                   })()
                 ) : filteredOrders.length === 0 ? (
-                  <div className="py-16 text-center">
-                    <p className="text-sm text-[#888]">
-                      {searchQuery
-                        ? "找不到符合條件的訂單。"
-                        : "目前尚未有任何訂單紀錄。"}
+                  <div className="py-12 text-center sm:py-16">
+                    <p className="text-[15px] text-[#888]">
+                      目前尚未有任何訂單紀錄。
                     </p>
                   </div>
                 ) : (
                   <>
                     {/* Desktop / tablet table — 圖二 */}
                     <div className="hidden overflow-x-auto bg-white sm:block">
-                      <table className="w-full min-w-[680px] border-collapse text-center text-[13px]">
+                      <table className="w-full min-w-[680px] border-collapse text-center text-[15px]">
                         <thead>
-                          <tr className="border-y border-[#e5e5e5] text-[12px] text-[#aaaaaa]">
+                          <tr className="border-y border-[#e5e5e5] text-[13px] text-[#aaaaaa]">
                             <th className="px-3 py-3 font-normal">訂單編號</th>
                             <th className="px-3 py-3 font-normal">日期</th>
                             <th className="px-3 py-3 font-normal">狀態</th>
@@ -2214,7 +2196,7 @@ export default function AccountPage() {
                               key={o.id}
                               onClick={() => setSelectedOrderId(o.id)}
                               className={cn(
-                                "cursor-pointer border-b border-[#eeeeee] text-[13px] text-[#222] transition-colors hover:bg-[#f5f5f5]",
+                                "cursor-pointer border-b border-[#eeeeee] text-[15px] text-[#222] transition-colors hover:bg-[#f5f5f5]",
                                 idx % 2 === 1 ? "bg-[#fafafa]" : "bg-white",
                               )}
                             >
@@ -2247,7 +2229,7 @@ export default function AccountPage() {
                           className="flex w-full items-center justify-between gap-3 px-1 py-4 text-left"
                         >
                           <div className="min-w-0">
-                            <p className="text-[14px] font-medium text-black">
+                            <p className="text-[15px] font-medium text-black">
                               #{o.number || o.id}
                             </p>
                             <p className="mt-1 text-[12px] text-[#888]">
@@ -2259,7 +2241,7 @@ export default function AccountPage() {
                             </p>
                           </div>
                           <div className="flex shrink-0 items-center gap-1">
-                            <span className="text-[14px] font-medium">
+                            <span className="text-[15px] font-medium">
                               {formatMoneyNT(Number(o.total))}
                             </span>
                             <ChevronRight size={16} className="text-[#bbb]" />
@@ -2276,14 +2258,13 @@ export default function AccountPage() {
             {activeTab === "favorites" && (
               <div className="w-full">
                 {wishlistItems.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-20 gap-4 text-center">
-                    <WishlistIcon size={96} className="opacity-40" />
-                    <p className="text-sm text-[#888]">尚無收藏商品</p>
+                  <div className="flex flex-col items-center justify-center gap-3 py-10 text-center sm:gap-4 sm:py-14">
+                    <WishlistIcon size={80} className="opacity-40 sm:h-24" />
+                    <p className="text-[15px] text-[#888]">尚未收藏商品</p>
                     <Link
                       href="/products"
-                      className="mt-2 inline-flex items-center gap-2 bg-[#2a514d] px-6 py-2.5 text-sm text-white transition-colors hover:bg-[#1e3d3a]"
+                      className="mt-1 inline-flex items-center bg-[#2a514d] px-6 py-2.5 text-[15px] text-white transition-colors hover:bg-[#1e3d3a]"
                     >
-                      <HoverIcon name="cart" size={32} alt="" />
                       探索商品
                     </Link>
                   </div>
@@ -2314,7 +2295,7 @@ export default function AccountPage() {
                           <div className="mb-0 flex min-h-9 min-w-0 items-center justify-between gap-2">
                             <Link
                               href={`/products/${item.slug}`}
-                              className="flex min-w-0 flex-1 items-center break-words text-[12px] font-semibold leading-snug text-black line-clamp-2 hover:opacity-60 md:text-[13px]"
+                              className="flex min-w-0 flex-1 items-center break-words text-[14px] font-semibold leading-snug text-black line-clamp-2 hover:opacity-60 md:text-[15px]"
                             >
                               {item.name}
                             </Link>
@@ -2337,7 +2318,7 @@ export default function AccountPage() {
                             </div>
                           )}
 
-                          <p className="pt-0.5 text-[12px] font-bold text-[#222] md:text-[13px]">
+                          <p className="pt-0.5 text-[14px] font-bold text-[#222] md:text-[15px]">
                             {formatProductPrice(item.price)}
                           </p>
                         </div>
