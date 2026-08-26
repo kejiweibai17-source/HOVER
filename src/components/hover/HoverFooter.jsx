@@ -216,7 +216,9 @@ function splitFooterLegal(copyright = "", companyInfo = "") {
   const match = copyright.match(/^(©\s*.*?All Rights Reserved\.?)\s*(.*)$/i);
   const shortCopyright = (match?.[1] || copyright).trim();
   const fromCopyright = (match?.[2] || "").trim();
-  const company = (companyInfo || fromCopyright).trim();
+  const company = (companyInfo || fromCopyright)
+    .replace(/^[·.•]\s*/, "")
+    .trim();
   return { shortCopyright, company };
 }
 
@@ -378,11 +380,6 @@ export default function HoverFooter() {
         <div className="hidden pb-10 pt-16 text-center text-[12px] leading-relaxed tracking-[0.04em] text-white/70 md:mt-10 md:text-[13px] lg:block lg:pb-12 lg:pt-10">
           <p className="inline-flex flex-wrap items-center justify-center gap-x-2">
             {shortCopyright && <span>{shortCopyright}</span>}
-            {company && shortCopyright && (
-              <span className="text-white/40" aria-hidden>
-                ·
-              </span>
-            )}
             {company && <span>{company}</span>}
           </p>
         </div>

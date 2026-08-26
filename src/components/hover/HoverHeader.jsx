@@ -28,8 +28,8 @@ const SCROLL_TOP_THRESHOLD = 20;
  * PNG／SVG 有透明留白，繪製尺寸需略大於字級才會看起來一樣高。
  */
 const HEADER_ICON = {
-  mobile: { box: 32, search: 22, cart: 22 },
-  desktop: { box: 34, search: 22, wishlist: 24, cart: 22, member: 22 },
+  mobile: { box: 32, glyph: 22 },
+  desktop: { box: 34, glyph: 22 },
 };
 
 function HeaderIconButton({ children, className = "", ...props }) {
@@ -294,7 +294,7 @@ export default function HoverHeader({
             >
               <HoverIcon
                 name="search"
-                size={HEADER_ICON.mobile.search}
+                size={HEADER_ICON.mobile.glyph}
                 alt="搜尋"
               />
             </HeaderIconButton>
@@ -310,7 +310,7 @@ export default function HoverHeader({
               }}
               onClick={() => setMenuOpen(false)}
             >
-              <CartIcon count={cartCount} size={HEADER_ICON.mobile.cart} />
+              <CartIcon count={cartCount} size={HEADER_ICON.mobile.glyph} />
             </Link>
           </div>
         </div>
@@ -364,10 +364,32 @@ export default function HoverHeader({
               >
                 <HoverIcon
                   name="search"
-                  size={HEADER_ICON.desktop.search}
+                  size={HEADER_ICON.desktop.glyph}
                   alt="搜尋"
                 />
               </HeaderIconButton>
+              <Link
+                href="/account"
+                aria-label={loggedIn ? "會員中心（已登入）" : "會員登入"}
+                title={loggedIn ? "已登入" : "會員登入"}
+                className="relative flex shrink-0 items-center justify-center text-black transition-opacity hover:opacity-50"
+                style={{
+                  width: HEADER_ICON.desktop.box,
+                  height: HEADER_ICON.desktop.box,
+                }}
+              >
+                <HoverIcon
+                  name="member"
+                  size={HEADER_ICON.desktop.glyph}
+                  alt="會員"
+                />
+                {loggedIn ? (
+                  <span
+                    className="absolute right-0 top-0 h-1.5 w-1.5 rounded-full bg-[#2a514d] ring-1 ring-white"
+                    aria-hidden
+                  />
+                ) : null}
+              </Link>
               <HeaderIconButton
                 aria-label="收藏"
                 className="relative transition-opacity hover:opacity-50"
@@ -386,7 +408,7 @@ export default function HoverHeader({
                   }
                 }}
               >
-                <WishlistIcon size={HEADER_ICON.desktop.wishlist} />
+                <WishlistIcon size={HEADER_ICON.desktop.glyph} />
               </HeaderIconButton>
               <Link
                 href="/cart"
@@ -399,29 +421,7 @@ export default function HoverHeader({
                   height: HEADER_ICON.desktop.box,
                 }}
               >
-                <CartIcon count={cartCount} size={HEADER_ICON.desktop.cart} />
-              </Link>
-              <Link
-                href="/account"
-                aria-label={loggedIn ? "會員中心（已登入）" : "會員登入"}
-                title={loggedIn ? "已登入" : "會員登入"}
-                className="relative flex shrink-0 items-center justify-center text-black transition-opacity hover:opacity-50"
-                style={{
-                  width: HEADER_ICON.desktop.box,
-                  height: HEADER_ICON.desktop.box,
-                }}
-              >
-                <HoverIcon
-                  name="member"
-                  size={HEADER_ICON.desktop.member}
-                  alt="會員"
-                />
-                {loggedIn ? (
-                  <span
-                    className="absolute right-0 top-0 h-1.5 w-1.5 rounded-full bg-[#2a514d] ring-1 ring-white"
-                    aria-hidden
-                  />
-                ) : null}
+                <CartIcon count={cartCount} size={HEADER_ICON.desktop.glyph} />
               </Link>
             </div>
           </div>
