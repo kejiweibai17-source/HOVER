@@ -39,10 +39,68 @@ export function cn(...classes: (string | undefined | null | false)[]) {
   return classes.filter(Boolean).join(" ");
 }
 
-/** 商品價錢顯示：NT. 1680 */
-export function formatProductPrice(value: string | number | null | undefined): string {
-  const n = Math.round(Number(String(value ?? "").replace(/[^\d.-]/g, "")) || 0);
-  return `NT. ${n}`;
+/**
+ * 全站金額格式：NT.1,680（NT. 與數字不留空白，千分位逗號）
+ * 例：NT.850、NT.1,680
+ */
+export function formatProductPrice(
+  value: string | number | null | undefined,
+): string {
+  const n = Math.round(
+    Number(String(value ?? "").replace(/[^\d.-]/g, "")) || 0,
+  );
+  const abs = Math.abs(n);
+  const body = `NT.${abs.toLocaleString("en-US")}`;
+  return n < 0 ? `-${body}` : body;
+}
+
+/** 結帳頁選項文案（寫入訂單／前台顯示共用） */
+export const SHIPPING_LABEL_711 = "7-11超商僅取貨";
+export const SHIPPING_LABEL_FAMILY = "全家超商僅取貨";
+
+/**
+ * 配送方式顯示：對齊結帳選項，隱藏「綠界物流」字樣
+ */
+export function formatShippingMethodLabel(
+  methodTitle?: string | null,
+  methodId?: string | null,
+): string {
+  const title = String(methodTitle || "");
+  const id = String(methodId || "").toLowerCase();
+  const raw = `${id} ${title}`.toLowerCase();
+
+  if (
+    /711|7-?11|7-eleven|統一超商/.test(raw) ||
+    id.includes("cvs_711")
+  ) {
+    return SHIPPING_LABEL_711;
+  }
+  if (
+    /全家|family|fami/.test(raw) ||
+    id.includes("cvs_family") ||
+    id.includes("cvs_fami")
+  ) {
+    return SHIPPING_LABEL_FAMILY;
+  }
+  if (/萊爾富|hilife/.test(raw)) return "萊爾富超商僅取貨";
+  if (/ok\s*超商|okmart/.test(raw)) return "OK超商僅取貨";
+  if (/宅配|黑貓|tcat|home/.test(raw)) return "宅配";
+
+  // 去掉「綠界物流」前綴後回傳
+  const cleaned = title
+    .replace(/綠界物流\s*/g, "")
+    .replace(/超商取貨\s*/g, "超商僅取貨 ")
+    .trim();
+  return cleaned || title || "—";
+}
+
+/** ATM 虛擬帳號銀行顯示（綠界預設第一銀行 007） */
+export const ATM_BANK_DISPLAY = "第一商業銀行（007）";
+
+export function formatAtmBankLabel(bankCode?: string | null): string {
+  const code = String(bankCode || "").replace(/\D/g, "");
+  if (!code || code === "007") return ATM_BANK_DISPLAY;
+  return `銀行代碼 ${code}`;
 }
 
 /**

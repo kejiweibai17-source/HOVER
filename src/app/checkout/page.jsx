@@ -4,6 +4,7 @@
 import React, { useMemo, useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Tag, CheckCircle2 } from "lucide-react"; // 加入 CheckCircle2
+import { formatProductPrice } from "@/lib/utils";
 
 /* ====== 假資料（可改成 cartStore 實際資料） ====== */
 const INIT_ITEMS = [
@@ -20,8 +21,7 @@ const INIT_ITEMS = [
 ];
 
 /* ====== 金額工具 ====== */
-const currency = (n) =>
-  `NT$${(Math.round(n * 100) / 100).toLocaleString("zh-TW")}`;
+const currency = (n) => formatProductPrice(n);
 
 // ✅ 修正計算邏輯：加入 couponDiscount 參數
 function calcPricing(
@@ -169,7 +169,7 @@ function SummaryPanel({
                     />
                     <div>
                       <p className="text-sm font-bold text-gray-800">
-                        折抵 NT$ {c.amount}
+                        折抵 {formatProductPrice(c.amount)}
                       </p>
                       <p className="text-xs text-gray-500 mt-0.5">
                         {c.description || "專屬禮金折扣"}

@@ -12,11 +12,11 @@ import {
   keyOf,
   type CartItem,
 } from "@/lib/cartStore";
+import { formatProductPrice } from "@/lib/utils";
 import { shippingFeeFor, type ShippingSettings } from "@/lib/shippingDefaults";
 import { useShippingSettings } from "@/lib/useShippingSettings";
 
-const currency = (n: number) =>
-  `NT$ ${(Math.round(n || 0)).toLocaleString("zh-TW")}`;
+const currency = (n: number) => formatProductPrice(n);
 
 function calcTotals(items: CartItem[], shippingSettings: ShippingSettings) {
   const subtotal = items.reduce(

@@ -31,6 +31,7 @@ import {
   isValidTwTaxId,
   normalizeMobileCarrier,
 } from "@/lib/invoicePreference";
+import { formatProductPrice } from "@/lib/utils";
 
 // ✅ 內建輕量版：台灣縣市與鄉鎮區字典
 const TW_CITIES = {
@@ -422,8 +423,7 @@ const TW_CITIES = {
   連江縣: ["南竿鄉", "北竿鄉", "莒光鄉", "東引鄉"],
 };
 
-const currency = (n) =>
-  `NT. ${(Math.round((Number(n) || 0) * 100) / 100).toLocaleString("zh-TW")}`;
+const currency = (n) => formatProductPrice(n);
 
 // HOVER 會員折扣（FRIENDS 無折扣 / EXCLUSIVE 正價 95 折）
 const TIER_DISCOUNTS = {
@@ -1016,6 +1016,12 @@ function CartStep({
                 ✓ 已達免運門檻
               </p>
             )}
+            <Link
+              href="/products"
+              className="mt-3 block text-center text-[12px] text-[#555] transition-opacity hover:opacity-70"
+            >
+              繼續購物 →
+            </Link>
           </div>
         </aside>
       </div>
@@ -1752,7 +1758,7 @@ function CheckoutStep({
                               {kindText}
                             </span>
                             <span className="text-[12px] font-semibold text-black">
-                              折抵 NT${Number(c.amount || 0).toLocaleString()}
+                              折抵 {formatProductPrice(c.amount)}
                             </span>
                           </div>
                           <p className="mt-1 font-mono text-[12px] font-bold tracking-wide text-[#202223]">
@@ -1760,8 +1766,7 @@ function CheckoutStep({
                           </p>
                           {Number(c.minimumAmount || 0) > 0 && (
                             <p className="mt-0.5 text-[10px] text-[#888]">
-                              滿 NT$
-                              {Number(c.minimumAmount).toLocaleString()} 可用
+                              滿 {formatProductPrice(c.minimumAmount)} 可用
                               · 點此套用
                             </p>
                           )}

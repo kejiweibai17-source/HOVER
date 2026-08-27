@@ -10,13 +10,32 @@ import Image from "next/image";
 import { Link } from "next-view-transitions";
 import { useRouter } from "next/navigation";
 import { useWishlistStore } from "@/lib/wishlistStore";
-import { formatProductPrice } from "@/lib/utils";
+import {
+  formatProductPrice,
+  formatShippingMethodLabel,
+  formatAtmBankLabel,
+} from "@/lib/utils";
+import {
+  invoicePreferenceFromOrderMeta,
+  getInvoiceTypeLabel,
+  getInvoiceTypeDetail,
+} from "@/lib/invoicePreference";
 import { motion, AnimatePresence } from "framer-motion";
 import { usePathname } from "next/navigation";
 import HoverIcon from "@/components/hover/HoverIcon";
 import WishlistIcon from "@/components/hover/WishlistIcon";
 import { PasswordInput } from "@/components/hover/AuthField";
 import { useShippingSettings } from "@/lib/useShippingSettings";
+import {
+  getOrderStatusLabel as resolveOrderStatusLabel,
+  resolveOrderAction,
+  getOrderActionLabel,
+  getOrderActionHref,
+  getOrderActionVariant,
+  buildReturnLineUrl,
+  buildReturnLineQrImageUrl,
+  buildReturnLineBridgePath,
+} from "@/lib/orderActions";
 import {
   Home,
   Package,
@@ -47,10 +66,10 @@ function cn(...arr) {
   return arr.filter(Boolean).join(" ");
 }
 function formatMoneyNT(n) {
-  return `NT$ ${Number(n || 0).toLocaleString("zh-TW")}`;
+  return formatProductPrice(n);
 }
 function formatMoneyDot(n) {
-  return `NT.${Number(n || 0).toLocaleString("zh-TW")}`;
+  return formatProductPrice(n);
 }
 function formatOrderDate(value, withTime = false) {
   if (!value) return "—";
@@ -65,32 +84,10 @@ function formatOrderDate(value, withTime = false) {
   return `${y}/${String(m).padStart(2, "0")}/${String(day).padStart(2, "0")} ${hh}:${mm}`;
 }
 function getOrderStatusLabel(orderOrStatus) {
-  const order =
-    orderOrStatus && typeof orderOrStatus === "object" ? orderOrStatus : null;
-  const s = String(order ? order.status : orderOrStatus || "").toLowerCase();
-  const phase = String(order?.logistics_phase || "").toLowerCase();
-  const statusKey = s.replace(/_/g, "-");
-
-  if (s === "cancelled" || s === "canceled") return "已取消";
-  if (s === "refunded") return "已退款";
-  if (s === "failed") return "失敗";
-  if (s === "pending" || s === "on-hold" || s === "待付款" || s === "waiting-payment")
-    return "待付款";
-
-  // 綠界／RY 貨態 meta 優先
-  if (phase === "arrived" || phase === "picked") return "已到貨";
-  if (phase === "unclaimed") return "逾期未取";
-  if (phase === "shipped") return "已出貨";
-
-  // RY Tools 訂單狀態 slug（無 meta 時也能顯示）
-  if (statusKey.includes("at-cvs") || statusKey.includes("wait-pick")) return "已到貨";
-  if (statusKey.includes("out-cvs") || statusKey.includes("overdue")) return "逾期未取";
-  if (statusKey.includes("transport")) return "已出貨";
-
-  // 後台手動標「完成」＝已出貨（尚無物流到貨回報時）
-  if (s === "completed") return "已出貨";
-  if (s === "processing" || s === "paid") return "處理中";
-  return (order ? order.status : orderOrStatus) || "—";
+  if (orderOrStatus && typeof orderOrStatus === "object") {
+    return resolveOrderStatusLabel(orderOrStatus);
+  }
+  return resolveOrderStatusLabel({ status: orderOrStatus });
 }
 function getPaymentStatusLabel(order) {
   const s = String(order?.status || "").toLowerCase();
@@ -116,12 +113,71 @@ function getMetaValue(metaData, keys = []) {
 }
 function getItemVariantText(item) {
   const metas = Array.isArray(item?.meta_data) ? item.meta_data : [];
-  const values = metas
-    .map((m) => String(m?.value || "").trim())
-    .filter(Boolean);
-  return values.join(" / ");
+  const sizeKeys = /尺寸|size|pa_size|pa_尺寸/i;
+  const colorKeys = /顏色|color|colour|pa_color|pa_顏色|pa_colour/i;
+  const skipKeys = /^(variant|_reduced_stock|數量|qty|quantity)$/i;
+
+  let size = "";
+  let color = "";
+  const extras = [];
+
+  for (const m of metas) {
+    const key = String(m?.key || "").trim();
+    const raw = String(m?.value || "").trim();
+    if (!raw || skipKeys.test(key)) continue;
+
+    if (sizeKeys.test(key) && !size) {
+      size = raw;
+      continue;
+    }
+    if (colorKeys.test(key) && !color) {
+      color = raw;
+      continue;
+    }
+
+    // 合併欄位（如 "S / 黑"）
+    if (/variant|規格|選項/i.test(key) || /\s*\/\s*/.test(raw)) {
+      const parts = raw
+        .split(/\s*\/\s*|\s*,\s*/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      for (const p of parts) {
+        if (!size && /^[XSML]{1,3}$/i.test(p)) size = p;
+        else if (!color && !/^\d+$/.test(p)) color = color || p;
+        else if (p !== size && p !== color) extras.push(p);
+      }
+      continue;
+    }
+
+    if (!/^\d+$/.test(raw)) extras.push(raw);
+  }
+
+  const parts = [size, color, ...extras].filter(Boolean);
+  // 去重（保留順序）
+  const seen = new Set();
+  const unique = [];
+  for (const p of parts) {
+    const k = p.toLowerCase();
+    if (seen.has(k)) continue;
+    seen.add(k);
+    unique.push(p);
+  }
+  return unique.join(" / ");
 }
-const formatNTD = (val) => "NT$" + Math.round(val || 0).toLocaleString("zh-TW");
+
+/** 商品名若已含尺寸／顏色，剝掉以免與第二行重複 */
+function getItemDisplayName(item) {
+  const name = String(item?.name || "").trim();
+  const variant = getItemVariantText(item);
+  if (!name || !variant) return name;
+  const esc = variant.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s*\/\s*/g, "\\s*[\\/,]\\s*");
+  return name
+    .replace(new RegExp(`\\s*[\\-–—]?\\s*${esc}\\s*$`, "i"), "")
+    .replace(/\s*[\-–—]\s*$/, "")
+    .trim() || name;
+}
+
+const formatNTD = (val) => formatProductPrice(val);
 function codeUpper(code) {
   return String(code || "")
     .trim()
@@ -414,7 +470,156 @@ function HoverSectionAction({ children, onClick, disabled = false }) {
   );
 }
 
-const HOVER_LINE_URL = "https://line.me/R/ti/p/@330kefmm";
+function isLikelyMobileDevice() {
+  if (typeof window === "undefined") return false;
+  const coarse = window.matchMedia?.("(pointer: coarse)")?.matches;
+  const narrow = window.matchMedia?.("(max-width: 768px)")?.matches;
+  const ua = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+  return Boolean(coarse || narrow || ua);
+}
+
+function ReturnLineModal({ order, open, onClose }) {
+  const lineUrl = buildReturnLineUrl(order);
+  const bridgeUrl =
+    typeof window !== "undefined"
+      ? `${window.location.origin}${buildReturnLineBridgePath(order)}`
+      : buildReturnLineBridgePath(order);
+  const qrUrl = buildReturnLineQrImageUrl(bridgeUrl, 280);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => {
+      if (e.key === "Escape") onClose?.();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
+  if (!open) return null;
+
+  return (
+    <div
+      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+      role="presentation"
+    >
+      <div
+        className="relative z-[10000] w-full max-w-[380px] bg-white p-6 text-center shadow-xl"
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="申請退貨 LINE"
+      >
+        <h3 className="text-[17px] font-semibold text-black">申請退貨</h3>
+        <p className="mt-2 text-[13px] leading-relaxed text-[#666]">
+          請用手機打開 LINE／相機掃描下方 QR Code，將自動帶入退貨訂單資訊。
+        </p>
+
+        <div className="mx-auto mt-5 flex h-[280px] w-[280px] items-center justify-center rounded border border-[#eee] bg-white p-2">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={qrUrl}
+            alt="申請退貨 LINE QR Code"
+            width={280}
+            height={280}
+            className="h-[260px] w-[260px]"
+          />
+        </div>
+
+        <a
+          href={lineUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-5 inline-flex h-11 w-full items-center justify-center bg-[#2a514d] px-4 text-[13px] text-white transition-opacity hover:opacity-90"
+        >
+          已安裝 LINE？直接開啟
+        </a>
+        <button
+          type="button"
+          onClick={onClose}
+          className="mt-4 text-[13px] text-[#888] underline underline-offset-2"
+        >
+          關閉
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function OrderActionButton({
+  order,
+  onCancel,
+  cancelling = false,
+  className = "",
+  fullWidth = false,
+}) {
+  const [returnOpen, setReturnOpen] = useState(false);
+  const kind = resolveOrderAction(order);
+  const label = getOrderActionLabel(kind);
+  const variant = getOrderActionVariant(kind);
+  const base = cn(
+    "inline-flex h-10 items-center justify-center px-5 text-[13px] tracking-wide transition-opacity",
+    fullWidth ? "w-full" : "shrink-0",
+    variant === "primary"
+      ? "bg-[#2a514d] text-white hover:opacity-90"
+      : "border border-[#2a514d] bg-white text-[#2a514d] hover:bg-[#f4f8f7]",
+    className,
+  );
+
+  if (kind === "cancel") {
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          onCancel?.(order);
+        }}
+        disabled={cancelling}
+        className={cn(base, "disabled:cursor-not-allowed disabled:opacity-50")}
+      >
+        {cancelling ? "取消中…" : label}
+      </button>
+    );
+  }
+
+  if (kind === "return") {
+    return (
+      <>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (isLikelyMobileDevice()) {
+              window.open(buildReturnLineUrl(order), "_blank", "noopener,noreferrer");
+              return;
+            }
+            setReturnOpen(true);
+          }}
+          className={base}
+        >
+          {label}
+        </button>
+        <ReturnLineModal
+          order={order}
+          open={returnOpen}
+          onClose={() => setReturnOpen(false)}
+        />
+      </>
+    );
+  }
+
+  return (
+    <a
+      href={getOrderActionHref(order, kind)}
+      target="_blank"
+      rel="noopener noreferrer"
+      onClick={(e) => e.stopPropagation()}
+      className={base}
+    >
+      {label}
+    </a>
+  );
+}
 
 function OrderStatusBadge({ label }) {
   return (
@@ -468,7 +673,14 @@ function isAtmPaymentOrder(order) {
   );
 }
 
-function OrderDetail({ order, onBack, onRefreshPayment, refreshing = false }) {
+function OrderDetail({
+  order,
+  onBack,
+  onRefreshPayment,
+  onCancelOrder,
+  cancelling = false,
+  refreshing = false,
+}) {
   const shippingSettings = useShippingSettings();
   const shipping = order.shipping || {};
   const billing = order.billing || {};
@@ -497,8 +709,10 @@ function OrderDetail({ order, onBack, onRefreshPayment, refreshing = false }) {
     shipping.address_2 || billing.address_2,
   ].filter(Boolean);
   const homeAddress = addressParts.join("") || "—";
-  const shippingMethod =
-    order.shipping_lines?.[0]?.method_title || "依訂單配送方式";
+  const shippingMethod = formatShippingMethodLabel(
+    order.shipping_lines?.[0]?.method_title,
+    order.shipping_lines?.[0]?.method_id,
+  );
   const isCvs =
     Boolean(storeId || storeName) ||
     /超商|cvs|全家|7-?11|萊爾富|ok/i.test(shippingMethod);
@@ -508,16 +722,42 @@ function OrderDetail({ order, onBack, onRefreshPayment, refreshing = false }) {
     (sum, item) => sum + Number(item.subtotal || item.total || 0),
     0,
   );
-  const freeNote =
-    shippingTotal === 0 || discountTotal > 0
-      ? `滿 NT.2,000 免運`
-      : "";
-  const discountDisplay =
-    discountTotal > 0
-      ? discountTotal
-      : shippingTotal === 0
-        ? Number(shippingSettings.homeDeliveryFee || shippingSettings.cvsFee || 85)
-        : 0;
+
+  // 結帳折扣多半寫在 fee_lines（折扣碼 HOVER100…），不是 discount_total
+  const feeLines = Array.isArray(order.fee_lines) ? order.fee_lines : [];
+  const discountRows = [];
+  for (const fee of feeLines) {
+    const amount = Number(fee?.total || 0);
+    if (!(amount < 0)) continue;
+    const name = String(fee?.name || "折扣").trim();
+    const codeMatch = name.match(/折扣碼\s+(.+)$/i);
+    const label = codeMatch
+      ? `折扣（${codeMatch[1].trim()}）`
+      : name.startsWith("折扣")
+        ? name
+        : `折扣（${name}）`;
+    discountRows.push({ label, amount: Math.abs(amount) });
+  }
+  if (discountTotal > 0) {
+    const codes = (order.coupon_lines || [])
+      .map((c) => String(c?.code || "").trim())
+      .filter(Boolean);
+    discountRows.push({
+      label: codes.length ? `折扣（${codes.join("、")}）` : "折扣",
+      amount: discountTotal,
+    });
+  }
+  // 免運優惠：運費為 0 時顯示節省的運費（與設計稿一致）
+  const waivedShipping =
+    shippingTotal === 0
+      ? Number(shippingSettings.homeDeliveryFee || shippingSettings.cvsFee || 85)
+      : 0;
+  if (waivedShipping > 0) {
+    discountRows.push({
+      label: "折扣（滿 NT.2,000 免運）",
+      amount: waivedShipping,
+    });
+  }
   const orderStatusLabel = getOrderStatusLabel(order);
   const paymentStatusLabel = getPaymentStatusLabel(order);
   const paymentTitle = order.payment_method_title || "—";
@@ -526,6 +766,9 @@ function OrderDetail({ order, onBack, onRefreshPayment, refreshing = false }) {
   const paidAt = isUnpaid
     ? "—"
     : formatOrderDate(order.date_paid || order.date_created, true);
+  const invoicePref = invoicePreferenceFromOrderMeta(order.meta_data);
+  const invoiceTypeLabel = getInvoiceTypeLabel(invoicePref.type);
+  const invoiceTypeDetail = getInvoiceTypeDetail(invoicePref);
   const invoiceDate = formatOrderDate(
     order.date_paid || order.date_created,
     false,
@@ -542,7 +785,7 @@ function OrderDetail({ order, onBack, onRefreshPayment, refreshing = false }) {
 
   const InfoRow = ({ label, children, className = "", valueClassName = "" }) => (
     <div className={cn("flex items-start justify-between gap-4 py-2.5", className)}>
-      <span className="w-[88px] shrink-0 text-[13px] text-[#8a8a8a]">{label}</span>
+      <span className="w-[100px] shrink-0 text-[13px] text-[#8a8a8a]">{label}</span>
       <div
         className={cn(
           "min-w-0 flex-1 text-right text-[13px] leading-relaxed text-[#222]",
@@ -572,18 +815,20 @@ function OrderDetail({ order, onBack, onRefreshPayment, refreshing = false }) {
 
   const AtmRemittanceBlock = ({ compact = false, side = false }) => {
     if (!showAtmRemittance && !showAtmPendingHint) return null;
+    const tip = isUnpaid
+      ? "請於繳費期限內完成付款，逾期訂單將自動取消。"
+      : "付款已完成，我們將依訂單順序安排出貨。";
+
     return (
       <div
         className={cn(
-          compact && "mt-3 space-y-2 border-t border-[#f0f0f0] pt-3",
-          side && "space-y-3",
-          !compact && !side && "mt-4 space-y-3 border-t border-[#eee] pt-4",
+          compact && "mt-3 border-t border-[#f0f0f0] pt-3",
+          side && "",
+          !compact && !side && "mt-4 border-t border-[#eee] pt-4",
         )}
       >
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-[13px] font-semibold tracking-[0.04em] text-black">
-            匯款資訊
-          </p>
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <p className="text-[15px] font-semibold text-black">匯款資訊</p>
           {showAtmPendingHint && typeof onRefreshPayment === "function" ? (
             <button
               type="button"
@@ -596,36 +841,22 @@ function OrderDetail({ order, onBack, onRefreshPayment, refreshing = false }) {
           ) : null}
         </div>
         {showAtmRemittance ? (
-          <div className="space-y-2 text-[13px] leading-relaxed text-black">
-            <p>
-              <span className="text-[#888]">應付金額</span>
-              <span className="ml-3 font-medium">
-                {formatMoneyDot(order.total)}
-              </span>
-            </p>
-            {payInfo.bank_code ? (
-              <p>
-                <span className="text-[#888]">銀行代碼</span>
-                <span className="ml-3">{payInfo.bank_code}</span>
-              </p>
-            ) : null}
-            <p>
-              <span className="text-[#888]">虛擬帳號</span>
-              <span className="ml-3 tracking-wide">{payInfo.atm_account}</span>
-            </p>
+          <div className="divide-y divide-[#f0f0f0]">
+            <InfoRow label="應付金額">
+              <span className="font-medium">{formatMoneyDot(order.total)}</span>
+            </InfoRow>
+            <InfoRow label="銀行">
+              {formatAtmBankLabel(payInfo.bank_code)}
+            </InfoRow>
+            <InfoRow label="虛擬帳號">
+              <span className="tracking-wide">{payInfo.atm_account}</span>
+            </InfoRow>
             {payInfo.expire_date ? (
-              <p>
-                <span className="text-[#888]">繳費期限</span>
-                <span className="ml-3">{payInfo.expire_date}</span>
-              </p>
+              <InfoRow label="繳費期限">{payInfo.expire_date}</InfoRow>
             ) : null}
-            {isUnpaid ? (
-              <p className="text-[12px] text-[#888]">
-                請於期限內完成轉帳。完成後點「更新」即可同步付款狀態。
-              </p>
-            ) : (
-              <p className="text-[12px] text-[#2a514d]">此筆訂單已確認付款。</p>
-            )}
+            <p className="pt-3 text-[12px] leading-relaxed text-[#2a514d]">
+              {tip}
+            </p>
           </div>
         ) : (
           <p className="text-[12px] text-[#888]">
@@ -676,14 +907,13 @@ function OrderDetail({ order, onBack, onRefreshPayment, refreshing = false }) {
           </InfoRow>
         </div>
         <div className="px-4 pb-4 pt-2">
-          <a
-            href={HOVER_LINE_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex h-11 w-full items-center justify-center rounded-md bg-[#2a514d] text-[14px] tracking-wide text-white transition-opacity hover:opacity-90"
-          >
-            聯繫客服
-          </a>
+          <OrderActionButton
+            order={order}
+            onCancel={onCancelOrder}
+            cancelling={cancelling}
+            fullWidth
+            className="h-11 rounded-md text-[14px]"
+          />
         </div>
       </section>
 
@@ -718,14 +948,12 @@ function OrderDetail({ order, onBack, onRefreshPayment, refreshing = false }) {
               </p>
             </div>
           </div>
-          <a
-            href={HOVER_LINE_URL}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex h-11 shrink-0 items-center justify-center bg-[#2a514d] px-6 text-[13px] tracking-wide text-white transition-opacity hover:opacity-85"
-          >
-            聯繫客服
-          </a>
+          <OrderActionButton
+            order={order}
+            onCancel={onCancelOrder}
+            cancelling={cancelling}
+            className="h-11 px-6"
+          />
         </div>
       </section>
 
@@ -736,6 +964,7 @@ function OrderDetail({ order, onBack, onRefreshPayment, refreshing = false }) {
           <div className="space-y-4">
             {(order.line_items || []).map((item, index) => {
               const variant = getItemVariantText(item);
+              const displayName = getItemDisplayName(item);
               return (
                 <div
                   key={`${order.id}-m-${index}`}
@@ -745,7 +974,7 @@ function OrderDetail({ order, onBack, onRefreshPayment, refreshing = false }) {
                     {item.image ? (
                       <Image
                         src={item.image}
-                        alt={item.name}
+                        alt={displayName}
                         fill
                         sizes="72px"
                         className="object-cover"
@@ -758,22 +987,19 @@ function OrderDetail({ order, onBack, onRefreshPayment, refreshing = false }) {
                   </div>
                   <div className="flex min-w-0 flex-1 flex-col justify-between">
                     <div className="min-w-0">
-                      <p className="text-[14px] font-medium leading-snug text-black">
-                        {item.name}
-                      </p>
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-[14px] font-medium leading-snug text-black">
+                          {displayName}
+                        </p>
+                        <p className="shrink-0 text-[14px] font-medium text-black">
+                          {formatMoneyDot(item.total)}
+                        </p>
+                      </div>
                       {variant ? (
                         <p className="mt-1 text-[12px] text-[#888]">
                           {variant.replace(/\s*\/\s*/g, " / ")}
                         </p>
                       ) : null}
-                    </div>
-                    <div className="mt-2 flex items-end justify-between gap-2">
-                      <p className="text-[12px] text-[#888]">
-                        數量：{item.quantity}
-                      </p>
-                      <p className="shrink-0 text-[14px] font-medium text-black">
-                        {formatMoneyDot(item.total)}
-                      </p>
                     </div>
                   </div>
                 </div>
@@ -790,16 +1016,24 @@ function OrderDetail({ order, onBack, onRefreshPayment, refreshing = false }) {
               <span className="text-[#8a8a8a]">運費</span>
               <span>{formatMoneyDot(shippingTotal)}</span>
             </div>
-            <div className="flex justify-between gap-4">
-              <span className="text-[#8a8a8a]">
-                折扣{freeNote ? `（${freeNote}）` : ""}
-              </span>
-              <span className="text-[#2a514d]">
-                {discountDisplay > 0
-                  ? `-${formatMoneyDot(discountDisplay)}`
-                  : formatMoneyDot(0)}
-              </span>
-            </div>
+            {discountRows.length > 0 ? (
+              discountRows.map((row, i) => (
+                <div
+                  key={`m-disc-${i}`}
+                  className="flex justify-between gap-4"
+                >
+                  <span className="text-[#8a8a8a]">{row.label}</span>
+                  <span className="text-[#2a514d]">
+                    -{formatMoneyDot(row.amount)}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <div className="flex justify-between gap-4">
+                <span className="text-[#8a8a8a]">折扣</span>
+                <span>{formatMoneyDot(0)}</span>
+              </div>
+            )}
             <div className="flex justify-between gap-4 border-t border-[#eee] pt-3">
               <span className="font-semibold text-black">訂單總額</span>
               <span className="text-[16px] font-semibold text-black">
@@ -822,6 +1056,7 @@ function OrderDetail({ order, onBack, onRefreshPayment, refreshing = false }) {
         <div className="space-y-5">
           {(order.line_items || []).map((item, index) => {
             const variant = getItemVariantText(item);
+            const displayName = getItemDisplayName(item);
             const unit =
               Number(item.price || 0) ||
               (Number(item.quantity) > 0
@@ -838,7 +1073,7 @@ function OrderDetail({ order, onBack, onRefreshPayment, refreshing = false }) {
                     {item.image ? (
                       <Image
                         src={item.image}
-                        alt={item.name}
+                        alt={displayName}
                         fill
                         sizes="72px"
                         className="object-cover"
@@ -851,7 +1086,7 @@ function OrderDetail({ order, onBack, onRefreshPayment, refreshing = false }) {
                   </div>
                   <div className="min-w-0">
                     <p className="text-[14px] font-medium text-black">
-                      {item.name}
+                      {displayName}
                     </p>
                     {variant ? (
                       <p className="mt-1 text-[12px] text-[#777]">
@@ -879,16 +1114,24 @@ function OrderDetail({ order, onBack, onRefreshPayment, refreshing = false }) {
               <span className="text-[#777]">運費</span>
               <span>{formatMoneyDot(shippingTotal)}</span>
             </div>
-            <div className="flex justify-between gap-6">
-              <span className="text-[#777]">
-                折扣{freeNote ? `（${freeNote}）` : ""}
-              </span>
-              <span className="text-[#2a514d]">
-                {discountDisplay > 0
-                  ? `-${formatMoneyDot(discountDisplay)}`
-                  : formatMoneyDot(0)}
-              </span>
-            </div>
+            {discountRows.length > 0 ? (
+              discountRows.map((row, i) => (
+                <div
+                  key={`d-disc-${i}`}
+                  className="flex justify-between gap-6"
+                >
+                  <span className="text-[#777]">{row.label}</span>
+                  <span className="text-[#2a514d]">
+                    -{formatMoneyDot(row.amount)}
+                  </span>
+                </div>
+              ))
+            ) : (
+              <div className="flex justify-between gap-6">
+                <span className="text-[#777]">折扣</span>
+                <span>{formatMoneyDot(0)}</span>
+              </div>
+            )}
             <div className="flex justify-between gap-6 border-t border-[#ddd] pt-3 text-[16px] font-semibold">
               <span>訂單總額</span>
               <span className="text-[#2a514d]">
@@ -928,7 +1171,14 @@ function OrderDetail({ order, onBack, onRefreshPayment, refreshing = false }) {
           </div>
           <div className="mt-1 divide-y divide-[#f0f0f0] border-t border-[#eee] pt-1">
             <InfoRow label="配送方式">{shippingMethod}</InfoRow>
-            <InfoRow label="發票類型">電子發票</InfoRow>
+            <InfoRow label="發票類型">
+              <span>{invoiceTypeLabel}</span>
+              {invoiceTypeDetail ? (
+                <span className="mt-0.5 block text-[12px] text-[#888]">
+                  {invoiceTypeDetail}
+                </span>
+              ) : null}
+            </InfoRow>
             <InfoRow label="發票開立日期">{invoiceDate}</InfoRow>
           </div>
         </div>
@@ -939,57 +1189,44 @@ function OrderDetail({ order, onBack, onRefreshPayment, refreshing = false }) {
         <h3 className="mb-4 text-[15px] font-semibold text-black">
           收件 / 配送資訊
         </h3>
-        <div className="grid grid-cols-2 gap-8 text-[13px] leading-relaxed">
-          <div className="space-y-3">
-            <p>
-              <span className="text-[#888]">收件人</span>
-              <span className="ml-3 text-black">{recipient}</span>
-            </p>
-            <p>
-              <span className="text-[#888]">手機號碼</span>
-              <span className="ml-3 text-black">{phone}</span>
-            </p>
+        <div className="grid grid-cols-2 gap-x-10 gap-y-0 text-[13px]">
+          <div className="divide-y divide-[#f0f0f0]">
+            <InfoRow label="收件人">{recipient}</InfoRow>
+            <InfoRow label="手機號碼">{phone}</InfoRow>
             {isCvs ? (
               <>
-                <p>
-                  <span className="text-[#888]">取件門市</span>
-                  <span className="ml-3 text-black">
+                <InfoRow label="取件門市">
+                  <span className="break-words">
                     {storeName || "—"}
                     {storeId ? `（${storeId}）` : ""}
                   </span>
-                </p>
-                <p>
-                  <span className="text-[#888]">取件地址</span>
-                  <span className="ml-3 text-black">
-                    {storeAddress || homeAddress}
-                  </span>
-                </p>
+                </InfoRow>
+                <InfoRow label="取件地址" valueClassName="text-left sm:text-right">
+                  {storeAddress || homeAddress}
+                </InfoRow>
               </>
             ) : (
-              <p>
-                <span className="text-[#888]">收件地址</span>
-                <span className="ml-3 text-black">{homeAddress}</span>
-              </p>
+              <InfoRow label="收件地址" valueClassName="text-left sm:text-right">
+                {homeAddress}
+              </InfoRow>
             )}
           </div>
-          <div className="space-y-3">
-            <p>
-              <span className="text-[#888]">配送方式</span>
-              <span className="ml-3 text-black">{shippingMethod}</span>
-            </p>
-            <p>
-              <span className="text-[#888]">發票類型</span>
-              <span className="ml-3 text-black">電子發票</span>
-            </p>
-            <p>
-              <span className="text-[#888]">發票開立日期</span>
-              <span className="ml-3 text-black">{invoiceDate}</span>
-            </p>
+          <div className="divide-y divide-[#f0f0f0]">
+            <InfoRow label="配送方式">{shippingMethod}</InfoRow>
+            <InfoRow label="發票類型">
+              <span>{invoiceTypeLabel}</span>
+              {invoiceTypeDetail ? (
+                <span className="mt-0.5 block text-[12px] text-[#888]">
+                  {invoiceTypeDetail}
+                </span>
+              ) : null}
+            </InfoRow>
+            <InfoRow label="發票開立日期">{invoiceDate}</InfoRow>
           </div>
         </div>
       </section>
 
-      {/* ── Mobile payment card (圖一) ── */}
+      {/* ── Mobile payment card ── */}
       <section className="mb-2 overflow-hidden rounded-lg border border-[#e4e4e4] bg-white md:hidden">
         <div className="px-4 py-4">
           <h3 className="mb-3 text-[15px] font-semibold text-black">付款資訊</h3>
@@ -1006,21 +1243,15 @@ function OrderDetail({ order, onBack, onRefreshPayment, refreshing = false }) {
         <h3 className="mb-4 text-[15px] font-semibold text-black">付款資訊</h3>
         <div
           className={cn(
-            "text-[13px] leading-relaxed",
+            "text-[13px]",
             showAtmRemittance || showAtmPendingHint
-              ? "grid grid-cols-2 gap-8"
-              : "space-y-3",
+              ? "grid grid-cols-2 gap-x-10"
+              : "",
           )}
         >
-          <div className="space-y-3">
-            <p>
-              <span className="text-[#888]">付款方式</span>
-              <span className="ml-3 text-black">{paymentTitle}</span>
-            </p>
-            <p>
-              <span className="text-[#888]">付款時間</span>
-              <span className="ml-3 text-black">{paidAt}</span>
-            </p>
+          <div className="divide-y divide-[#f0f0f0]">
+            <InfoRow label="付款方式">{paymentTitle}</InfoRow>
+            <InfoRow label="付款時間">{paidAt}</InfoRow>
           </div>
           {(showAtmRemittance || showAtmPendingHint) && (
             <AtmRemittanceBlock side />
@@ -1092,6 +1323,7 @@ export default function AccountPage() {
 
   const [selectedOrderId, setSelectedOrderId] = useState(null);
   const [orderRefreshing, setOrderRefreshing] = useState(false);
+  const [cancellingOrderId, setCancellingOrderId] = useState(null);
 
   const [birthdayInput, setBirthdayInput] = useState("");
   const [isSettingBirthday, setIsSettingBirthday] = useState(false);
@@ -1208,6 +1440,35 @@ export default function AccountPage() {
       setOrderRefreshing(false);
     }
   }, [loadOrders]);
+
+  const cancelOrder = useCallback(
+    async (order) => {
+      const id = order?.id;
+      if (!id) return;
+      const ok = window.confirm(
+        `確定要取消訂單 ${order.number || id}？取消後將無法復原。`,
+      );
+      if (!ok) return;
+      setCancellingOrderId(id);
+      try {
+        const res = await fetch(`/api/account/orders/${id}/cancel`, {
+          method: "POST",
+          credentials: "include",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || !data?.ok) {
+          window.alert(data?.message || "取消失敗，請稍後再試或聯繫客服。");
+          return;
+        }
+        await loadOrders();
+      } catch {
+        window.alert("取消失敗，請稍後再試。");
+      } finally {
+        setCancellingOrderId(null);
+      }
+    },
+    [loadOrders],
+  );
 
   const loadReferral = useCallback(async () => {
     setReferralLoading(true);
@@ -1717,8 +1978,8 @@ export default function AccountPage() {
             {activeTab === "profile" && (
               <>
                 {/* Summary row */}
-                <div className="mb-8 flex flex-col gap-6 border-b border-[#ddd] pb-8 sm:mb-10 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="sm:max-w-[320px]">
+                <div className="mb-8 flex flex-col gap-6 border-b border-[#ddd] pb-8 sm:mb-10 sm:flex-row sm:items-center sm:justify-between sm:gap-8">
+                  <div className="min-w-0 sm:shrink-0">
                     <div className="mb-3 inline-block border border-[#ccc] bg-white px-4 py-2 text-[15px] font-medium sm:text-[15px]">
                       {getTierDisplay(membership?.tierName, membership)}
                       {membership?.tierLabelEn && (
@@ -1727,17 +1988,17 @@ export default function AccountPage() {
                         </span>
                       )}
                     </div>
-                    <p className="text-[14px] leading-relaxed text-[#555] sm:text-[14px]">
-                      近 12 個月累積消費滿 NT$10,000，即可升級為臻享會員
+                    <p className="text-[14px] leading-relaxed text-[#555] sm:whitespace-nowrap sm:text-[14px]">
+                      近 12 個月累積消費滿 NT.10,000，即可升級為臻享會員
                     </p>
                     <Link
                       href="/membership"
                       className="mt-2 inline-flex items-center gap-1 text-[13px] text-[#555] underline-offset-2 hover:underline"
                     >
-                      了解品牌與會員制度 ▶
+                      了解會員制度 ▶
                     </Link>
                   </div>
-                  <div className="grid flex-1 grid-cols-2 gap-x-4 gap-y-5 sm:grid-cols-4 sm:gap-4">
+                  <div className="grid w-full grid-cols-2 gap-x-4 gap-y-5 sm:w-auto sm:flex-1 sm:grid-cols-4 sm:gap-4 sm:pl-6 md:pl-10 lg:pl-14">
                     <div>
                       <p className="mb-1 text-[12px] text-[#888]">累積消費總額</p>
                       <p className="text-[16px] font-semibold sm:text-[17px]">
@@ -1799,6 +2060,9 @@ export default function AccountPage() {
                       value={customer?.email || "—"}
                       readOnly
                     />
+                    <p className="-mt-3 mb-5 text-[12px] leading-relaxed text-[#888] sm:-mt-2 sm:mb-6">
+                      必填，用於接收訂單及優惠券通知
+                    </p>
                     {customer?.birthday ? (
                       <HoverUnderlineField
                         label="生日"
@@ -2126,7 +2390,7 @@ export default function AccountPage() {
                             <p>
                               使用門檻：
                               {minAmt > 0
-                                ? `單筆滿 NT$${minAmt.toLocaleString()}`
+                                ? `單筆滿 ${formatProductPrice(minAmt)}`
                                 : "無最低消費"}
                             </p>
                             <p>有效期限：{expiresLabel}</p>
@@ -2191,6 +2455,10 @@ export default function AccountPage() {
                         order={selected}
                         onBack={() => setSelectedOrderId(null)}
                         refreshing={orderRefreshing}
+                        cancelling={
+                          String(cancellingOrderId) === String(selected.id)
+                        }
+                        onCancelOrder={cancelOrder}
                         onRefreshPayment={() =>
                           refreshOrderPayment(selected.id)
                         }
@@ -2207,14 +2475,15 @@ export default function AccountPage() {
                   <>
                     {/* Desktop / tablet table — 圖二 */}
                     <div className="hidden overflow-x-auto bg-white sm:block">
-                      <table className="w-full min-w-[680px] border-collapse text-center text-[15px]">
+                      <table className="w-full min-w-[760px] border-collapse text-center text-[15px]">
                         <thead>
                           <tr className="border-y border-[#e5e5e5] text-[13px] text-[#aaaaaa]">
                             <th className="px-3 py-3 font-normal">訂單編號</th>
-                            <th className="px-3 py-3 font-normal">日期</th>
+                            <th className="px-3 py-3 font-normal">訂單日期</th>
                             <th className="px-3 py-3 font-normal">狀態</th>
                             <th className="px-3 py-3 font-normal">總金額</th>
                             <th className="px-3 py-3 font-normal">付款方式</th>
+                            <th className="px-3 py-3 font-normal">操作</th>
                           </tr>
                         </thead>
                         <tbody>
@@ -2231,7 +2500,7 @@ export default function AccountPage() {
                               <td className="px-3 py-4">
                                 {formatOrderDate(o.date_created)}
                               </td>
-                              <td className="px-3 py-4">
+                              <td className="px-3 py-4 text-[#2a514d]">
                                 {getOrderStatusLabel(o)}
                               </td>
                               <td className="px-3 py-4">
@@ -2240,40 +2509,69 @@ export default function AccountPage() {
                               <td className="px-3 py-4">
                                 {o.payment_method_title || "—"}
                               </td>
+                              <td className="px-3 py-4">
+                                <OrderActionButton
+                                  order={o}
+                                  onCancel={cancelOrder}
+                                  cancelling={
+                                    String(cancellingOrderId) === String(o.id)
+                                  }
+                                  className="h-9 px-4 text-[12px]"
+                                />
+                              </td>
                             </tr>
                           ))}
                         </tbody>
                       </table>
                     </div>
 
-                    {/* Mobile list cards — 圖二資訊結構 */}
+                    {/* Mobile list cards */}
                     <div className="space-y-0 divide-y divide-[#e8e8e8] border-y border-[#ddd] bg-white sm:hidden">
                       {filteredOrders.map((o) => (
-                        <button
+                        <div
                           key={o.id}
-                          type="button"
-                          onClick={() => setSelectedOrderId(o.id)}
                           className="flex w-full items-center justify-between gap-3 px-1 py-4 text-left"
                         >
-                          <div className="min-w-0">
-                            <p className="text-[15px] font-medium text-black">
-                              #{o.number || o.id}
-                            </p>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedOrderId(o.id)}
+                            className="min-w-0 flex-1 text-left"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <p className="text-[15px] font-medium text-black">
+                                #{o.number || o.id}
+                              </p>
+                              <span className="shrink-0 text-[13px] text-[#2a514d]">
+                                {getOrderStatusLabel(o)}
+                              </span>
+                            </div>
                             <p className="mt-1 text-[12px] text-[#888]">
                               {formatOrderDate(o.date_created)} ·{" "}
-                              {getOrderStatusLabel(o)}
-                            </p>
-                            <p className="mt-1 text-[12px] text-[#666]">
                               {o.payment_method_title || "—"}
                             </p>
-                          </div>
-                          <div className="flex shrink-0 items-center gap-1">
-                            <span className="text-[15px] font-medium">
+                            <p className="mt-1 text-[15px] font-medium">
                               {formatMoneyNT(Number(o.total))}
-                            </span>
-                            <ChevronRight size={16} className="text-[#bbb]" />
+                            </p>
+                          </button>
+                          <div className="flex shrink-0 flex-col items-end gap-2">
+                            <OrderActionButton
+                              order={o}
+                              onCancel={cancelOrder}
+                              cancelling={
+                                String(cancellingOrderId) === String(o.id)
+                              }
+                              className="h-9 px-3 text-[12px]"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => setSelectedOrderId(o.id)}
+                              className="text-[#bbb]"
+                              aria-label="查看訂單詳情"
+                            >
+                              <ChevronRight size={16} />
+                            </button>
                           </div>
-                        </button>
+                        </div>
                       ))}
                     </div>
                   </>

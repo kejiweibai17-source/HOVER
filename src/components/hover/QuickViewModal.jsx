@@ -287,7 +287,7 @@ export default function QuickViewModal({ product, onClose }) {
                   <div className="mb-5 flex items-center gap-3">
                     {product.soldOut ? (
                       <>
-                        <span className="text-[18px] font-bold text-[#222]">
+                        <span className="text-[18px] font-bold text-[#c90000]">
                           SOLD OUT
                         </span>
                         <span className="text-[16px] font-bold text-black line-through opacity-50">
@@ -405,8 +405,8 @@ export default function QuickViewModal({ product, onClose }) {
                     {product.soldOut
                       ? "已售完"
                       : adding
-                        ? "已加入購物車 ✓"
-                        : "加入購物車"}
+                        ? "已加入購物袋 ✓"
+                        : "加入購物袋"}
                   </button>
 
                   <Link

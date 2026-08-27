@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useMemo, Fragment } from "react";
 import { LineChart, BarChart } from "@mui/x-charts";
+import { formatProductPrice } from "@/lib/utils";
 
 type AdminCustomer = {
   id: number;
@@ -33,8 +34,7 @@ type AdminOrder = {
 };
 
 /* 小工具：金額格式 */
-const formatNTD = (val: number) =>
-  "NT$" + Math.round(val || 0).toLocaleString("zh-TW");
+const formatNTD = (val: number) => formatProductPrice(val);
 
 /* ========== 會員分析圖表元件（使用 MUI X Charts） ========== */
 function MemberAnalytics({

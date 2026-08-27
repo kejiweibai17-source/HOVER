@@ -146,7 +146,7 @@ function ProductCard({ product }) {
             {formatProductPrice(product.salePrice ?? product.originalPrice)}
           </span>
           {product.soldOut && (
-            <span className="text-[12px] font-bold text-[#222] md:text-[13px]">
+            <span className="text-[12px] font-bold text-[#c90000] md:text-[13px]">
               SOLD OUT
             </span>
           )}

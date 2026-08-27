@@ -1,13 +1,14 @@
 <?php
 /**
- * HOVER — 綠界物流貨態橋接（RY Tools）
+ * HOVER — 綠界物流貨態橋接（RY Tools）＋前台訂單操作
  *
  * 產單／列印請用 RY Tools。
  * 本檔負責：
  * 1. 綠界／RY 貨態 → `_hel_LogisticsPhase`（會員中心：已出貨／已到貨／逾期未取）
  * 2. 店到店／交貨便代碼 → `_hel_CVSPaymentNo` + `_hel_CVSValidationNo`（後台側欄顯示）
+ * 3. 後台側欄操作：取消訂單／標記已出貨／已到貨／退貨（同步前台按鈕）
  *
- * Code Snippets → Everywhere → 啟用（勿與舊產單版並存）
+ * Code Snippets → Everywhere → 啟用（更新本檔即可；勿另開 hover-order-actions）
  */
 
 if (!defined('ABSPATH')) {
@@ -234,6 +235,12 @@ function hel_set_phase(WC_Order $order, ?string $phase, string $code = '', strin
 
     $prev = (string) $order->get_meta('_hel_LogisticsPhase');
     $order->update_meta_data('_hel_LogisticsPhase', $phase);
+
+    // 到貨時間：前台 7 日鑑賞期起算
+    if (in_array($phase, ['arrived', 'picked'], true) && !(string) $order->get_meta('_hover_arrived_at')) {
+        $order->update_meta_data('_hover_arrived_at', wp_date('Y-m-d H:i:s'));
+    }
+
     $order->save();
 
     if ($prev === $phase) {
@@ -498,7 +505,7 @@ function hel_render_phase_box($post_or_order): void
         'shipped'   => '模擬已出貨',
         'arrived'   => '模擬已到貨',
         'unclaimed' => '模擬逾期未取',
-        'clear'     => '清除貨態',
+        'clear'     => '清除貨態（改回處理中）',
     ];
     foreach ($btns as $key => $text) {
         $url = wp_nonce_url(
@@ -508,6 +515,122 @@ function hel_render_phase_box($post_or_order): void
         $class = $key === 'arrived' ? 'button button-primary' : 'button';
         echo '<p style="margin:6px 0;"><a class="' . esc_attr($class) . '" href="' . esc_url($url) . '">' . esc_html($text) . '</a></p>';
     }
+
+    // ── 正式客服操作（對齊前台按鈕）──
+    hel_render_order_ops($order);
+}
+
+/**
+ * 前台顯示階段（與會員中心 orderActions 對齊）
+ */
+function hel_frontend_phase(WC_Order $order): string
+{
+    $status = $order->get_status();
+    $ret    = strtolower((string) $order->get_meta('_hover_return_status'));
+    $phase  = strtolower((string) $order->get_meta('_hel_LogisticsPhase'));
+
+    if (in_array($status, ['cancelled', 'canceled'], true)) {
+        return 'cancelled';
+    }
+    if (in_array($ret, ['returned', 'complete', 'completed'], true)) {
+        return 'returned';
+    }
+    if (in_array($ret, ['returning', 'processing'], true)) {
+        return 'returning';
+    }
+    if (in_array($phase, ['arrived', 'picked', 'unclaimed'], true)) {
+        return 'arrived';
+    }
+    if ($phase === 'shipped' || $status === 'completed') {
+        return 'shipped';
+    }
+    if (in_array($status, ['processing', 'pending', 'on-hold'], true)) {
+        return 'processing';
+    }
+    return $status ?: 'other';
+}
+
+function hel_frontend_phase_label(string $phase): string
+{
+    $map = [
+        'processing' => '處理中',
+        'shipped'    => '已出貨',
+        'arrived'    => '已到貨',
+        'returning'  => '退貨處理中',
+        'returned'   => '退貨完成',
+        'cancelled'  => '已取消',
+    ];
+    return $map[$phase] ?? $phase;
+}
+
+function hel_ops_url(int $order_id, string $action): string
+{
+    return wp_nonce_url(
+        admin_url('admin-post.php?action=hel_order_ops&order_id=' . $order_id . '&hel_do=' . rawurlencode($action)),
+        'hel_ops_' . $order_id
+    );
+}
+
+/**
+ * 側欄下方：取消／已出貨／已到貨／退貨 — 同步前台按鈕
+ */
+function hel_render_order_ops(WC_Order $order): void
+{
+    $id    = $order->get_id();
+    $phase = hel_frontend_phase($order);
+    $label = hel_frontend_phase_label($phase);
+    $ret   = (string) $order->get_meta('_hover_return_status');
+    $arrived = (string) $order->get_meta('_hover_arrived_at');
+
+    echo '<hr style="margin:16px 0 12px;border:none;border-top:1px solid #dcdcde;">';
+    echo '<p style="margin:0 0 6px;font-size:11px;color:#646970;text-transform:uppercase;letter-spacing:.04em;">前台訂單操作</p>';
+    echo '<p style="margin:0 0 8px;">前台顯示：<strong>' . esc_html($label) . '</strong>';
+    if ($phase === 'processing') {
+        echo ' → 按鈕「取消訂單」';
+    } elseif ($phase === 'shipped') {
+        echo ' → 按鈕「聯繫客服」';
+    } elseif ($phase === 'arrived') {
+        echo ' → 按鈕「申請退貨」（7 日內）／「聯繫客服」';
+    } else {
+        echo ' → 按鈕「聯繫客服」';
+    }
+    echo '</p>';
+
+    if ($arrived !== '') {
+        echo '<p class="description" style="margin:0 0 8px;">到貨時間 <code>' . esc_html($arrived) . '</code>（鑑賞期起算）</p>';
+    }
+    if ($ret !== '') {
+        echo '<p class="description" style="margin:0 0 8px;">退貨 <code>' . esc_html($ret) . '</code></p>';
+    }
+
+    $ops = [];
+    if ($phase === 'processing') {
+        $ops[] = ['cancel', '取消訂單', 'button-link-delete', 'color:#b32d2e;border-color:#b32d2e;'];
+        $ops[] = ['ship', '標記已出貨', 'button button-primary', ''];
+    }
+    if (in_array($phase, ['processing', 'shipped'], true)) {
+        // 已出貨後可標記到貨；處理中也可直接測到貨
+        if ($phase === 'shipped') {
+            $ops[] = ['arrive', '標記已到貨', 'button button-primary', ''];
+        }
+    }
+    if ($phase === 'arrived') {
+        $ops[] = ['returning', '退貨處理中', 'button', 'color:#6b21a8;border-color:#6b21a8;'];
+    }
+    if ($phase === 'returning') {
+        $ops[] = ['returned', '退貨完成', 'button button-primary', 'color:#fff !important;border-color:#2271b1;'];
+    }
+
+    if (!$ops) {
+        echo '<p class="description" style="margin:8px 0 0;">此狀態無需額外操作（或請先用上方「清除貨態」重測）。</p>';
+        return;
+    }
+
+    foreach ($ops as [$action, $text, $class, $style]) {
+        echo '<p style="margin:6px 0;"><a class="' . esc_attr($class) . '" style="' . esc_attr($style) . '" href="' . esc_url(hel_ops_url($id, $action)) . '">' . esc_html($text) . '</a></p>';
+    }
+
+    echo '<p class="description" style="margin:10px 0 0;">正式流程：處理中 → 標記已出貨 →（綠界到貨或手動標記已到貨）→ 客服 LINE 受理後按退貨處理中／完成。</p>';
 }
 
 add_action('admin_post_hel_sim_phase', function () {
@@ -528,8 +651,16 @@ add_action('admin_post_hel_sim_phase', function () {
         $order->delete_meta_data('_hel_LogisticsPhase');
         $order->delete_meta_data('_hel_RtnCode');
         $order->delete_meta_data('_hel_RtnMsg');
+        $order->delete_meta_data('_hover_arrived_at');
+        $order->delete_meta_data('_hover_return_status');
         $order->save();
-        $order->add_order_note('HOVER 貨態：已清除（測試）');
+        // 標記已出貨會把 WC 改成 completed；前台 completed＝已出貨，故測試清除時一併回到處理中
+        $st = $order->get_status();
+        if (in_array($st, ['completed', 'refunded'], true)) {
+            $order->update_status('processing', 'HOVER：清除貨態（測試）— 訂單狀態改回處理中');
+        } else {
+            $order->add_order_note('HOVER 貨態：已清除（測試）');
+        }
     } elseif (in_array($phase, ['shipped', 'arrived', 'picked', 'unclaimed'], true)) {
         $fake_code = [
             'shipped'   => '2030',
@@ -538,6 +669,62 @@ add_action('admin_post_hel_sim_phase', function () {
             'unclaimed' => '3020',
         ][$phase];
         hel_set_phase($order, $phase, $fake_code, '手動模擬測試');
+    }
+
+    wp_safe_redirect($order->get_edit_order_url());
+    exit;
+});
+
+add_action('admin_post_hel_order_ops', function () {
+    if (!current_user_can('manage_woocommerce')) {
+        wp_die('權限不足');
+    }
+    $order_id = absint($_GET['order_id'] ?? 0);
+    $do = sanitize_key((string) ($_GET['hel_do'] ?? ''));
+    if (!$order_id || !wp_verify_nonce($_GET['_wpnonce'] ?? '', 'hel_ops_' . $order_id)) {
+        wp_die('連結失效');
+    }
+    $order = wc_get_order($order_id);
+    if (!$order) {
+        wp_die('找不到訂單');
+    }
+
+    $now = wp_date('Y-m-d H:i:s');
+
+    switch ($do) {
+        case 'cancel':
+            $order->update_status('cancelled', 'HOVER：後台取消訂單');
+            $order->update_meta_data('_hover_cancelled_by', 'admin');
+            $order->update_meta_data('_hover_cancelled_at', $now);
+            $order->delete_meta_data('_hel_LogisticsPhase');
+            $order->delete_meta_data('_hover_return_status');
+            $order->save();
+            break;
+
+        case 'ship':
+            hel_set_phase($order, 'shipped', '2030', '後台標記已出貨');
+            if ($order->get_status() !== 'completed') {
+                $order->update_status('completed', 'HOVER：標記已出貨');
+            }
+            $order->save();
+            break;
+
+        case 'arrive':
+            hel_set_phase($order, 'arrived', '3018', '後台標記已到貨');
+            break;
+
+        case 'returning':
+            $order->update_meta_data('_hover_return_status', 'returning');
+            $order->add_order_note('HOVER：退貨處理中（客服已受理）');
+            $order->save();
+            break;
+
+        case 'returned':
+            $order->update_meta_data('_hover_return_status', 'returned');
+            $order->update_status('refunded', 'HOVER：退貨完成');
+            $order->add_order_note('HOVER：退貨完成');
+            $order->save();
+            break;
     }
 
     wp_safe_redirect($order->get_edit_order_url());

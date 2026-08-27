@@ -7,6 +7,11 @@ import HoverIcon from "@/components/hover/HoverIcon";
 import { useSearchParams } from "next/navigation";
 import { useCartStore } from "@/lib/cartStore";
 import { clearCheckoutSession } from "@/lib/checkoutSession";
+import {
+  formatProductPrice,
+  formatAtmBankLabel,
+  ATM_BANK_DISPLAY,
+} from "@/lib/utils";
 
 /** 已付款／進入出貨流程的狀態：不再顯示 ATM 繳費資訊 */
 const PAID_STATUSES = new Set(["processing", "completed"]);
@@ -123,8 +128,8 @@ function ThankYouContent() {
               付款已確認
             </p>
             <p>訂單狀態：{statusChinese || "處理中"}</p>
-            <p className="mt-3 text-[12px] text-[#888]">
-              我們已收到您的款項，將盡快為您準備出貨。
+            <p className="mt-3 text-[12px] leading-relaxed text-[#2a514d]">
+              付款已完成，我們將依訂單順序安排出貨。
             </p>
             <Link
               href="/account?tab=orders"
@@ -137,13 +142,29 @@ function ThankYouContent() {
 
         {!isPaid && atm && (
           <div className="mt-8 w-full max-w-md border border-[#ddd] bg-white px-6 py-5 text-left text-[13px] text-black">
-            <p className="mb-3 font-semibold tracking-[0.08em]">ATM 繳費資訊</p>
-            <p>應付金額：NT$ {atm.amount}</p>
-            <p>銀行代碼：{atm.bank}</p>
-            <p>虛擬帳號：{atm.account}</p>
-            {atm.expire ? <p>繳費期限：{atm.expire}</p> : null}
-            <p className="mt-3 text-[12px] text-[#888]">
-              相同資訊已寄到您的信箱，請於期限內完成轉帳。完成後重新整理本頁即可更新狀態。
+            <p className="mb-3 text-[15px] font-semibold">匯款資訊</p>
+            <div className="space-y-2.5">
+              <div className="flex justify-between gap-4">
+                <span className="w-[100px] shrink-0 text-[#8a8a8a]">應付金額</span>
+                <span className="font-medium">{formatProductPrice(atm.amount)}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="w-[100px] shrink-0 text-[#8a8a8a]">銀行</span>
+                <span>{formatAtmBankLabel(atm.bank) || ATM_BANK_DISPLAY}</span>
+              </div>
+              <div className="flex justify-between gap-4">
+                <span className="w-[100px] shrink-0 text-[#8a8a8a]">虛擬帳號</span>
+                <span className="tracking-wide">{atm.account}</span>
+              </div>
+              {atm.expire ? (
+                <div className="flex justify-between gap-4">
+                  <span className="w-[100px] shrink-0 text-[#8a8a8a]">繳費期限</span>
+                  <span>{atm.expire}</span>
+                </div>
+              ) : null}
+            </div>
+            <p className="mt-4 text-[12px] leading-relaxed text-[#2a514d]">
+              請於繳費期限內完成付款，逾期訂單將自動取消。
             </p>
           </div>
         )}

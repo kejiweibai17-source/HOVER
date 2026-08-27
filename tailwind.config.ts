@@ -15,8 +15,20 @@ const config: Config = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['"Noto Serif HK"', "serif"],
-        serif: ['"Noto Serif HK"', "serif"],
+        sans: [
+          '"Source Han Sans"',
+          '"Noto Sans TC"',
+          '"PingFang TC"',
+          '"Microsoft JhengHei"',
+          "sans-serif",
+        ],
+        serif: [
+          '"Source Han Sans"',
+          '"Noto Sans TC"',
+          '"PingFang TC"',
+          '"Microsoft JhengHei"',
+          "sans-serif",
+        ],
       },
       transitionDuration: {
         2000: "2000ms",

@@ -381,7 +381,7 @@ export async function POST(req: Request) {
 
         let finalAddress = addr.line1;
         let methodId = "ry_ecpay_shipping_home_tcat"; 
-        let shippingTitle = "綠界物流 宅配 黑貓";
+        let shippingTitle = "宅配";
 
         const isCVS = ["CVS", "711", "HILIFE", "OKMART", "FAMI"].includes(shipMethod) && !!addr.storeId;
 
@@ -391,18 +391,18 @@ export async function POST(req: Request) {
           
           if (shipMethod === "711" || sName.includes("7-11") || sName.includes("統一")) {
             methodId = "ry_ecpay_shipping_cvs_711"; 
-            shippingTitle = "綠界物流 超商取貨 7-ELEVEN";
+            shippingTitle = "7-11超商僅取貨";
             finalStoreId = finalStoreId.padStart(6, '0');
           } else if (shipMethod === "HILIFE" || sName.includes("萊爾富")) {
             methodId = "ry_ecpay_shipping_cvs_hilife"; 
-            shippingTitle = "綠界物流 超商取貨 萊爾富";
+            shippingTitle = "萊爾富超商僅取貨";
             if (finalStoreId.length > 4 && finalStoreId.startsWith("00")) finalStoreId = finalStoreId.replace(/^0+/, ''); 
           } else if (shipMethod === "OKMART" || sName.includes("OK") || sName.toUpperCase().includes("OKMART")) {
             methodId = "ry_ecpay_shipping_cvs_ok"; 
-            shippingTitle = "綠界物流 超商取貨 OK超商";
+            shippingTitle = "OK超商僅取貨";
           } else {
             methodId = "ry_ecpay_shipping_cvs_family"; 
-            shippingTitle = "綠界物流 超商取貨 全家";
+            shippingTitle = "全家超商僅取貨";
             finalStoreId = finalStoreId.padStart(6, '0');
           }
           

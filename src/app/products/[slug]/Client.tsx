@@ -469,8 +469,8 @@ function ProductPurchasePanel({
         {soldOut
           ? "已售完"
           : adding
-            ? "已加入購物車 ✓"
-            : "加入購物車"}
+            ? "已加入購物袋 ✓"
+            : "加入購物袋"}
       </button>
     </>
   );

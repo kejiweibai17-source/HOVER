@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { getServerSession } from "next-auth";
 import jwt from "jsonwebtoken"; // 💡 新增：用來解析 LINE 登入的 Token
 import { authOptions } from "@/lib/auth-options";
+import { formatShippingMethodLabel } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -240,12 +241,20 @@ export async function GET() {
       shipping_total: o.shipping_total || "0",
       discount_total: o.discount_total || "0",
       shipping_lines: (o.shipping_lines || []).map((line: any) => ({
-        method_title: line.method_title || "",
+        method_id: line.method_id || "",
+        method_title: formatShippingMethodLabel(
+          line.method_title || "",
+          line.method_id || "",
+        ),
         total: line.total || "0",
       })),
       coupon_lines: (o.coupon_lines || []).map((line: any) => ({
         code: line.code || "",
         discount: line.discount || "0",
+      })),
+      fee_lines: (o.fee_lines || []).map((line: any) => ({
+        name: line.name || "",
+        total: line.total || "0",
       })),
       payment_info: extractPaymentDetails(o.meta_data || []),
       logistics_phase: extractMetaValue(o.meta_data || [], [
@@ -259,6 +268,15 @@ export async function GET() {
       logistics_rtn_msg: extractMetaValue(o.meta_data || [], [
         "_hel_RtnMsg",
         "hel_RtnMsg",
+      ]),
+      return_status: extractMetaValue(o.meta_data || [], [
+        "_hover_return_status",
+        "hover_return_status",
+      ]),
+      arrived_at: extractMetaValue(o.meta_data || [], [
+        "_hover_arrived_at",
+        "hover_arrived_at",
+        "_hel_UpdateStatusDate",
       ]),
       meta_data: o.meta_data || [],
       line_items: (o.line_items || []).map((it: any) => ({
@@ -275,11 +293,18 @@ export async function GET() {
         sku: it.sku || "",
         variation_id: it.variation_id || 0,
         meta_data: (it.meta_data || [])
-          .filter((meta: any) => meta?.display_key && meta?.display_value)
           .map((meta: any) => ({
-            key: meta.display_key,
-            value: meta.display_value,
-          })),
+            key: String(meta.display_key || meta.key || "").trim(),
+            value: String(
+              meta.display_value ?? meta.value ?? "",
+            ).trim(),
+          }))
+          .filter(
+            (meta: { key: string; value: string }) =>
+              Boolean(meta.key && meta.value) &&
+              !meta.key.startsWith("_") &&
+              !/^(_reduced_stock|id)$/i.test(meta.key),
+          ),
       })),
     }));
 

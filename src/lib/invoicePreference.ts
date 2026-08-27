@@ -125,3 +125,40 @@ export function invoicePreferenceFromOrderMeta(
     loveCode: map[INVOICE_META.loveCode] || undefined,
   };
 }
+
+/** 訂單明細／後台顯示用（對齊結帳選項文案） */
+export function getInvoiceTypeLabel(type: string | null | undefined): string {
+  switch (String(type || "").toLowerCase()) {
+    case "carrier":
+      return "手機載具";
+    case "triple":
+      return "三聯式發票";
+    case "donate":
+      return "捐贈發票";
+    case "cloud":
+      return "雲端電子發票";
+    default:
+      return "雲端電子發票";
+  }
+}
+
+/** 訂單明細補充一行（載具／統編／愛心碼） */
+export function getInvoiceTypeDetail(
+  inv: InvoicePreference | null | undefined,
+): string {
+  if (!inv) return "";
+  if (inv.type === "carrier" && inv.carrierCode) {
+    return `載具：${inv.carrierCode}`;
+  }
+  if (inv.type === "triple") {
+    const parts = [
+      inv.companyName ? `抬頭：${inv.companyName}` : "",
+      inv.taxId ? `統編：${inv.taxId}` : "",
+    ].filter(Boolean);
+    return parts.join("　");
+  }
+  if (inv.type === "donate" && inv.loveCode) {
+    return `愛心碼：${inv.loveCode}`;
+  }
+  return "";
+}

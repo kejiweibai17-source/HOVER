@@ -10,7 +10,7 @@
 
   html,
   body {
-    font-family: "Noto Serif HK", serif;
+    font-family: var(--font-hover-sans);
     background-color: var(--hover-bg);
   }
 

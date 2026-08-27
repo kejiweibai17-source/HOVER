@@ -34,6 +34,6 @@ export function searchMockProducts(
 
 export function formatSearchPrice(price: string | number) {
   const n = Number(String(price).replace(/[^\d.]/g, ""));
-  if (!Number.isFinite(n) || n <= 0) return "NT. —";
+  if (!Number.isFinite(n) || n <= 0) return "NT.—";
   return formatProductPrice(n);
 }
