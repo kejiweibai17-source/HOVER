@@ -5,6 +5,7 @@ import Image, { type ImageProps } from "next/image";
 import {
   applyWpSuffix,
   getFallbackSuffixes,
+  toFullUploadUrl,
   toOptimizedImageUrl,
   type ImageRole,
 } from "@/lib/listImageUrl";
@@ -31,18 +32,26 @@ export default function OptimizedImage({
   const original = fullSrc || src;
   const candidates = useMemo(() => {
     const list: string[] = [];
-    const primary = toOptimizedImageUrl(original, role);
-    list.push(primary);
+    const normalized = toOptimizedImageUrl(original, role);
+
+    // 若來源已是夠小的 WP 縮圖，優先使用（避免先打 404 的臆造尺寸）
+    if (src && src !== original) {
+      const fromSrc = toOptimizedImageUrl(src, role);
+      if (fromSrc) list.push(fromSrc);
+    }
+    if (original.includes("-") && /-\d+x\d+\.[a-z]+$/i.test(original)) {
+      list.push(original);
+    }
+
+    list.push(normalized);
     for (const suffix of getFallbackSuffixes(role)) {
       const next = applyWpSuffix(original, suffix);
       if (!list.includes(next)) list.push(next);
     }
+    const full = toFullUploadUrl(original);
+    if (!list.includes(full)) list.push(full);
     if (!list.includes(original)) list.push(original);
-    // 若呼叫端已傳入不同 src（例如 REST sizes），也放最前
-    if (src && src !== primary && src !== original) {
-      list.unshift(src);
-    }
-    return list;
+    return Array.from(new Set(list.filter(Boolean)));
   }, [original, role, src]);
 
   const [index, setIndex] = useState(0);

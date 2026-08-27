@@ -52,8 +52,8 @@ function SearchResults({
             className="flex items-center gap-3 rounded-sm px-1 py-2.5 transition-colors hover:bg-[#f5f5f5] md:gap-4 md:px-2 md:py-3"
           >
             <div
-              className={`relative shrink-0 overflow-hidden bg-[#f0f0f0] ${
-                compact ? "h-14 w-11" : "h-[72px] w-[56px]"
+              className={`relative shrink-0 overflow-hidden bg-[#f0f0f0] aspect-[3/4] ${
+                compact ? "w-11" : "w-14"
               }`}
             >
               {item.image ? (

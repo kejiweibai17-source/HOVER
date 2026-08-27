@@ -486,7 +486,7 @@ add_action('admin_head', function () {
         }
         .hcvg-gallery-item {
             position: relative;
-            width: 72px;
+            width: 54px;
             height: 72px;
             border: 1px solid #c3c4c7;
             border-radius: 6px;

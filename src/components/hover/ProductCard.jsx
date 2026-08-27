@@ -1,5 +1,6 @@
 import Image from "next/image";
 import { Link } from "next-view-transitions";
+import ProductImageFrame from "@/components/hover/ProductImageFrame";
 import { formatProductPrice } from "@/lib/utils";
 
 export default function ProductCard({
@@ -15,15 +16,15 @@ export default function ProductCard({
 
   return (
     <div className="group flex min-w-0 flex-col">
-      <Link href={href} className="relative block aspect-[3/4] overflow-hidden bg-white">
+      <ProductImageFrame as={Link} href={href} className="block">
         <Image
           src={image}
           alt={name}
           fill
-          className="object-contain"
+          className="object-cover object-center"
           sizes="(max-width: 768px) 80vw, 25vw"
         />
-      </Link>
+      </ProductImageFrame>
 
       <div className="mt-2 min-w-0 space-y-1 px-0.5 text-left md:mt-3">
         <Link

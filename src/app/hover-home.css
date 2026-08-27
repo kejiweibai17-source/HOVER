@@ -142,7 +142,7 @@
 
 .hover-product__image-wrap {
   position: relative;
-  aspect-ratio: 404 / 479;
+  aspect-ratio: 3 / 4;
   overflow: hidden;
   background: #d4d4d4;
 }

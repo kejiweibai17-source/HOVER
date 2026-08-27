@@ -10,6 +10,7 @@ import HoverLogo from "@/components/hover/HoverLogo";
 import HoverIcon from "@/components/hover/HoverIcon";
 import CartIcon from "@/components/hover/CartIcon";
 import OptimizedImage from "@/components/hover/OptimizedImage";
+import ProductImageFrame from "@/components/hover/ProductImageFrame";
 import { useWishlistStore } from "@/lib/wishlistStore";
 import { useAuthStore } from "@/lib/authStore";
 import { useSearchStore } from "@/lib/searchStore";
@@ -423,14 +424,14 @@ function ProductCardImage({
     <OptimizedImage
       src={fullSrc}
       fullSrc={fullSrc}
-      role="pdp"
+      role="card"
       alt={alt}
       fill
       sizes="(max-width: 768px) 50vw, 22vw"
       priority={priority}
       loading={priority ? "eager" : "lazy"}
       decoding="async"
-      className={`object-contain ${className}`}
+      className={`object-cover object-center ${className}`}
     />
   );
 }
@@ -460,40 +461,33 @@ const ProductCard = memo(function ProductCard({
         if (hasHoverImage) setHoverReady(true);
       }}
     >
-      {/* Image container */}
-      <div
-        className="relative mb-2 w-full overflow-hidden bg-white"
-        style={{ aspectRatio: "3/4" }}
-      >
-        <div className="absolute inset-0 flex items-center justify-center">
-          <span className="relative block h-full w-full">
-            <ProductCardImage
-              fullSrc={img}
-              alt={product.images?.[0]?.alt || product.name}
-              priority={priority}
-              className={
-                hasHoverImage && hoverReady
-                  ? "transition-opacity duration-300 opacity-100 group-hover:opacity-0"
-                  : ""
-              }
-            />
-            {hasHoverImage && hoverReady && (
-              <ProductCardImage
-                fullSrc={hoverImg!}
-                alt={hoverImage?.alt || `${product.name} alternate view`}
-                className="transition-opacity duration-300 opacity-0 group-hover:opacity-100"
-              />
-            )}
-          </span>
-        </div>
+      {/* Image container — 3:4 外框，object-cover 裁切 */}
+      <ProductImageFrame className="mb-2">
+        <ProductCardImage
+          fullSrc={img}
+          alt={product.images?.[0]?.alt || product.name}
+          priority={priority}
+          className={
+            hasHoverImage && hoverReady
+              ? "transition-opacity duration-300 opacity-100 group-hover:opacity-0"
+              : ""
+          }
+        />
+        {hasHoverImage && hoverReady && (
+          <ProductCardImage
+            fullSrc={hoverImg!}
+            alt={hoverImage?.alt || `${product.name} alternate view`}
+            className="transition-opacity duration-300 opacity-0 group-hover:opacity-100"
+          />
+        )}
 
         {/* Badge */}
         {(product.isNew || product.tag) && (
-          <span className="absolute left-2 top-2 text-[10px] font-semibold tracking-widest text-[#333]">
+          <span className="absolute left-2 top-2 z-10 text-[10px] font-semibold tracking-widest text-[#333]">
             {product.isNew ? "NEW" : product.tag}
           </span>
         )}
-      </div>
+      </ProductImageFrame>
 
       {/* Info */}
       <div className="mt-2 min-w-0 space-y-1 px-0.5 text-left md:mt-3">

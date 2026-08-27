@@ -206,7 +206,7 @@ export default function QuickViewModal({ product, onClose }) {
                       src={gallery[activeIdx]}
                       alt={product.name}
                       fill
-                      className="object-contain"
+                      className="object-cover object-center"
                       sizes="(max-width: 768px) 100vw, 440px"
                     />
                     {gallery.length > 1 && (
@@ -255,7 +255,7 @@ export default function QuickViewModal({ product, onClose }) {
                             src={src}
                             alt={`${product.name} ${i + 1}`}
                             fill
-                            className="object-contain"
+                            className="object-cover object-center"
                             sizes="80px"
                           />
                         </button>

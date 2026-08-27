@@ -5,6 +5,7 @@ import { Link } from "next-view-transitions";
 import { useRouter } from "next/navigation";
 import WishlistIcon from "@/components/hover/WishlistIcon";
 import OptimizedImage from "@/components/hover/OptimizedImage";
+import ProductImageFrame from "@/components/hover/ProductImageFrame";
 import { useWishlistStore } from "@/lib/wishlistStore";
 import { useAuthStore } from "@/lib/authStore";
 import InfiniteCarousel from "@/components/hover/InfiniteCarousel";
@@ -72,44 +73,38 @@ function ProductCard({ product }) {
   return (
     <article className="group relative flex min-w-0 w-full flex-col overflow-hidden">
       {/* Image + badges + wishlist */}
-      <div
-        className="relative aspect-[3/4] overflow-hidden bg-white"
+      <ProductImageFrame
         onMouseEnter={() => {
           if (hasHoverImage) setHoverReady(true);
         }}
       >
-        <Link
-          href={product.href}
-          className="absolute inset-0"
-        >
-          <span className="relative block h-full w-full">
+        <Link href={product.href} className="absolute inset-0 block">
+          <OptimizedImage
+            src={product.image}
+            fullSrc={product.image}
+            role="card"
+            alt={product.name}
+            fill
+            className={`object-cover object-center transition-opacity duration-300 ${
+              hasHoverImage && hoverReady
+                ? "opacity-100 group-hover:opacity-0"
+                : ""
+            }`}
+            sizes="(max-width: 768px) 50vw, 28vw"
+          />
+          {hasHoverImage && hoverReady && (
             <OptimizedImage
-              src={product.image}
-              fullSrc={product.image}
-              role="pdp"
-              alt={product.name}
+              src={hoverImage}
+              fullSrc={hoverImage}
+              role="card"
+              alt={`${product.name} alternate view`}
               fill
-              className={`object-contain transition-opacity duration-300 ${
-                hasHoverImage && hoverReady
-                  ? "opacity-100 group-hover:opacity-0"
-                  : ""
-              }`}
+              className="object-cover object-center opacity-0 transition-opacity duration-300 group-hover:opacity-100"
               sizes="(max-width: 768px) 50vw, 28vw"
             />
-            {hasHoverImage && hoverReady && (
-              <OptimizedImage
-                src={hoverImage}
-                fullSrc={hoverImage}
-                role="pdp"
-                alt={`${product.name} alternate view`}
-                fill
-                className="object-contain opacity-0 transition-opacity duration-300 group-hover:opacity-100"
-                sizes="(max-width: 768px) 50vw, 28vw"
-              />
-            )}
-          </span>
+          )}
         </Link>
-      </div>
+      </ProductImageFrame>
 
       {/* Info */}
       <div className="mt-2 min-w-0 space-y-1 pr-1 text-left md:mt-3">

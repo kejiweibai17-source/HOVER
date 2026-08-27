@@ -214,10 +214,11 @@ function hhps_product_color_label(\WC_Product $product): string
 
 function hhps_attachment_display_url(int $aid): string
 {
-    foreach (['large', 'medium_large', 'woocommerce_single'] as $size) {
+    // 列表用 Woo 縮圖（常見 600×750）；前端 3:4 外框 + object-cover 裁切。
+    foreach (['woocommerce_thumbnail', 'medium', 'woocommerce_single', 'large'] as $size) {
         $url = wp_get_attachment_image_url($aid, $size);
         if ($url) {
-            return $url;
+            return (string) $url;
         }
     }
     return (string) (wp_get_attachment_url($aid) ?: '');

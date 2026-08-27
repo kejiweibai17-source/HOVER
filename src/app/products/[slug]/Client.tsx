@@ -87,8 +87,8 @@ const MOCK_GALLERY = [
 ];
 
 const GALLERY_IMAGE_COUNT = 8;
-/** 對齊 Woo 商品圖（常見 1080×1350） */
-const GALLERY_ASPECT_RATIO = "4/5";
+/** 全站商品圖統一 3:4 */
+const GALLERY_ASPECT_RATIO = "3/4";
 
 function isValidGallerySrc(src: unknown): src is string {
   const value = String(src || "").trim();
@@ -193,7 +193,7 @@ function GalleryImageSlot({
         <img
           src={src}
           alt={alt}
-          className="absolute inset-0 h-full w-full object-contain"
+          className="absolute inset-0 h-full w-full object-cover object-center"
           loading={loading}
           decoding="async"
           onError={() => setFailed(true)}
@@ -205,7 +205,7 @@ function GalleryImageSlot({
           fill
           unoptimized
           sizes="(max-width: 768px) 100vw, 50vw"
-          className="object-contain"
+          className="object-cover object-center"
           priority={priority}
           onError={() => setFailed(true)}
         />
