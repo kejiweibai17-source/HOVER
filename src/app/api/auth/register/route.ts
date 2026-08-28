@@ -2,11 +2,8 @@
 import { NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
-import {
-  buildGiftCouponPayload,
-  welcomeCouponCode,
-  HOVER_MEMBERSHIP_META,
-} from "@/lib/membership";
+import { welcomeCouponCode } from "@/lib/membership";
+import { grantWelcomeGiftIfEligible } from "@/lib/welcomeGift";
 
 export const runtime = "nodejs";
 
@@ -83,42 +80,6 @@ async function ensureAmbassadorExists(id: number): Promise<boolean> {
   } catch {
     return false;
   }
-}
-
-// 入會禮 NT$100（HOVER FRIENDS）
-async function grantWelcomeCoupon(newCustomerId: number, email: string) {
-  const authHeader = { Authorization: basicAuth() };
-  const code = welcomeCouponCode(newCustomerId);
-
-  const existing = await fetch(
-    `${BASE}/wp-json/wc/v3/coupons?code=${encodeURIComponent(code)}`,
-    { headers: authHeader, cache: "no-store" },
-  );
-  const arr = await existing.json();
-  if (Array.isArray(arr) && arr.length > 0) return;
-
-  await fetch(`${BASE}/wp-json/wc/v3/coupons`, {
-    method: "POST",
-    headers: { ...authHeader, "Content-Type": "application/json" },
-    body: JSON.stringify(
-      buildGiftCouponPayload({
-        code,
-        amount: 100,
-        email,
-        description: "HOVER FRIENDS 入會禮 HOVER100（單筆滿 NT$1,000 可使用，限本人一次）",
-        expiryDays: 90,
-        kind: "welcome",
-      }),
-    ),
-  });
-
-  await fetch(`${BASE}/wp-json/wc/v3/customers/${newCustomerId}`, {
-    method: "PUT",
-    headers: { ...authHeader, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      meta_data: [{ key: HOVER_MEMBERSHIP_META.welcomeClaimed, value: "1" }],
-    }),
-  });
 }
 
 // 給親友 50 元註冊禮（一次）
@@ -248,7 +209,7 @@ export async function POST(req: Request) {
     // 入會禮
     let welcomeCode = welcomeCouponCode(newCustomerId);
     try {
-      await grantWelcomeCoupon(newCustomerId, createdEmail);
+      await grantWelcomeGiftIfEligible(newCustomerId, createdEmail);
       welcomeCode = welcomeCouponCode(newCustomerId);
     } catch (e) {
       console.error("grantWelcomeCoupon error:", e);

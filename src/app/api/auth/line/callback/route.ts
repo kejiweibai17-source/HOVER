@@ -18,6 +18,7 @@ import {
   applyExclusiveCustomSession,
   upsertSocialCustomer,
 } from "@/lib/socialAccount";
+import { grantWelcomeGiftIfEligible } from "@/lib/welcomeGift";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -144,6 +145,20 @@ export async function GET(req: Request) {
     )
       .trim()
       .toLowerCase();
+
+    try {
+      const customerId = Number(user?.id || 0);
+      if (customerId && email) {
+        await grantWelcomeGiftIfEligible(
+          customerId,
+          email,
+          Array.isArray(user?.meta_data) ? user.meta_data : undefined,
+        );
+      }
+    } catch (e) {
+      console.error("grantWelcomeGift (line) error:", e);
+    }
+
     const name =
       String(user?.first_name || profile.name || "").trim() ||
       email.split("@")[0] ||

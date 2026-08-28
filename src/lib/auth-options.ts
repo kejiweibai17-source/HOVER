@@ -6,6 +6,7 @@ import {
   clearCustomAuthCookiesInRequest,
   upsertSocialCustomer,
 } from "@/lib/socialAccount";
+import { grantWelcomeGiftIfEligible } from "@/lib/welcomeGift";
 
 /** ===== WooCommerce 基本設定 ===== */
 const BASE = process.env.WC_API_BASE || "";
@@ -219,6 +220,23 @@ export const authOptions: AuthOptions = {
           emailVerified: true,
         });
         if (customer) {
+          try {
+            const customerId = Number(customer.id || 0);
+            const customerEmail = String(
+              customer.email || user.email || "",
+            )
+              .trim()
+              .toLowerCase();
+            if (customerId && customerEmail) {
+              await grantWelcomeGiftIfEligible(
+                customerId,
+                customerEmail,
+                Array.isArray(customer.meta_data) ? customer.meta_data : undefined,
+              );
+            }
+          } catch (e) {
+            console.error("grantWelcomeGift error (login not blocked):", e);
+          }
           try {
             await handleReferralIfAny(customer);
           } catch (e) {
