@@ -95,7 +95,7 @@ export function formatShippingMethodLabel(
 }
 
 /** ATM 虛擬帳號銀行顯示（綠界預設第一銀行 007） */
-export const ATM_BANK_DISPLAY = "第一商業銀行（007）";
+export const ATM_BANK_DISPLAY = "第一商業銀行 （007）";
 
 export function formatAtmBankLabel(bankCode?: string | null): string {
   const code = String(bankCode || "").replace(/\D/g, "");

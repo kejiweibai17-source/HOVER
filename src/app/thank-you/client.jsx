@@ -2,7 +2,6 @@
 
 import { Suspense, useEffect, useState } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import HoverIcon from "@/components/hover/HoverIcon";
 import { useSearchParams } from "next/navigation";
 import { useCartStore } from "@/lib/cartStore";
@@ -20,6 +19,18 @@ import {
 
 /** 已付款／進入出貨流程的狀態：不再顯示 ATM 繳費資訊 */
 const PAID_STATUSES = new Set(["processing", "completed"]);
+
+function formatAtmExpireDate(raw) {
+  if (!raw) return "";
+  const s = String(raw).trim();
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}/${iso[2]}/${iso[3]}`;
+  const slash = s.match(/^(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+  if (slash) {
+    return `${slash[1]}/${String(slash[2]).padStart(2, "0")}/${String(slash[3]).padStart(2, "0")}`;
+  }
+  return s;
+}
 
 function ThankYouBanner({ page }) {
   const useCustom = thankYouPageHasCustomImage(page);
@@ -41,7 +52,9 @@ function ThankYouBanner({ page }) {
   }
 
   const desktop = encodeThankYouImageUrl(page.imageDesktop.url);
-  const mobile = encodeThankYouImageUrl(page.imageMobile.url || page.imageDesktop.url);
+  const mobile = encodeThankYouImageUrl(
+    page.imageMobile.url || page.imageDesktop.url,
+  );
 
   return (
     <div className="relative mx-auto aspect-[16/7] w-full max-w-[1400px] bg-[#e8e6e2] md:aspect-[16/6]">
@@ -70,7 +83,7 @@ function ThankYouContent({ page }) {
   const orderId = searchParams.get("orderId") || "";
   const [atm, setAtm] = useState(null);
   const [status, setStatus] = useState("");
-  const [statusChinese, setStatusChinese] = useState("");
+  const [orderNumber, setOrderNumber] = useState("");
   const clearCart = useCartStore((s) => s.clearCart);
 
   // 下單成功落地：清購物車與結帳草稿（含 ATM／刷卡從綠界導回）
@@ -90,7 +103,7 @@ function ThankYouContent({ page }) {
       const nextStatus = String(data?.status || "");
       const info = data?.payment_info || {};
       setStatus(nextStatus);
-      setStatusChinese(data?.status_chinese || "");
+      setOrderNumber(String(data?.number || data?.order_number || orderId || ""));
 
       if (PAID_STATUSES.has(nextStatus)) {
         setAtm(null);
@@ -153,69 +166,57 @@ function ThankYouContent({ page }) {
   }, [orderId]);
 
   const isPaid = PAID_STATUSES.has(status);
+  const isAtmPending = !isPaid && !!atm;
+  const displayOrderNo = orderNumber || orderId;
 
   return (
     <div className="bg-hover-bg">
       <div className="flex flex-col items-center px-6 pb-10 pt-16 text-center md:pt-20">
-        <HoverIcon name="orderComplete" size={140} alt="" />
-        <h1 className="mt-10 text-[22px] font-bold text-black md:text-[24px]">
+        {!isAtmPending && <HoverIcon name="orderComplete" size={140} alt="" />}
+        <h1 className={`${isAtmPending ? "mt-0" : "mt-10"} text-[22px] font-bold text-black md:text-[24px]`}>
           感謝您的購買
         </h1>
-        {orderId && (
-          <p className="mt-5 text-[14px] tracking-[0.04em] text-[#888]">
-            訂單編號 {orderId}
-            {statusChinese ? ` · ${statusChinese}` : ""}
-          </p>
-        )}
-        <p className="mt-4 max-w-md text-[13px] leading-relaxed text-[#666]">
-          訂單通知會寄到您結帳時填寫的信箱。若您為會員，亦可至會員中心查看訂單。
-        </p>
 
-        {isPaid && (
-          <div className="mt-8 w-full max-w-md border border-[#2a514d]/30 bg-white px-6 py-5 text-left text-[13px] text-black">
-            <p className="mb-2 font-semibold tracking-[0.08em] text-[#2a514d]">
-              付款已確認
-            </p>
-            <p>訂單狀態：{statusChinese || "處理中"}</p>
-            <p className="mt-3 text-[12px] leading-relaxed text-[#2a514d]">
-              付款已完成，我們將依訂單順序安排出貨。
-            </p>
-            <Link
-              href="/account?tab=orders"
-              className="mt-4 inline-block text-[13px] text-[#2a514d] underline underline-offset-2"
-            >
-              前往會員中心查看訂單
-            </Link>
-          </div>
-        )}
+        {isAtmPending ? (
+          <>
+            {displayOrderNo ? (
+              <p className="mt-5 text-[14px] tracking-[0.04em] text-[#888]">
+                訂單 {displayOrderNo} 已成立，請於繳費期限內完成 ATM 轉帳。
+              </p>
+            ) : null}
 
-        {!isPaid && atm && (
-          <div className="mt-8 w-full max-w-md border border-[#ddd] bg-white px-6 py-5 text-left text-[13px] text-black">
-            <p className="mb-3 text-[15px] font-semibold">匯款資訊</p>
-            <div className="space-y-2.5">
-              <div className="flex justify-between gap-4">
-                <span className="w-[100px] shrink-0 text-[#8a8a8a]">應付金額</span>
-                <span className="font-medium">{formatProductPrice(atm.amount)}</span>
+            <div className="mt-8 w-full max-w-md border border-[#ddd] bg-white px-6 py-5 text-left text-[13px] text-black">
+              <p className="mb-3 text-[15px] font-semibold">ATM 繳費資訊</p>
+              <div className="space-y-2.5">
+                <p>
+                  應付金額：
+                  <span className="font-medium">
+                    {formatProductPrice(atm.amount)}
+                  </span>
+                </p>
+                <p>
+                  銀行代碼：
+                  {formatAtmBankLabel(atm.bank) || ATM_BANK_DISPLAY}
+                </p>
+                <p>
+                  虛擬帳號：
+                  <span className="tracking-wide">{atm.account}</span>
+                </p>
+                {atm.expire ? (
+                  <p>繳費期限：{formatAtmExpireDate(atm.expire)}</p>
+                ) : null}
               </div>
-              <div className="flex justify-between gap-4">
-                <span className="w-[100px] shrink-0 text-[#8a8a8a]">銀行</span>
-                <span>{formatAtmBankLabel(atm.bank) || ATM_BANK_DISPLAY}</span>
-              </div>
-              <div className="flex justify-between gap-4">
-                <span className="w-[100px] shrink-0 text-[#8a8a8a]">虛擬帳號</span>
-                <span className="tracking-wide">{atm.account}</span>
-              </div>
-              {atm.expire ? (
-                <div className="flex justify-between gap-4">
-                  <span className="w-[100px] shrink-0 text-[#8a8a8a]">繳費期限</span>
-                  <span>{atm.expire}</span>
-                </div>
-              ) : null}
+              <p className="mt-4 text-[12px] leading-relaxed text-[#2a514d]">
+                付款資訊已寄送至您的 Email。
+              </p>
             </div>
-            <p className="mt-4 text-[12px] leading-relaxed text-[#2a514d]">
-              請於繳費期限內完成付款，逾期訂單將自動取消。
+          </>
+        ) : (
+          displayOrderNo && (
+            <p className="mt-5 text-[14px] tracking-[0.04em] text-[#888]">
+              訂單 {displayOrderNo} 已成立，訂單資訊將寄送至您的 Email。
             </p>
-          </div>
+          )
         )}
       </div>
 
