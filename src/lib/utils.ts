@@ -140,6 +140,21 @@ export function stripHtmlToText(html: string | null | undefined): string {
     .trim();
 }
 
+/** 保留 TinyMCE 設定的文字色（其餘 style 仍剝除） */
+function sanitizeInlineStyle(attrs: string): string {
+  const styleMatch = String(attrs).match(/style\s*=\s*(['"])(.*?)\1/i);
+  if (!styleMatch) return "";
+  const raw = styleMatch[2];
+  const colorMatch = raw.match(/(?:^|;)\s*color\s*:\s*([^;]+)/i);
+  if (!colorMatch) return "";
+  const color = colorMatch[1].trim().replace(/['"]/g, "");
+  const safe =
+    /^#[0-9a-fA-F]{3,8}$/.test(color) ||
+    /^rgba?\(\s*[\d.,%\s]+\s*\)$/i.test(color);
+  if (!safe) return "";
+  return ` style="color: ${color.replace(/"/g, "")}"`;
+}
+
 const RICH_HTML_ALLOWED = new Set([
   "p",
   "br",
@@ -236,15 +251,17 @@ export function sanitizeRichHtml(html: string | null | undefined): string {
           /href\s*=\s*(['"])(.*?)\1/i,
         );
         const href = hrefMatch?.[2]?.trim() || "";
-        if (!href || /^javascript:/i.test(href)) return "<a>";
+        const safeStyle = sanitizeInlineStyle(String(attrs));
+        if (!href || /^javascript:/i.test(href)) return `<a${safeStyle}>`;
         const safe = href.replace(/"/g, "&quot;");
         const external = /^https?:\/\//i.test(href);
         return external
-          ? `<a href="${safe}" target="_blank" rel="noopener noreferrer">`
-          : `<a href="${safe}">`;
+          ? `<a href="${safe}" target="_blank" rel="noopener noreferrer"${safeStyle}>`
+          : `<a href="${safe}"${safeStyle}>`;
       }
 
-      return `<${tag}>`;
+      const safeStyle = sanitizeInlineStyle(String(attrs));
+      return `<${tag}${safeStyle}>`;
     },
   );
 

@@ -27,27 +27,25 @@ export type NavCategory = {
 
 const HIDDEN_SLUGS = new Set(["uncategorized", "未分類"]);
 
-/** WooCommerce 無法讀取時的預設導覽（與首頁分類區一致） */
+/** Navbar 顯示順序（ALL ITEMS 為獨立連結，不在此列） */
+const NAV_CATEGORY_ORDER = ["tops", "headwear", "socks", "bags"] as const;
+
+const NAV_MENU_SLUGS = new Set<string>(NAV_CATEGORY_ORDER);
+
+const NAV_LABEL_OVERRIDES: Record<string, string> = {
+  tops: "TOP",
+  headwear: "HEADWEAR",
+  socks: "SOCKS",
+  bags: "BAG",
+};
+
+/** WooCommerce 無法讀取時的預設導覽 */
 export const FALLBACK_NAV_CATEGORIES: NavCategory[] = [
   {
     id: -1,
     slug: "tops",
-    label: "TOPS",
+    label: "TOP",
     href: "/products?category=tops",
-    children: [],
-  },
-  {
-    id: -2,
-    slug: "bags",
-    label: "BAGS",
-    href: "/products?category=bags",
-    children: [],
-  },
-  {
-    id: -3,
-    slug: "others",
-    label: "OTHERS",
-    href: "/products?category=others",
     children: [],
   },
   {
@@ -62,6 +60,13 @@ export const FALLBACK_NAV_CATEGORIES: NavCategory[] = [
     slug: "socks",
     label: "SOCKS",
     href: "/products?category=socks",
+    children: [],
+  },
+  {
+    id: -2,
+    slug: "bags",
+    label: "BAG",
+    href: "/products?category=bags",
     children: [],
   },
 ];
@@ -115,10 +120,21 @@ export function isCategoryVisibleInFilter(cat: WooCategoryRaw): boolean {
 }
 
 export function slugToNavLabel(slug: string): string {
-  return slug.toUpperCase();
+  const normalized = normalizeCategorySlug(slug);
+  return NAV_LABEL_OVERRIDES[normalized] ?? slug.toUpperCase();
+}
+
+function navCategorySortIndex(slug: string): number {
+  const normalized = normalizeCategorySlug(slug);
+  const idx = NAV_CATEGORY_ORDER.indexOf(
+    normalized as (typeof NAV_CATEGORY_ORDER)[number],
+  );
+  return idx === -1 ? NAV_CATEGORY_ORDER.length + 1 : idx;
 }
 
 function sortCategories(a: WooCategoryRaw, b: WooCategoryRaw): number {
+  const navOrderDiff = navCategorySortIndex(a.slug) - navCategorySortIndex(b.slug);
+  if (navOrderDiff !== 0) return navOrderDiff;
   const orderDiff = (a.menu_order ?? 0) - (b.menu_order ?? 0);
   if (orderDiff !== 0) return orderDiff;
   return a.name.localeCompare(b.name, "zh-Hant");
@@ -134,7 +150,10 @@ export function buildCategoryNav(categories: WooCategoryRaw[]): NavCategory[] {
     return !visibleById.has(cat.parent);
   };
 
-  const parents = visible.filter(isTopLevel).sort(sortCategories);
+  const parents = visible
+    .filter(isTopLevel)
+    .filter((cat) => NAV_MENU_SLUGS.has(normalizeCategorySlug(cat.slug)))
+    .sort(sortCategories);
 
   return parents.map((parent) => {
     const children = visible

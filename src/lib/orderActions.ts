@@ -2,7 +2,7 @@
  * HOVER 訂單狀態／前台按鈕邏輯（對齊客服流程圖）
  *
  * 顯示狀態：處理中｜已出貨｜已到貨｜退貨處理中｜退貨完成｜已取消｜待付款…
- * 前台按鈕：取消訂單｜申請退貨｜聯繫客服
+ * 前台按鈕：取消訂單（僅待付款）｜申請退貨｜聯繫客服
  */
 
 export const HOVER_LINE_OA = "https://line.me/R/ti/p/@330kefmm";
@@ -194,14 +194,28 @@ export function isWithinReturnWindow(order: OrderLike, now = new Date()): boolea
   return now.getTime() <= end.getTime();
 }
 
+/** 消費者可自行取消：僅 ATM／待付款、尚未付款 */
+export function isOrderCustomerCancellable(order: OrderLike): boolean {
+  const phase = resolveOrderDisplayPhase(order);
+  if (phase !== "pending") return false;
+  if (order.date_paid) return false;
+  const s = String(order.status || "").toLowerCase();
+  return (
+    s === "pending" ||
+    s === "on-hold" ||
+    s === "waiting-payment" ||
+    s === "待付款"
+  );
+}
+
 /**
  * 前台應顯示的操作按鈕
  */
 export function resolveOrderAction(order: OrderLike): OrderActionKind {
   const phase = resolveOrderDisplayPhase(order);
 
-  // 待付款／處理中（尚未出貨）→ 取消訂單
-  if (phase === "processing" || phase === "pending") return "cancel";
+  // 僅待付款（如 ATM 未轉帳）→ 可自行取消
+  if (isOrderCustomerCancellable(order)) return "cancel";
   if (phase === "arrived" && isWithinReturnWindow(order)) return "return";
   return "contact";
 }
@@ -388,9 +402,15 @@ export function getOrderActionHref(order: OrderLike, kind: OrderActionKind): str
   return "#";
 }
 
-export function getOrderActionLabel(kind: OrderActionKind): string {
+export function getOrderActionLabel(
+  kind: OrderActionKind,
+  order?: OrderLike,
+): string {
   if (kind === "cancel") return "取消訂單";
   if (kind === "return") return "申請退貨";
+  if (order && resolveOrderDisplayPhase(order) === "processing") {
+    return "聯繫客服";
+  }
   return "聯繫客服";
 }
 

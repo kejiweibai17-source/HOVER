@@ -1,6 +1,7 @@
 // app/account/page.jsx
 "use client";
 import React, {
+  Suspense,
   useCallback,
   useEffect,
   useMemo,
@@ -8,7 +9,7 @@ import React, {
 } from "react";
 import Image from "next/image";
 import { Link } from "next-view-transitions";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useWishlistStore } from "@/lib/wishlistStore";
 import {
   formatProductPrice,
@@ -21,7 +22,6 @@ import {
   getInvoiceTypeDetail,
 } from "@/lib/invoicePreference";
 import { motion, AnimatePresence } from "framer-motion";
-import { usePathname } from "next/navigation";
 import HoverIcon from "@/components/hover/HoverIcon";
 import WishlistIcon from "@/components/hover/WishlistIcon";
 import { PasswordInput } from "@/components/hover/AuthField";
@@ -555,7 +555,7 @@ function OrderActionButton({
 }) {
   const [returnOpen, setReturnOpen] = useState(false);
   const kind = resolveOrderAction(order);
-  const label = getOrderActionLabel(kind);
+  const label = getOrderActionLabel(kind, order);
   const variant = getOrderActionVariant(kind);
   const base = cn(
     "inline-flex h-10 items-center justify-center px-5 text-[13px] tracking-wide transition-opacity",
@@ -1287,8 +1287,9 @@ function AccountTabButton({ active, onClick, children }) {
 // ============================================================================
 
 
-export default function AccountPage() {
+function AccountPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [activeTab, setActiveTab] = useState("profile");
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -1517,7 +1518,7 @@ export default function AccountPage() {
   }, [loadProfile]);
 
   useEffect(() => {
-    const tab = new URLSearchParams(window.location.search).get("tab");
+    const tab = searchParams.get("tab");
     if (tab === "admin") {
       router.replace("/account", { scroll: false });
       setActiveTab("profile");
@@ -1525,8 +1526,12 @@ export default function AccountPage() {
     }
     if (tab && ["profile", "orders", "coupons", "favorites"].includes(tab)) {
       setActiveTab(tab);
+      return;
     }
-  }, [router]);
+    if (!tab) {
+      setActiveTab("profile");
+    }
+  }, [searchParams, router]);
 
   useEffect(() => {
     if (loggedIn) {
@@ -2708,5 +2713,19 @@ export default function AccountPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function AccountPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex min-h-[55vh] items-center justify-center">
+          <div className="h-10 w-10 animate-spin rounded-full border-4 border-[#dfe0e5] border-t-[#2a514d]" />
+        </div>
+      }
+    >
+      <AccountPageContent />
+    </Suspense>
   );
 }

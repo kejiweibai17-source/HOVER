@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import PolicyAccordion from "@/components/hover/PolicyAccordion";
+import PolicyPageHeader from "@/components/hover/PolicyPageHeader";
 import {
   normalizePolicyPage,
   type PolicyPageSettings,
@@ -24,7 +25,6 @@ export default function HowToBuyClient({
       .then((res) => res.json())
       .then((json) => {
         if (cancelled || !json?.data) return;
-        // 有成功資料就採用；不要在 fallback 時硬蓋回整包預設
         if (json.fallback) return;
         setPage(normalizePolicyPage(json.data, "how-to-buy"));
       })
@@ -36,11 +36,11 @@ export default function HowToBuyClient({
 
   return (
     <div className="relative bg-white pb-24">
-      <header className="px-4 pb-10 pt-14 text-center md:pb-14 md:pt-20">
-        <h1 className="font-serif text-[28px] font-medium tracking-[0.12em] text-[#2a514d] md:text-[32px]">
-          {page.pageTitle || "如何購買"}
-        </h1>
-      </header>
+      <PolicyPageHeader
+        pageTitle={page.pageTitle}
+        contentColor={page.contentColor}
+        defaultTitle="如何購買"
+      />
 
       <div className="mx-auto max-w-[760px] border-t border-[#d8d8d8] px-4 md:px-6">
         <PolicyAccordion

@@ -27,31 +27,22 @@ function basicAuth() {
   return "Basic " + Buffer.from(`${KEY}:${SECRET}`).toString("base64");
 }
 
-function canCustomerCancel(order: any): boolean {
-  const status = String(order?.status || "").toLowerCase();
-  if (
-    ["cancelled", "canceled", "refunded", "failed", "completed"].includes(status)
-  ) {
-    return false;
-  }
-  const meta = Array.isArray(order?.meta_data) ? order.meta_data : [];
-  const phase = String(
-    meta.find((m: any) => m?.key === "_hel_LogisticsPhase")?.value || "",
-  ).toLowerCase();
-  if (phase === "shipped" || phase === "arrived" || phase === "picked") {
-    return false;
-  }
-  const ret = String(
-    meta.find((m: any) => m?.key === "_hover_return_status")?.value || "",
-  ).toLowerCase();
-  if (ret === "returning" || ret === "returned") return false;
+import { isOrderCustomerCancellable, type OrderLike } from "@/lib/orderActions";
 
-  return (
-    status === "processing" ||
-    status === "pending" ||
-    status === "on-hold" ||
-    status === "paid"
-  );
+function canCustomerCancel(order: any): boolean {
+  const payload: OrderLike = {
+    status: order?.status,
+    date_paid: order?.date_paid ?? null,
+    meta_data: order?.meta_data,
+    logistics_phase: order?.meta_data?.find(
+      (m: { key?: string; value?: unknown }) => m?.key === "_hel_LogisticsPhase",
+    )?.value as string | undefined,
+    return_status: order?.meta_data?.find(
+      (m: { key?: string; value?: unknown }) =>
+        m?.key === "_hover_return_status",
+    )?.value as string | undefined,
+  };
+  return isOrderCustomerCancellable(payload);
 }
 
 async function resolveMemberIdentity(): Promise<{
@@ -170,7 +161,7 @@ export async function POST(
 
     if (!canCustomerCancel(order)) {
       return NextResponse.json(
-        { ok: false, message: "此訂單目前無法取消（可能已出貨）" },
+        { ok: false, message: "此訂單目前無法取消（僅待付款訂單可自行取消）" },
         { status: 400, headers: noCacheHeaders() },
       );
     }

@@ -7,6 +7,7 @@ import {
 } from "@/lib/ecpay-invoice";
 
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
 
 const BASE = process.env.WC_API_BASE!;
 const CK = process.env.WC_CONSUMER_KEY!;

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import PolicyAccordion from "@/components/hover/PolicyAccordion";
+import PolicyPageHeader from "@/components/hover/PolicyPageHeader";
 import {
   normalizePolicyPage,
   type PolicyPageSettings,
@@ -34,11 +35,11 @@ export default function FAQClient({
 
   return (
     <div className="relative bg-white pb-24">
-      <header className="px-4 pb-8 pt-14 text-center md:pb-10 md:pt-20">
-        <h1 className="font-serif text-[28px] font-medium tracking-[0.12em] text-[#2a514d] md:text-[32px]">
-          {page.pageTitle || "常見問題"}
-        </h1>
-      </header>
+      <PolicyPageHeader
+        pageTitle={page.pageTitle}
+        contentColor={page.contentColor}
+        defaultTitle="常見問題"
+      />
 
       <div className="mx-auto max-w-[760px] border-t border-[#d8d8d8] px-4 md:px-6">
         <PolicyAccordion

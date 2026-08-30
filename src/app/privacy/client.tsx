@@ -2,33 +2,11 @@
 
 import { useEffect, useState } from "react";
 import PolicyAccordion from "@/components/hover/PolicyAccordion";
+import PolicyPageHeader from "@/components/hover/PolicyPageHeader";
 import {
   normalizePolicyPage,
   type PolicyPageSettings,
 } from "@/lib/policyPagesDefaults";
-
-function IntroBlocks({ intro }: { intro: string }) {
-  const lines = intro
-    .split(/\n+/)
-    .map((line) => line.trim())
-    .filter(Boolean);
-  if (!lines.length) return null;
-
-  return (
-    <div className="mx-auto mt-6 max-w-[640px] space-y-3 text-center md:mt-8">
-      {lines.map((p, idx) => (
-        <p
-          key={`${idx}-${p.slice(0, 24)}`}
-          className={`text-[12px] leading-[2] tracking-[0.04em] text-[#555] md:text-[13px] ${
-            idx === 1 ? "font-medium text-[#333]" : ""
-          }`}
-        >
-          {p}
-        </p>
-      ))}
-    </div>
-  );
-}
 
 export default function PrivacyClient({
   initial,
@@ -57,12 +35,12 @@ export default function PrivacyClient({
 
   return (
     <div className="relative bg-white pb-24">
-      <header className="px-4 pb-8 pt-14 text-center md:pb-10 md:pt-20">
-        <h1 className="font-serif text-[28px] font-medium tracking-[0.12em] text-[#2a514d] md:text-[32px]">
-          {page.pageTitle || "隱私權保護"}
-        </h1>
-        <IntroBlocks intro={page.intro || ""} />
-      </header>
+      <PolicyPageHeader
+        pageTitle={page.pageTitle}
+        contentColor={page.contentColor}
+        defaultTitle="隱私權政策"
+        intro={page.intro}
+      />
 
       <div className="mx-auto max-w-[760px] border-t border-[#d8d8d8] px-4 md:px-6">
         <PolicyAccordion

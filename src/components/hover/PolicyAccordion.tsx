@@ -21,7 +21,8 @@ export type PolicySection = {
 
 const richClass = [
   "policy-rich-content text-[12px] leading-[2] tracking-[0.04em] md:text-[13px]",
-  "[&_p]:mb-3 [&_p:last-child]:mb-0",
+  "[&_p]:mb-3 [&_p]:text-inherit [&_p:last-child]:mb-0",
+  "[&_li]:text-inherit [&_a]:text-inherit",
   // 後台連續 Enter 的空白段：保留高度當作空行
   "[&_p:has(>br:only-child)]:mb-0 [&_p:has(>br:only-child)]:min-h-[1.6em]",
   "[&_a]:underline [&_a]:underline-offset-2",

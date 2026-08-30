@@ -390,26 +390,21 @@ export default function HoverHeader({
                   />
                 ) : null}
               </Link>
-              <HeaderIconButton
+              <Link
+                href={
+                  loggedIn
+                    ? "/account?tab=favorites"
+                    : `/login?next=${encodeURIComponent("/account?tab=favorites")}`
+                }
                 aria-label="收藏"
-                className="relative transition-opacity hover:opacity-50"
+                className="relative flex shrink-0 items-center justify-center text-black transition-opacity hover:opacity-50"
                 style={{
                   width: HEADER_ICON.desktop.box,
                   height: HEADER_ICON.desktop.box,
                 }}
-                onClick={async () => {
-                  const isLoggedIn = await checkAuth();
-                  if (isLoggedIn) {
-                    router.push("/account?tab=favorites");
-                  } else {
-                    router.push(
-                      `/login?next=${encodeURIComponent("/account?tab=favorites")}`,
-                    );
-                  }
-                }}
               >
                 <WishlistIcon size={HEADER_ICON.desktop.glyph} />
-              </HeaderIconButton>
+              </Link>
               <Link
                 href="/cart"
                 aria-label={

@@ -12,11 +12,60 @@ import {
   formatAtmBankLabel,
   ATM_BANK_DISPLAY,
 } from "@/lib/utils";
+import {
+  FALLBACK_THANK_YOU_IMAGE,
+  thankYouPageHasCustomImage,
+  encodeThankYouImageUrl,
+} from "@/lib/thankYouDefaults";
 
 /** 已付款／進入出貨流程的狀態：不再顯示 ATM 繳費資訊 */
 const PAID_STATUSES = new Set(["processing", "completed"]);
 
-function ThankYouContent() {
+function ThankYouBanner({ page }) {
+  const useCustom = thankYouPageHasCustomImage(page);
+  const alt = page?.imageDesktop?.alt || "HOVER";
+
+  if (!useCustom) {
+    return (
+      <div className="relative mx-auto aspect-[16/7] w-full max-w-[1400px] bg-[#e8e6e2] md:aspect-[16/6]">
+        <Image
+          src={FALLBACK_THANK_YOU_IMAGE}
+          alt={alt}
+          fill
+          className="object-cover"
+          sizes="100vw"
+          priority
+        />
+      </div>
+    );
+  }
+
+  const desktop = encodeThankYouImageUrl(page.imageDesktop.url);
+  const mobile = encodeThankYouImageUrl(page.imageMobile.url || page.imageDesktop.url);
+
+  return (
+    <div className="relative mx-auto aspect-[16/7] w-full max-w-[1400px] bg-[#e8e6e2] md:aspect-[16/6]">
+      <Image
+        src={desktop}
+        alt={alt}
+        fill
+        className="hidden object-cover md:block"
+        sizes="100vw"
+        priority
+      />
+      <Image
+        src={mobile}
+        alt=""
+        fill
+        className="object-cover md:hidden"
+        sizes="100vw"
+        priority
+      />
+    </div>
+  );
+}
+
+function ThankYouContent({ page }) {
   const searchParams = useSearchParams();
   const orderId = searchParams.get("orderId") || "";
   const [atm, setAtm] = useState(null);
@@ -172,21 +221,12 @@ function ThankYouContent() {
 
       <div className="border-t border-[#ddd]" />
 
-      <div className="relative mx-auto aspect-[16/7] w-full max-w-[1400px] bg-[#e8e6e2] md:aspect-[16/6]">
-        <Image
-          src="/images/hover/pdp-main-1.jpg"
-          alt="HOVER"
-          fill
-          className="object-cover"
-          sizes="100vw"
-          priority
-        />
-      </div>
+      <ThankYouBanner page={page} />
     </div>
   );
 }
 
-export default function ThankYouClient() {
+export default function ThankYouClient({ page }) {
   return (
     <Suspense
       fallback={
@@ -195,7 +235,7 @@ export default function ThankYouClient() {
         </div>
       }
     >
-      <ThankYouContent />
+      <ThankYouContent page={page} />
     </Suspense>
   );
 }
