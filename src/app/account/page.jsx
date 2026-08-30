@@ -769,14 +769,14 @@ function OrderDetail({
   const invoicePref = invoicePreferenceFromOrderMeta(order.meta_data);
   const invoiceTypeLabel = getInvoiceTypeLabel(invoicePref.type);
   const invoiceTypeDetail = getInvoiceTypeDetail(invoicePref);
-  const invoiceDate = formatOrderDate(
-    order.date_paid || order.date_created,
-    false,
-  ).replace(
-    /(\d+)\/(\d+)\/(\d+)/,
-    (_, y, m, d) =>
-      `${y}/${String(m).padStart(2, "0")}/${String(d).padStart(2, "0")}`,
-  );
+  // 發票於付款完成後才向綠界開立；未付款不顯示開立日期
+  const invoiceDate = isUnpaid || !order.date_paid
+    ? "—"
+    : formatOrderDate(order.date_paid, false).replace(
+        /(\d+)\/(\d+)\/(\d+)/,
+        (_, y, m, d) =>
+          `${y}/${String(m).padStart(2, "0")}/${String(d).padStart(2, "0")}`,
+      );
 
   const payInfo = getOrderPaymentInfo(order);
   const isAtm = isAtmPaymentOrder(order);
