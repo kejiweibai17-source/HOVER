@@ -968,11 +968,11 @@ function CartStep({
               </div>
 
               {pricing.memberDiscountAmount > 0 && (
-                <div className="flex items-center justify-between">
-                  <span className="text-[#555]">
-                    {membership?.tierName} 折扣
+                <div className="flex items-center justify-between gap-3">
+                  <span className="min-w-0 text-[#555]">
+                    折扣（HOVER 臻享會員 95 折）
                   </span>
-                  <span className="text-[#c90000]">
+                  <span className="shrink-0 text-[#c90000]">
                     - {currency(pricing.memberDiscountAmount)}
                   </span>
                 </div>
@@ -1786,14 +1786,25 @@ function CheckoutStep({
                 <span>商品總金額</span>
                 <span>{currency(checkoutPricing.subtotal)}</span>
               </div>
-              <div className="flex justify-between">
-                <span>活動折扣</span>
-                <span>
-                  {checkoutPricing.activityDiscount > 0
-                    ? `- ${currency(checkoutPricing.activityDiscount)}`
-                    : currency(0)}
-                </span>
-              </div>
+              {checkoutPricing.memberDiscountAmount > 0 && (
+                <div className="flex justify-between gap-3">
+                  <span className="min-w-0">折扣（HOVER 臻享會員 95 折）</span>
+                  <span className="shrink-0">
+                    - {currency(checkoutPricing.memberDiscountAmount)}
+                  </span>
+                </div>
+              )}
+              {checkoutPricing.couponDiscount > 0 && appliedCoupon && (
+                <div className="flex justify-between gap-3">
+                  <span className="min-w-0">
+                    折扣（{appliedCoupon.code || appliedCoupon.label || "折扣碼"}
+                    ）
+                  </span>
+                  <span className="shrink-0">
+                    - {currency(checkoutPricing.couponDiscount)}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between">
                 <span>運費</span>
                 <span>

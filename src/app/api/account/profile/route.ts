@@ -10,6 +10,7 @@ import {
   mapWcOrdersToLite,
   netOrderTotal,
 } from "@/lib/membership";
+import { grantBirthdayGiftIfEligible } from "@/lib/birthdayGift";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -661,6 +662,17 @@ export async function PUT(req: Request) {
         const err = await updateRes.json();
         console.error("Update failed:", err);
         return NextResponse.json({ ok: false, message: err.message || "更新失敗" });
+      }
+
+      // 當月壽星補發生日禮（品牌好友／臻享皆適用）
+      try {
+        await grantBirthdayGiftIfEligible({
+          customerId,
+          email: normalizedEmail,
+          birthday,
+        });
+      } catch (e) {
+        console.error("grantBirthdayGift after set birthday:", e);
       }
     }
 

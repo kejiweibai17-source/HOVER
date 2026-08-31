@@ -4,6 +4,7 @@ import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
 import { welcomeCouponCode } from "@/lib/membership";
 import { grantWelcomeGiftIfEligible } from "@/lib/welcomeGift";
+import { grantBirthdayGiftIfEligible } from "@/lib/birthdayGift";
 
 export const runtime = "nodejs";
 
@@ -213,6 +214,19 @@ export async function POST(req: Request) {
       welcomeCode = welcomeCouponCode(newCustomerId);
     } catch (e) {
       console.error("grantWelcomeCoupon error:", e);
+    }
+
+    // 當月壽星補發生日禮（FRIENDS／臻享皆適用）
+    if (birthday) {
+      try {
+        await grantBirthdayGiftIfEligible({
+          customerId: newCustomerId,
+          email: createdEmail,
+          birthday,
+        });
+      } catch (e) {
+        console.error("grantBirthdayGift error:", e);
+      }
     }
 
     // 給推薦禮

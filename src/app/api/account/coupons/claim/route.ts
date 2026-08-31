@@ -8,6 +8,7 @@ import {
   buildGiftCouponPayload,
   welcomeCouponCode,
 } from "@/lib/membership";
+import { sendBirthdayGiftNotifyMail } from "@/lib/birthdayGift";
 
 export const runtime = "nodejs";
 
@@ -127,20 +128,27 @@ export async function POST(req: Request) {
       });
     }
 
-    // birthday
+    // birthday — 當月壽星可領／補發（不限註冊須早於當月 1 日）
     const now = new Date();
     const currentMonth = now.getMonth() + 1;
-    const regDate = new Date(user.date_created);
-    if (
-      regDate.getFullYear() === now.getFullYear() &&
-      regDate.getMonth() + 1 === currentMonth
-    ) {
+
+    const birthdayRaw =
+      meta.find((m) => m.key === "birthday")?.value ||
+      meta.find((m) => m.key === "billing_birth_date")?.value ||
+      meta.find((m) => m.key === "_billing_birth_date")?.value ||
+      "";
+    const bdMatch = String(birthdayRaw)
+      .trim()
+      .match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!bdMatch) {
       return NextResponse.json(
-        {
-          ok: false,
-          message:
-            "依規定，當月壽星需於當月 1 日前完成註冊，方可領取本年度生日禮。",
-        },
+        { ok: false, message: "請先設定生日後再領取生日禮" },
+        { status: 400 },
+      );
+    }
+    if (Number(bdMatch[2]) !== currentMonth) {
+      return NextResponse.json(
+        { ok: false, message: "生日禮僅限生日當月領取" },
         { status: 400 },
       );
     }
@@ -174,6 +182,18 @@ export async function POST(req: Request) {
       headers: { ...authHeader, "Content-Type": "application/json" },
       body: JSON.stringify({ meta_data: [{ key: metaKey, value: "1" }] }),
     });
+
+    try {
+      await sendBirthdayGiftNotifyMail({
+        customerEmail,
+        month: currentMonth,
+        code,
+        amount,
+        tierLabel,
+      });
+    } catch (e) {
+      console.error("birthday claim notify mail failed:", e);
+    }
 
     return NextResponse.json({
       ok: true,
