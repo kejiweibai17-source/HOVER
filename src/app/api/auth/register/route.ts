@@ -146,12 +146,31 @@ export async function POST(req: Request) {
     const username: string = String(body.username || "").trim();
     const password: string = String(body.password || "");
     const birthday: string = String(body.birthday || "").trim();
+    const phoneRaw: string = String(body.phone || body.username || "").trim();
     const ref: string | null = body.ref ? String(body.ref) : null;
 
     if (!email || !password) {
       return NextResponse.json(
         { message: "缺少 email 或 password" },
         { status: 400 }
+      );
+    }
+
+    const { normalizeTwPhone, isValidTwMobile, findCustomerByPhone } =
+      await import("@/lib/socialLink");
+    const phone = normalizeTwPhone(phoneRaw);
+    if (!isValidTwMobile(phone)) {
+      return NextResponse.json(
+        { message: "請輸入有效的台灣手機號碼（09 開頭共 10 碼）" },
+        { status: 400 },
+      );
+    }
+
+    const phoneOwner = await findCustomerByPhone(phone);
+    if (phoneOwner?.id) {
+      return NextResponse.json(
+        { message: "此手機號碼已註冊，請直接登入或使用第三方綁定既有帳號" },
+        { status: 409 },
       );
     }
 
@@ -188,8 +207,13 @@ export async function POST(req: Request) {
       },
       body: JSON.stringify({
         email,
-        username: username || email,
+        // 以 Email 作為 WP 登入帳號；手機另存 billing.phone 供綁定查詢
+        username: username && username.includes("@") ? username : email,
         password,
+        billing: {
+          phone,
+          email,
+        },
         meta_data,
       }),
       cache: "no-store",

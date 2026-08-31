@@ -27,6 +27,11 @@ import WishlistIcon from "@/components/hover/WishlistIcon";
 import { PasswordInput } from "@/components/hover/AuthField";
 import { useShippingSettings } from "@/lib/useShippingSettings";
 import {
+  buildOrderDetailSummary,
+  inferShipMethodFromOrder,
+} from "@/lib/orderSummary";
+import OrderSummaryRows from "@/components/order/OrderSummaryRows";
+import {
   getOrderStatusLabel as resolveOrderStatusLabel,
   resolveOrderAction,
   getOrderActionLabel,
@@ -681,6 +686,7 @@ function OrderDetail({
   cancelling = false,
   refreshing = false,
 }) {
+  const [showOrderStatus, setShowOrderStatus] = useState(false);
   const shippingSettings = useShippingSettings();
   const shipping = order.shipping || {};
   const billing = order.billing || {};
@@ -747,17 +753,15 @@ function OrderDetail({
       amount: discountTotal,
     });
   }
-  // 免運優惠：運費為 0 時顯示節省的運費（與設計稿一致）
-  const waivedShipping =
-    shippingTotal === 0
-      ? Number(shippingSettings.homeDeliveryFee || shippingSettings.cvsFee || 85)
-      : 0;
-  if (waivedShipping > 0) {
-    discountRows.push({
-      label: "折扣（滿 NT.2,000 免運）",
-      amount: waivedShipping,
-    });
-  }
+
+  const orderSummary = buildOrderDetailSummary({
+    itemsSubtotal,
+    discountRows,
+    shippingTotal,
+    orderTotal: order.total,
+    shipMethod: inferShipMethodFromOrder(shippingMethod, isCvs),
+    shippingSettings,
+  });
   const orderStatusLabel = getOrderStatusLabel(order);
   const paymentStatusLabel = getPaymentStatusLabel(order);
   const paymentTitle = order.payment_method_title || "—";
@@ -880,41 +884,162 @@ function OrderDetail({
           <ChevronLeft size={18} strokeWidth={1.5} />
           <span className="hidden sm:inline">返回</span>
         </button>
-        <h2 className="text-[20px] font-semibold tracking-wide text-black">
-          我的訂單
+        <h2 className="text-[18px] font-semibold tracking-wide text-black md:text-[20px]">
+          訂單明細
         </h2>
       </div>
 
-      {/* ── Mobile summary card (圖一) ── */}
-      <section className="mb-4 overflow-hidden rounded-lg border border-[#e4e4e4] bg-white md:hidden">
-        <div className="space-y-0 px-4 py-2">
-          <InfoRow label="訂單編號">
-            <span className="font-semibold text-[#2a514d]">
-              {order.number || order.id}
-            </span>
-          </InfoRow>
-          <InfoRow label="訂單日期">
-            {formatOrderDate(order.date_created, true)}
-          </InfoRow>
-          <InfoRow label="訂單狀態">
-            <OrderStatusBadge label={orderStatusLabel} />
-          </InfoRow>
-          <InfoRow label="付款狀態">
-            <PaymentStatusWithUpdate />
-          </InfoRow>
-          <InfoRow label="總金額">
-            <span className="font-medium">{formatMoneyDot(order.total)}</span>
-          </InfoRow>
+      {/* ── Mobile：對齊設計稿（商品列＋金額摘要） ── */}
+      <section className="md:hidden">
+        <div className="divide-y divide-[#e8e8e8] border-y border-[#e8e8e8]">
+          {(order.line_items || []).map((item, index) => {
+            const variant = getItemVariantText(item);
+            const displayName = getItemDisplayName(item);
+            const qty = Number(item.quantity) || 1;
+            const variantLine = [
+              variant ? variant.replace(/\s*\/\s*/g, " / ") : null,
+              `× ${qty}`,
+            ]
+              .filter(Boolean)
+              .join("  ");
+
+            return (
+              <div
+                key={`${order.id}-m-${index}`}
+                className="flex items-start gap-3 py-4"
+              >
+                <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden bg-[#f5f5f3]">
+                  {item.image ? (
+                    <Image
+                      src={item.image}
+                      alt={displayName}
+                      fill
+                      sizes="72px"
+                      className="object-cover"
+                    />
+                  ) : (
+                    <div className="flex h-full items-center justify-center text-[10px] text-[#aaa]">
+                      HOVER
+                    </div>
+                  )}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="min-w-0 text-[14px] font-medium leading-snug text-black">
+                      {displayName}
+                    </p>
+                    <p className="shrink-0 text-[14px] font-medium text-black">
+                      {formatMoneyDot(item.total)}
+                    </p>
+                  </div>
+                  {variantLine ? (
+                    <p className="mt-1 text-[12px] text-[#555]">{variantLine}</p>
+                  ) : null}
+                </div>
+              </div>
+            );
+          })}
         </div>
-        <div className="px-4 pb-4 pt-2">
-          <OrderActionButton
-            order={order}
-            onCancel={onCancelOrder}
-            cancelling={cancelling}
-            fullWidth
-            className="h-11 rounded-md text-[14px]"
+
+        <div className="mt-8">
+          <OrderSummaryRows
+            summary={orderSummary}
+            totalLabel="訂單總額"
+            labelClassName="text-black"
+            valueClassName="text-black"
+            discountLabelClassName="text-black"
+            discountValueClassName="text-[#c90000]"
+            freeShipValueClassName="text-[#2a514d]"
+            totalLabelClassName="text-[15px] font-semibold text-black"
+            totalValueClassName="text-[18px] font-bold text-black"
+            rowClassName="flex items-center justify-between gap-3"
+            containerClassName="space-y-3 text-[14px]"
+            showTotalDivider
+            totalRowClassName="flex items-center justify-between"
           />
+
+          <button
+            type="button"
+            onClick={() => setShowOrderStatus((v) => !v)}
+            className="mt-6 flex h-[48px] w-full items-center justify-center border border-[#222] bg-white text-[14px] font-medium text-black transition-colors hover:bg-[#fafafa]"
+          >
+            {showOrderStatus ? "收合訂單狀態" : "查看訂單狀態"}
+          </button>
         </div>
+
+        {showOrderStatus ? (
+          <div className="mt-6 space-y-4">
+            <section className="overflow-hidden rounded-lg border border-[#e4e4e4] bg-white">
+              <div className="space-y-0 px-4 py-2">
+                <InfoRow label="訂單編號">
+                  <span className="font-semibold text-[#2a514d]">
+                    {order.number || order.id}
+                  </span>
+                </InfoRow>
+                <InfoRow label="訂單日期">
+                  {formatOrderDate(order.date_created, true)}
+                </InfoRow>
+                <InfoRow label="訂單狀態">
+                  <OrderStatusBadge label={orderStatusLabel} />
+                </InfoRow>
+                <InfoRow label="付款狀態">
+                  <PaymentStatusWithUpdate />
+                </InfoRow>
+                <InfoRow label="付款方式">{paymentTitle}</InfoRow>
+                <InfoRow label="付款時間">{paidAt}</InfoRow>
+              </div>
+              <div className="px-4 pb-4 pt-2">
+                <OrderActionButton
+                  order={order}
+                  onCancel={onCancelOrder}
+                  cancelling={cancelling}
+                  fullWidth
+                  className="h-11 rounded-md text-[14px]"
+                />
+              </div>
+            </section>
+
+            <section className="overflow-hidden rounded-lg border border-[#e4e4e4] bg-white">
+              <div className="px-4 py-4">
+                <h3 className="mb-3 text-[15px] font-semibold text-black">
+                  收件 / 配送資訊
+                </h3>
+                <div className="divide-y divide-[#f0f0f0]">
+                  <InfoRow label="收件人">{recipient}</InfoRow>
+                  <InfoRow label="手機號碼">{phone}</InfoRow>
+                  {isCvs ? (
+                    <>
+                      <InfoRow label="取件門市">
+                        <span className="break-words">
+                          {storeName || "—"}
+                          {storeId ? `（${storeId}）` : ""}
+                        </span>
+                      </InfoRow>
+                      <InfoRow label="取件地址" valueClassName="text-left">
+                        {storeAddress || homeAddress}
+                      </InfoRow>
+                    </>
+                  ) : (
+                    <InfoRow label="收件地址" valueClassName="text-left">
+                      {homeAddress}
+                    </InfoRow>
+                  )}
+                  <InfoRow label="配送方式">{shippingMethod}</InfoRow>
+                  <InfoRow label="發票類型">
+                    <span>{invoiceTypeLabel}</span>
+                    {invoiceTypeDetail ? (
+                      <span className="mt-0.5 block text-[12px] text-[#888]">
+                        {invoiceTypeDetail}
+                      </span>
+                    ) : null}
+                  </InfoRow>
+                  <InfoRow label="發票開立日期">{invoiceDate}</InfoRow>
+                </div>
+                <AtmRemittanceBlock compact />
+              </div>
+            </section>
+          </div>
+        ) : null}
       </section>
 
       {/* ── Desktop summary ── */}
@@ -957,93 +1082,6 @@ function OrderDetail({
         </div>
       </section>
 
-      {/* ── Mobile product card (圖一) ── */}
-      <section className="mb-4 overflow-hidden rounded-lg border border-[#e4e4e4] bg-white md:hidden">
-        <div className="px-4 pb-4 pt-4">
-          <h3 className="mb-4 text-[15px] font-semibold text-black">商品資訊</h3>
-          <div className="space-y-4">
-            {(order.line_items || []).map((item, index) => {
-              const variant = getItemVariantText(item);
-              const displayName = getItemDisplayName(item);
-              return (
-                <div
-                  key={`${order.id}-m-${index}`}
-                  className="flex gap-3"
-                >
-                  <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden bg-[#f5f5f3]">
-                    {item.image ? (
-                      <Image
-                        src={item.image}
-                        alt={displayName}
-                        fill
-                        sizes="72px"
-                        className="object-cover"
-                      />
-                    ) : (
-                      <div className="flex h-full items-center justify-center text-[10px] text-[#aaa]">
-                        HOVER
-                      </div>
-                    )}
-                  </div>
-                  <div className="flex min-w-0 flex-1 flex-col justify-between">
-                    <div className="min-w-0">
-                      <div className="flex items-start justify-between gap-2">
-                        <p className="text-[14px] font-medium leading-snug text-black">
-                          {displayName}
-                        </p>
-                        <p className="shrink-0 text-[14px] font-medium text-black">
-                          {formatMoneyDot(item.total)}
-                        </p>
-                      </div>
-                      {variant ? (
-                        <p className="mt-1 text-[12px] text-[#888]">
-                          {variant.replace(/\s*\/\s*/g, " / ")}
-                        </p>
-                      ) : null}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-
-          <div className="mt-4 space-y-2.5 border-t border-[#eee] pt-4 text-[13px]">
-            <div className="flex justify-between gap-4">
-              <span className="text-[#8a8a8a]">商品小計</span>
-              <span>{formatMoneyDot(itemsSubtotal)}</span>
-            </div>
-            <div className="flex justify-between gap-4">
-              <span className="text-[#8a8a8a]">運費</span>
-              <span>{formatMoneyDot(shippingTotal)}</span>
-            </div>
-            {discountRows.length > 0 ? (
-              discountRows.map((row, i) => (
-                <div
-                  key={`m-disc-${i}`}
-                  className="flex justify-between gap-4"
-                >
-                  <span className="text-[#8a8a8a]">{row.label}</span>
-                  <span className="text-[#2a514d]">
-                    -{formatMoneyDot(row.amount)}
-                  </span>
-                </div>
-              ))
-            ) : (
-              <div className="flex justify-between gap-4">
-                <span className="text-[#8a8a8a]">折扣</span>
-                <span>{formatMoneyDot(0)}</span>
-              </div>
-            )}
-            <div className="flex justify-between gap-4 border-t border-[#eee] pt-3">
-              <span className="font-semibold text-black">訂單總額</span>
-              <span className="text-[16px] font-semibold text-black">
-                {formatMoneyDot(order.total)}
-              </span>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* ── Desktop products ── */}
       <section className="mb-8 hidden md:block">
         <h3 className="mb-4 text-[15px] font-semibold text-black">商品資訊</h3>
@@ -1057,11 +1095,11 @@ function OrderDetail({
           {(order.line_items || []).map((item, index) => {
             const variant = getItemVariantText(item);
             const displayName = getItemDisplayName(item);
+            const qty = Number(item.quantity) || 1;
             const unit =
               Number(item.price || 0) ||
-              (Number(item.quantity) > 0
-                ? Number(item.subtotal || item.total || 0) /
-                  Number(item.quantity)
+              (qty > 0
+                ? Number(item.subtotal || item.total || 0) / qty
                 : 0);
             return (
               <div
@@ -1090,12 +1128,16 @@ function OrderDetail({
                     </p>
                     {variant ? (
                       <p className="mt-1 text-[12px] text-[#777]">
-                        {variant.replace(/\s*\/\s*/g, " / ")}
+                        {[variant.replace(/\s*\/\s*/g, " / "), `× ${qty}`]
+                          .filter(Boolean)
+                          .join("  ")}
                       </p>
-                    ) : null}
+                    ) : (
+                      <p className="mt-1 text-[12px] text-[#777]">× {qty}</p>
+                    )}
                   </div>
                 </div>
-                <p className="text-center text-[14px]">{item.quantity}</p>
+                <p className="text-center text-[14px]">{qty}</p>
                 <p className="text-right text-[14px]">{formatMoneyDot(unit)}</p>
                 <p className="text-right text-[14px] font-medium">
                   {formatMoneyDot(item.total)}
@@ -1105,81 +1147,22 @@ function OrderDetail({
           })}
         </div>
         <div className="mt-6 flex justify-end">
-          <div className="w-full max-w-[280px] space-y-2 text-[13px]">
-            <div className="flex justify-between gap-6">
-              <span className="text-[#777]">商品小計</span>
-              <span>{formatMoneyDot(itemsSubtotal)}</span>
-            </div>
-            <div className="flex justify-between gap-6">
-              <span className="text-[#777]">運費</span>
-              <span>{formatMoneyDot(shippingTotal)}</span>
-            </div>
-            {discountRows.length > 0 ? (
-              discountRows.map((row, i) => (
-                <div
-                  key={`d-disc-${i}`}
-                  className="flex justify-between gap-6"
-                >
-                  <span className="text-[#777]">{row.label}</span>
-                  <span className="text-[#2a514d]">
-                    -{formatMoneyDot(row.amount)}
-                  </span>
-                </div>
-              ))
-            ) : (
-              <div className="flex justify-between gap-6">
-                <span className="text-[#777]">折扣</span>
-                <span>{formatMoneyDot(0)}</span>
-              </div>
-            )}
-            <div className="flex justify-between gap-6 border-t border-[#ddd] pt-3 text-[16px] font-semibold">
-              <span>訂單總額</span>
-              <span className="text-[#2a514d]">
-                {formatMoneyDot(order.total)}
-              </span>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Mobile shipping card (圖一) ── */}
-      <section className="mb-4 overflow-hidden rounded-lg border border-[#e4e4e4] bg-white md:hidden">
-        <div className="px-4 py-4">
-          <h3 className="mb-3 text-[15px] font-semibold text-black">
-            收件 / 配送資訊
-          </h3>
-          <div className="divide-y divide-[#f0f0f0]">
-            <InfoRow label="收件人">{recipient}</InfoRow>
-            <InfoRow label="手機號碼">{phone}</InfoRow>
-            {isCvs ? (
-              <>
-                <InfoRow label="取件門市">
-                  <span className="break-words">
-                    {storeName || "—"}
-                    {storeId ? `（${storeId}）` : ""}
-                  </span>
-                </InfoRow>
-                <InfoRow label="取件地址" valueClassName="text-left">
-                  {storeAddress || homeAddress}
-                </InfoRow>
-              </>
-            ) : (
-              <InfoRow label="收件地址" valueClassName="text-left">
-                {homeAddress}
-              </InfoRow>
-            )}
-          </div>
-          <div className="mt-1 divide-y divide-[#f0f0f0] border-t border-[#eee] pt-1">
-            <InfoRow label="配送方式">{shippingMethod}</InfoRow>
-            <InfoRow label="發票類型">
-              <span>{invoiceTypeLabel}</span>
-              {invoiceTypeDetail ? (
-                <span className="mt-0.5 block text-[12px] text-[#888]">
-                  {invoiceTypeDetail}
-                </span>
-              ) : null}
-            </InfoRow>
-            <InfoRow label="發票開立日期">{invoiceDate}</InfoRow>
+          <div className="w-full max-w-[360px]">
+            <OrderSummaryRows
+              summary={orderSummary}
+              totalLabel="訂單總額"
+              labelClassName="text-black"
+              valueClassName="text-black"
+              discountLabelClassName="text-black"
+              discountValueClassName="text-[#c90000]"
+              freeShipValueClassName="text-[#2a514d]"
+              totalLabelClassName="text-[15px] font-semibold text-black"
+              totalValueClassName="text-[18px] font-bold text-black"
+              rowClassName="flex items-center justify-between gap-6"
+              containerClassName="space-y-3 text-[14px]"
+              showTotalDivider
+              totalRowClassName="flex items-center justify-between"
+            />
           </div>
         </div>
       </section>
@@ -1223,18 +1206,6 @@ function OrderDetail({
             </InfoRow>
             <InfoRow label="發票開立日期">{invoiceDate}</InfoRow>
           </div>
-        </div>
-      </section>
-
-      {/* ── Mobile payment card ── */}
-      <section className="mb-2 overflow-hidden rounded-lg border border-[#e4e4e4] bg-white md:hidden">
-        <div className="px-4 py-4">
-          <h3 className="mb-3 text-[15px] font-semibold text-black">付款資訊</h3>
-          <div className="divide-y divide-[#f0f0f0]">
-            <InfoRow label="付款方式">{paymentTitle}</InfoRow>
-            <InfoRow label="付款時間">{paidAt}</InfoRow>
-          </div>
-          <AtmRemittanceBlock compact />
         </div>
       </section>
 

@@ -5,12 +5,12 @@ export type ShippingSettings = {
   freeShipThreshold: number;
 };
 
-/** 與目前結帳程式預設一致：宅配 105、超商 0、滿 1500 免運 */
+/** 與目前結帳程式預設一致：宅配 105、超商 85、滿 2000 免運 */
 export const DEFAULT_SHIPPING: ShippingSettings = {
   enabled: true,
   homeDeliveryFee: 105,
-  cvsFee: 0,
-  freeShipThreshold: 1500,
+  cvsFee: 85,
+  freeShipThreshold: 2000,
 };
 
 function parseBool(value: unknown, fallback = false): boolean {
@@ -73,12 +73,25 @@ export async function fetchShippingSettings(options?: {
 }
 
 /** shipMethod `000` = 宅配，其餘視為超商 */
+export function baseShippingFee(
+  shipMethod: string,
+  settings: ShippingSettings,
+): number {
+  if (shipMethod === "000") {
+    return settings.homeDeliveryFee || DEFAULT_SHIPPING.homeDeliveryFee;
+  }
+  return settings.cvsFee || DEFAULT_SHIPPING.cvsFee;
+}
+
+/** shipMethod `000` = 宅配，其餘視為超商 */
 export function shippingFeeFor(
   subtotal: number,
   shipMethod: string,
   settings: ShippingSettings,
 ): number {
   const amount = Math.max(0, Number(subtotal) || 0);
-  if (amount <= 0 || amount >= settings.freeShipThreshold) return 0;
-  return shipMethod === "000" ? settings.homeDeliveryFee : settings.cvsFee;
+  const threshold =
+    settings.freeShipThreshold || DEFAULT_SHIPPING.freeShipThreshold;
+  if (amount <= 0 || amount >= threshold) return 0;
+  return baseShippingFee(shipMethod, settings);
 }

@@ -103,6 +103,7 @@ export default function RegisterPage() {
           username: username || phone,
           password,
           birthday,
+          phone,
           ref,
         }),
       });

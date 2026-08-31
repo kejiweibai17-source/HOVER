@@ -18,6 +18,12 @@ import {
   applyExclusiveCustomSession,
   upsertSocialCustomer,
 } from "@/lib/socialAccount";
+import {
+  linkAccountPath,
+  resolveSocialAccount,
+  setSocialPendingCookie,
+  signSocialPending,
+} from "@/lib/socialLink";
 import { grantWelcomeGiftIfEligible } from "@/lib/welcomeGift";
 
 export const runtime = "nodejs";
@@ -135,6 +141,34 @@ export async function GET(req: Request) {
     const profile = await exchangeFacebookToken(code);
     const facebookUserId = String(profile.id);
     const rawEmail = String(profile.email || "").trim().toLowerCase();
+
+    const resolved = await resolveSocialAccount({
+      provider: "facebook",
+      providerUserId: facebookUserId,
+      email: rawEmail,
+    });
+
+    if (resolved.status === "pending") {
+      const token = signSocialPending({
+        provider: "facebook",
+        providerUserId: facebookUserId,
+        email: rawEmail,
+        name: profile.name,
+        picture: profile.pictureUrl,
+        emailVerified: Boolean(rawEmail),
+        next: nextPath,
+      });
+      const site = getSiteUrl();
+      const response = NextResponse.redirect(
+        new URL(linkAccountPath(nextPath), site).toString(),
+      );
+      setSocialPendingCookie(response, token);
+      response.cookies.set(FACEBOOK_STATE_COOKIE, "", {
+        ...facebookAuthCookieOpts(0),
+        maxAge: 0,
+      });
+      return response;
+    }
 
     const user = await upsertSocialCustomer({
       provider: "facebook",

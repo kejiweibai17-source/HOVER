@@ -6,6 +6,13 @@ import {
   clearCustomAuthCookiesInRequest,
   upsertSocialCustomer,
 } from "@/lib/socialAccount";
+import {
+  linkAccountPath,
+  resolveSocialAccount,
+  signSocialPending,
+  SOCIAL_PENDING_COOKIE,
+  socialPendingCookieOpts,
+} from "@/lib/socialLink";
 import { grantWelcomeGiftIfEligible } from "@/lib/welcomeGift";
 
 /** ===== WooCommerce 基本設定 ===== */
@@ -209,6 +216,36 @@ export const authOptions: AuthOptions = {
         if (!providerId) {
           console.warn("OAuth missing providerAccountId");
           return true;
+        }
+
+        if (account?.provider === "google") {
+          const resolved = await resolveSocialAccount({
+            provider: "google",
+            providerUserId: providerId,
+            email: String(user.email).trim().toLowerCase(),
+          });
+
+          if (resolved.status === "pending") {
+            const token = signSocialPending({
+              provider: "google",
+              providerUserId: providerId,
+              email: String(user.email).trim().toLowerCase(),
+              name: user.name || undefined,
+              picture: user.image || undefined,
+              emailVerified: true,
+              next: "/account",
+            });
+            try {
+              cookies().set(
+                SOCIAL_PENDING_COOKIE,
+                token,
+                socialPendingCookieOpts(),
+              );
+            } catch (e) {
+              console.error("set social pending cookie failed:", e);
+            }
+            return linkAccountPath("/account");
+          }
         }
 
         const customer = await upsertSocialCustomer({

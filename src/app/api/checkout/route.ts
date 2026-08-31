@@ -157,13 +157,28 @@ function toTwdInt(value: unknown): number {
   return Number.isFinite(n) ? n : NaN;
 }
 
-function ecpayIgnorePayment(amount: number): string {
-  const ignore: string[] = [];
-  // ATM / 網路ATM：16～49,999
-  if (amount < 16 || amount > 49999) ignore.push("ATM", "WebATM");
-  // 超商代碼／條碼：約 16/31～20,000
-  if (amount < 31 || amount > 20000) ignore.push("CVS", "BARCODE");
-  return ignore.join("#");
+/** 官網 payMethod → 綠界 ChoosePayment（禁止 ALL，避免付款頁帶入其他方式） */
+function resolveEcpayChoosePayment(
+  payMethod?: string,
+): "Credit" | "ATM" | null {
+  if (payMethod === "card") return "Credit";
+  if (payMethod === "atm") return "ATM";
+  return null;
+}
+
+/**
+ * 指定 ChoosePayment 時，綠界仍可能連動顯示的項目（以 IgnorePayment 排除）。
+ * - Credit：2025/4/1 起會同步顯示 Apple Pay → 帶 ApplePay
+ * - 勿傳 DeviceSource=gwpay，避免導向綠界Pay APP 流程
+ */
+function buildEcpayIgnorePayment(
+  choosePayment: "Credit" | "ATM",
+): string | undefined {
+  const hide: string[] = [];
+  if (choosePayment === "Credit") {
+    hide.push("ApplePay", "GooglePay");
+  }
+  return hide.length > 0 ? hide.join("#") : undefined;
 }
 
 function basicAuth(): string | undefined {
@@ -603,8 +618,13 @@ export async function POST(req: Request) {
       }
 
     } else {
-      const choosePayment =
-        payMethod === "atm" ? "ATM" : payMethod === "card" ? "Credit" : "ALL";
+      const choosePayment = resolveEcpayChoosePayment(payMethod);
+      if (!choosePayment) {
+        return NextResponse.json(
+          { ok: false, message: "不支援的付款方式" },
+          { status: 400 },
+        );
+      }
 
       if (choosePayment === "ATM" && (amountInt < 16 || amountInt > 49999)) {
         return NextResponse.json(
@@ -636,10 +656,8 @@ export async function POST(req: Request) {
         ecpayParams.ClientRedirectURL = `${domain}/api/ecpay/atm-return`;
       }
 
-      if (choosePayment === "ALL") {
-        const ignorePayment = ecpayIgnorePayment(amountInt);
-        if (ignorePayment) ecpayParams.IgnorePayment = ignorePayment;
-      }
+      const ignorePayment = buildEcpayIgnorePayment(choosePayment);
+      if (ignorePayment) ecpayParams.IgnorePayment = ignorePayment;
 
       const checkMacValue = generateCheckMacValue(ecpayParams, HASH_KEY, HASH_IV);
 

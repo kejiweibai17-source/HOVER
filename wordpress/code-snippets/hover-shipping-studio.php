@@ -58,8 +58,8 @@ function hhss_defaults(): array
     return [
         'enabled'           => true,
         'homeDeliveryFee'   => 105,
-        'cvsFee'            => 0,
-        'freeShipThreshold' => 1500,
+        'cvsFee'            => 85,
+        'freeShipThreshold' => 2000,
     ];
 }
 

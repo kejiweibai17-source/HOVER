@@ -5,11 +5,11 @@ import React, { useState, useEffect, useMemo, useRef, useCallback, Suspense } fr
 import { AnimatePresence, motion } from "framer-motion";
 import { Link } from "next-view-transitions";
 import { useSearchParams, useRouter } from "next/navigation";
-import WishlistIcon from "@/components/hover/WishlistIcon";
 import HoverIcon from "@/components/hover/HoverIcon";
 import {
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
   MapPin,
   Truck,
   CreditCard,
@@ -23,8 +23,10 @@ import {
 } from "lucide-react";
 import { useCartStore } from "@/lib/cartStore";
 import { clearCheckoutSession } from "@/lib/checkoutSession";
-import { DEFAULT_SHIPPING } from "@/lib/shippingDefaults";
+import { DEFAULT_SHIPPING, shippingFeeFor } from "@/lib/shippingDefaults";
 import { useShippingSettings } from "@/lib/useShippingSettings";
+import { buildCartOrderSummary } from "@/lib/orderSummary";
+import OrderSummaryRows from "@/components/order/OrderSummaryRows";
 import {
   isValidLoveCode,
   isValidMobileCarrier,
@@ -440,7 +442,8 @@ const TIER_DISCOUNTS = {
 // 核心計算邏輯
 function calcPricing(
   items,
-  { shippingBase = 80, freeShipThreshold = 1500 },
+  shippingSettings = DEFAULT_SHIPPING,
+  shipMethod = "711",
   couponDiscount = 0,
   tierDiscountRate = 1,
 ) {
@@ -462,11 +465,11 @@ function calcPricing(
     subtotalAfterMember,
   );
   const finalSubtotal = Math.max(0, subtotalAfterMember - safeCouponDiscount);
-  // 如果小計大於等於免運門檻，或購物車為空，則運費為 0
-  const shipping =
-    finalSubtotal >= freeShipThreshold || finalSubtotal === 0
-      ? 0
-      : shippingBase;
+  const freeShipThreshold = shippingSettings.freeShipThreshold || 2000;
+  const shipping = shippingFeeFor(finalSubtotal, shipMethod, {
+    ...shippingSettings,
+    freeShipThreshold,
+  });
   const total = finalSubtotal + shipping;
   const needForFreeShip = Math.max(0, freeShipThreshold - finalSubtotal);
 
@@ -490,10 +493,6 @@ function buildCheckoutPricing(
   couponDiscount = 0,
   shippingSettings = DEFAULT_SHIPPING,
 ) {
-  const shippingBase =
-    shipMethod === "000"
-      ? shippingSettings.homeDeliveryFee
-      : shippingSettings.cvsFee;
   const subtotal = pricing.subtotal;
   const memberDiscount = pricing.memberDiscountAmount || 0;
   const subtotalAfterMember = Math.max(0, subtotal - memberDiscount);
@@ -503,11 +502,11 @@ function buildCheckoutPricing(
   );
   const finalSubtotal = Math.max(0, subtotalAfterMember - safeCoupon);
   const freeShipThreshold =
-    shippingSettings.freeShipThreshold || pricing.freeShipThreshold || 1500;
-  const shipping =
-    finalSubtotal >= freeShipThreshold || finalSubtotal === 0
-      ? 0
-      : shippingBase;
+    shippingSettings.freeShipThreshold || pricing.freeShipThreshold || 2000;
+  const shipping = shippingFeeFor(finalSubtotal, shipMethod, {
+    ...shippingSettings,
+    freeShipThreshold,
+  });
 
   return {
     subtotal,
@@ -654,6 +653,44 @@ function CheckoutSectionTitle({ children }) {
       {children}
     </h2>
   );
+}
+
+function CheckoutReviewRow({ label, children }) {
+  return (
+    <div className="flex items-start justify-between gap-3 py-2 text-[14px] text-black">
+      <span className="shrink-0">{label}</span>
+      <span className="min-w-0 text-right leading-relaxed">{children || "—"}</span>
+    </div>
+  );
+}
+
+function formatCheckoutPhone(phone) {
+  const digits = String(phone || "").replace(/\D/g, "");
+  if (digits.length === 10) {
+    return `${digits.slice(0, 4)}-${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  return String(phone || "").trim() || "—";
+}
+
+function checkoutShipLabel(shipMethod) {
+  if (shipMethod === "711") return "7-11 店到店";
+  if (shipMethod === "CVS") return "全家 店到店";
+  if (shipMethod === "000") return "宅配";
+  return "—";
+}
+
+function checkoutPayLabel(payMethod) {
+  if (payMethod === "card") return "信用卡一次付清";
+  if (payMethod === "atm") return "ATM 虛擬轉帳";
+  return "—";
+}
+
+function checkoutInvoiceLabel(invoiceType) {
+  if (invoiceType === "cloud") return "雲端電子發票";
+  if (invoiceType === "carrier") return "手機載具";
+  if (invoiceType === "triple") return "三聯式發票";
+  if (invoiceType === "donate") return "捐贈發票";
+  return "—";
 }
 
 function HoverRadio({ checked, onChange, label, name }) {
@@ -823,7 +860,7 @@ function CheckoutProductThumb({ item }) {
   );
 }
 
-// ✅ Cart Step 1 — HOVER redesign
+// ✅ Cart Step 1 — 對齊設計稿（商品列＋金額摘要）
 function CartStep({
   items,
   onUpdateQty,
@@ -831,7 +868,23 @@ function CartStep({
   onNext,
   pricing,
   membership,
+  shipMethod,
+  shippingSettings,
 }) {
+  const orderSummary = useMemo(
+    () =>
+      buildCartOrderSummary({
+        subtotal: pricing.subtotal,
+        memberDiscountAmount: pricing.memberDiscountAmount,
+        couponDiscount: pricing.couponDiscount,
+        shipMethod,
+        shippingSettings,
+        finalSubtotal: pricing.discountedSubtotal,
+        total: pricing.total,
+      }),
+    [pricing, shipMethod, shippingSettings],
+  );
+
   if (items.length === 0) {
     return (
       <div className="flex flex-col items-center pb-32 pt-8 text-center">
@@ -847,183 +900,132 @@ function CartStep({
     );
   }
 
+  const reachedFreeShip =
+    pricing.needForFreeShip === 0 && pricing.discountedSubtotal > 0;
+
   return (
-    <div className="mx-auto max-w-[1240px] px-4 pb-16 md:px-8">
-      <h1 className="mb-10 text-center text-[16px] font-semibold tracking-[0.3em] text-black">
-        SHOPPING BAG
-      </h1>
+    <div className="mx-auto max-w-[640px] px-5 pb-16 pt-2 md:px-8">
+      <div className="divide-y divide-[#e8e8e8] border-y border-[#e8e8e8]">
+        {items.map((it) => {
+          const { color, size } = getItemMeta(it);
+          const variant =
+            (it.variant && String(it.variant).replace(/\s*\/\s*/g, " / ")) ||
+            (it.options &&
+              Object.values(it.options)
+                .filter(Boolean)
+                .join(" / ")) ||
+            [size, color].filter(Boolean).join(" / ");
+          const lineTotal = Number(it.price) * (Number(it.qty) || 1);
 
-      <div className="grid grid-cols-1 gap-12 lg:grid-cols-[minmax(0,1fr)_340px]">
-        {/* ── Product list ────────────────────────────────── */}
-        <div>
-          {items.map((it, idx) => {
-            const { color, size } = getItemMeta(it);
+          return (
+            <div key={it.id} className="flex items-start gap-3 py-4">
+              <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden bg-[#f5f5f3]">
+                <img
+                  src={it.image || it.img || "/images/hover/product-1.jpg"}
+                  className="h-full w-full object-cover"
+                  alt={it.name || it.title}
+                />
+              </div>
 
-            return (
-              <div
-                key={it.id}
-                className={`flex gap-4 py-6 md:gap-5 ${idx === 0 ? "border-t" : ""} border-b border-[#d4d4d4]`}
-              >
-                {/* Image */}
-                <div className="h-[179px] w-[128px] shrink-0 overflow-hidden bg-[#e8e6e2] md:h-[163px] md:w-[117px]">
-                  <img
-                    src={it.image || it.img || "/images/hover/product-1.jpg"}
-                    className="h-full w-full object-cover"
-                    alt={it.name || it.title}
-                  />
-                </div>
-
-                {/* Info */}
-                <div className="flex flex-1 flex-col justify-between">
-                  <div className="flex items-start justify-between gap-4">
-                    {/* Name + meta */}
-                    <div>
-                      <p className="text-[14px] font-semibold uppercase leading-snug text-black md:text-[15px]">
-                        {it.name || it.title}
-                      </p>
-                      {color && (
-                        <p className="mt-1 text-[12px] text-black">{color}</p>
-                      )}
-                      {size && <p className="text-[12px] text-black">{size}</p>}
-                      <p className="mt-2 text-[15px] font-bold text-black md:text-[16px]">
-                        {currency(Number(it.price))}
-                      </p>
-                    </div>
-
-                    {/* Wishlist + remove */}
-                    <div className="flex shrink-0 items-center gap-3">
-                      <button
-                        type="button"
-                        aria-label="收藏"
-                        className="text-[#aaa] transition-colors hover:text-black"
-                      >
-                        <WishlistIcon size={20} />
-                      </button>
-                      <button
-                        type="button"
-                        aria-label="移除"
-                        onClick={() => onRemove(it.id || it.wcProductId)}
-                        className="text-[#aaa] transition-colors hover:text-black"
-                      >
-                        <X className="h-[15px] w-[15px]" strokeWidth={1.5} />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Qty + subtotal */}
-                  <div className="flex items-center justify-between">
-                    <div className="flex flex-col gap-1">
-                      <div className="flex h-8 items-center border border-black bg-white">
-                        <button
-                          type="button"
-                          className="flex h-full w-8 items-center justify-center text-black transition-colors hover:bg-[#f0f0f0]"
-                          onClick={() =>
-                            onUpdateQty(it.id || it.wcProductId, it.qty - 1)
-                          }
-                        >
-                          <Minus className="h-3 w-3" />
-                        </button>
-                        <span className="w-8 text-center text-[14px] font-medium">
-                          {it.qty}
-                        </span>
-                        <button
-                          type="button"
-                          disabled={
-                            it.maxQty != null && it.qty >= it.maxQty
-                          }
-                          className={`flex h-full w-8 items-center justify-center text-black transition-colors ${
-                            it.maxQty != null && it.qty >= it.maxQty
-                              ? "cursor-not-allowed opacity-40"
-                              : "hover:bg-[#f0f0f0]"
-                          }`}
-                          onClick={() =>
-                            onUpdateQty(it.id || it.wcProductId, it.qty + 1)
-                          }
-                        >
-                          <Plus className="h-3 w-3" />
-                        </button>
-                      </div>
-                      {it.maxQty != null && it.qty >= it.maxQty && (
-                        <p className="text-[11px] text-[#c90000]">已達庫存上限</p>
-                      )}
-                    </div>
-                    <p className="text-[12px] text-[#555]">
-                      小計 {currency(Number(it.price) * it.qty)}
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[14px] font-medium leading-snug text-black">
+                      {it.name || it.title}
+                    </p>
+                    <p className="mt-1 text-[12px] text-[#555]">
+                      {[
+                        variant || null,
+                        Number(it.qty) > 1 ? `x ${it.qty}` : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" / ") || "—"}
                     </p>
                   </div>
+                  <p className="shrink-0 text-[14px] font-medium text-black">
+                    {currency(lineTotal)}
+                  </p>
                 </div>
-              </div>
-            );
-          })}
-        </div>
-
-        {/* ── Order summary ────────────────────────────────── */}
-        <aside className="self-start lg:sticky lg:top-8">
-          <div className="bg-white px-6 py-7">
-            {/* Pricing rows */}
-            <div className="space-y-3 text-[14px]">
-              <div className="flex items-center justify-between">
-                <span className="text-[#555]">商品總金額</span>
-                <span className="text-black">{currency(pricing.subtotal)}</span>
-              </div>
-
-              {pricing.memberDiscountAmount > 0 && (
-                <div className="flex items-center justify-between gap-3">
-                  <span className="min-w-0 text-[#555]">
-                    折扣（HOVER 臻享會員 95 折）
-                  </span>
-                  <span className="shrink-0 text-[#c90000]">
-                    - {currency(pricing.memberDiscountAmount)}
-                  </span>
+                <div className="mt-3 flex items-center justify-between">
+                  <div className="flex h-8 w-[100px] items-center border border-black bg-white">
+                    <button
+                      type="button"
+                      className="flex h-full w-8 items-center justify-center text-black transition-colors hover:bg-[#f0f0f0]"
+                      onClick={() =>
+                        onUpdateQty(it.id || it.wcProductId, it.qty - 1)
+                      }
+                    >
+                      <Minus className="h-3 w-3" />
+                    </button>
+                    <span className="w-8 text-center text-[13px] font-medium">
+                      {it.qty}
+                    </span>
+                    <button
+                      type="button"
+                      disabled={it.maxQty != null && it.qty >= it.maxQty}
+                      className={`flex h-full w-8 items-center justify-center text-black transition-colors ${
+                        it.maxQty != null && it.qty >= it.maxQty
+                          ? "cursor-not-allowed opacity-40"
+                          : "hover:bg-[#f0f0f0]"
+                      }`}
+                      onClick={() =>
+                        onUpdateQty(it.id || it.wcProductId, it.qty + 1)
+                      }
+                    >
+                      <Plus className="h-3 w-3" />
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    aria-label="移除"
+                    onClick={() => onRemove(it.id || it.wcProductId)}
+                    className="text-[#bbb] transition-colors hover:text-black"
+                  >
+                    <X className="h-[14px] w-[14px]" strokeWidth={1.5} />
+                  </button>
                 </div>
-              )}
-
-              <div className="flex items-center justify-between">
-                <span className="text-[#555]">運費</span>
-                <span className="text-black">{currency(pricing.shipping)}</span>
+                {it.maxQty != null && it.qty >= it.maxQty && (
+                  <p className="mt-1 text-[11px] text-[#c90000]">已達庫存上限</p>
+                )}
               </div>
             </div>
+          );
+        })}
+      </div>
 
-            <div className="my-4 border-t border-[#e8e8e8]" />
+      <div className="mt-8">
+        <OrderSummaryRows
+          summary={orderSummary}
+          labelClassName="text-black"
+          valueClassName="text-black"
+          discountLabelClassName="text-black"
+          discountValueClassName="text-[#c90000]"
+          freeShipValueClassName="text-[#2a514d]"
+          totalLabelClassName="text-[15px] font-semibold text-black"
+          totalValueClassName="text-[18px] font-bold text-black"
+          rowClassName="flex items-center justify-between gap-3"
+          containerClassName="space-y-3 text-[14px]"
+          showTotalDivider
+          totalRowClassName="flex items-center justify-between"
+        />
 
-            {/* Total */}
-            <div className="mb-6 flex items-center justify-between">
-              <span className="text-[15px] font-semibold text-black">
-                總金額
-              </span>
-              <span className="text-[18px] font-bold text-black">
-                {currency(pricing.total)}
-              </span>
-            </div>
-
-            {/* CTA */}
-            <button
-              type="button"
-              onClick={onNext}
-              className="flex h-[42px] w-full items-center justify-center bg-[#2a514d] text-[14px] tracking-widest text-white transition-colors hover:bg-[#1e3d3a] active:scale-[0.98]"
-            >
-              前往結帳
-            </button>
-
-            {/* Free shipping hint */}
-            {pricing.needForFreeShip > 0 && (
-              <p className="mt-3 text-center text-[11px] text-[#888]">
-                再消費 {currency(pricing.needForFreeShip)} 即可享免運費
-              </p>
-            )}
-            {pricing.needForFreeShip === 0 && pricing.subtotal > 0 && (
-              <p className="mt-3 text-center text-[11px] text-[#2a514d]">
-                ✓ 已達免運門檻
-              </p>
-            )}
-            <Link
-              href="/products"
-              className="mt-3 block text-center text-[12px] text-[#555] transition-opacity hover:opacity-70"
-            >
-              繼續購物 →
-            </Link>
+        {reachedFreeShip ? (
+          <div className="mt-4 flex h-10 items-center justify-center bg-[#edf4f3] text-[13px] text-[#2a514d]">
+            ✓ 已達免運門檻
           </div>
-        </aside>
+        ) : pricing.needForFreeShip > 0 ? (
+          <p className="mt-4 text-center text-[12px] text-[#888]">
+            再消費 {currency(pricing.needForFreeShip)} 即可享免運費
+          </p>
+        ) : null}
+
+        <button
+          type="button"
+          onClick={onNext}
+          className="mt-4 flex h-[48px] w-full items-center justify-center bg-[#2a514d] text-[14px] tracking-widest text-white transition-colors hover:bg-[#1e3d3a] active:scale-[0.98]"
+        >
+          前往結帳
+        </button>
       </div>
     </div>
   );
@@ -1059,8 +1061,7 @@ function CheckoutStep({
   const [discountCode, setDiscountCode] = useState("");
   const [couponError, setCouponError] = useState("");
   const [couponApplying, setCouponApplying] = useState(false);
-  const [availableCoupons, setAvailableCoupons] = useState([]);
-  const [availableLoading, setAvailableLoading] = useState(false);
+  const [shipInfoOpen, setShipInfoOpen] = useState(false);
 
   const displayName = [addr.lastName, addr.firstName]
     .filter(Boolean)
@@ -1068,6 +1069,15 @@ function CheckoutStep({
     .trim();
   const setDisplayName = (v) =>
     setAddr({ ...addr, lastName: v, firstName: "" });
+
+  const storeDisplay =
+    addr.storeName || addr.storeId
+      ? `${addr.storeName || "門市"}${addr.storeId ? ` (${addr.storeId})` : ""}`
+      : "尚未選擇門市";
+  const homeAddressDisplay = [addr.city, addr.district, addr.street]
+    .filter(Boolean)
+    .join("")
+    .trim();
 
   const checkoutPricing = useMemo(
     () =>
@@ -1080,33 +1090,25 @@ function CheckoutStep({
     [pricing, shipMethod, appliedCoupon, shippingSettings],
   );
 
-  useEffect(() => {
-    if (!isLoggedIn) {
-      setAvailableCoupons([]);
-      return;
-    }
-    let cancelled = false;
-    (async () => {
-      setAvailableLoading(true);
-      try {
-        const res = await fetch("/api/account/coupons/available", {
-          cache: "no-store",
-          credentials: "include",
-        });
-        const data = await res.json();
-        if (!cancelled && res.ok && Array.isArray(data?.available)) {
-          setAvailableCoupons(data.available);
-        }
-      } catch {
-        if (!cancelled) setAvailableCoupons([]);
-      } finally {
-        if (!cancelled) setAvailableLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [isLoggedIn]);
+  const orderSummary = useMemo(
+    () =>
+      buildCartOrderSummary({
+        subtotal: checkoutPricing.subtotal,
+        memberDiscountAmount: checkoutPricing.memberDiscountAmount,
+        couponDiscount: checkoutPricing.couponDiscount,
+        couponLabel: appliedCoupon
+          ? `折扣（${appliedCoupon.code || appliedCoupon.label || "折扣碼"}）`
+          : undefined,
+        shipMethod,
+        shippingSettings,
+        finalSubtotal:
+          checkoutPricing.subtotal -
+          (checkoutPricing.memberDiscountAmount || 0) -
+          (checkoutPricing.couponDiscount || 0),
+        total: checkoutPricing.total,
+      }),
+    [checkoutPricing, shipMethod, shippingSettings, appliedCoupon],
+  );
 
   const handleApplyCoupon = async (codeOverride) => {
     const code = String(codeOverride ?? discountCode).trim();
@@ -1299,7 +1301,7 @@ function CheckoutStep({
       shipMethod,
       payMethod,
       coupon: appliedCoupon
-        ? { code: appliedCoupon.code, amount: appliedCoupon.discount || 0 }
+        ? { code: appliedCoupon.code, discount: appliedCoupon.discount }
         : null,
       total: checkoutPricing.total,
       memberDiscount: checkoutPricing.memberDiscountAmount,
@@ -1725,106 +1727,100 @@ function CheckoutStep({
                 {couponApplying ? "驗證中..." : "套用"}
               </button>
             </div>
+          </section>
 
-            {isLoggedIn && !availableLoading && availableCoupons.length > 0 && (
-              <div className="mt-4">
-                <div className="mt-2 flex flex-col gap-2">
-                  {availableCoupons.map((c) => {
-                    const code = String(c.code || "").toUpperCase();
-                    const active =
-                      appliedCoupon?.code?.toUpperCase() === code;
-                    const kindText =
-                      c.kindLabel ||
-                      (c.kind === "welcome" || c.kind === "legacy"
-                        ? "入會禮"
-                        : c.kind === "birthday"
-                          ? "生日禮"
-                          : "專屬優惠");
-                    return (
-                      <button
-                        key={code}
-                        type="button"
-                        disabled={couponApplying}
-                        onClick={() => handleApplyCoupon(code)}
-                        className={`flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2.5 text-left transition-colors ${
-                          active
-                            ? "border-[#2a514d] bg-[#edf4f3]"
-                            : "border-[#e5e5e5] bg-[#fafafa] hover:border-[#2a514d]/50"
-                        }`}
-                      >
-                        <div className="min-w-0">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-[10px] font-bold text-[#2a514d]">
-                              {kindText}
-                            </span>
-                            <span className="text-[12px] font-semibold text-black">
-                              折抵 {formatProductPrice(c.amount)}
-                            </span>
-                          </div>
-                          <p className="mt-1 font-mono text-[12px] font-bold tracking-wide text-[#202223]">
-                            {code}
-                          </p>
-                          {Number(c.minimumAmount || 0) > 0 && (
-                            <p className="mt-0.5 text-[10px] text-[#888]">
-                              滿 {formatProductPrice(c.minimumAmount)} 可用
-                              · 點此套用
-                            </p>
-                          )}
-                        </div>
-                        <span className="shrink-0 text-[11px] font-medium text-[#2a514d]">
-                          {active ? "已套用" : "套用"}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+          <section className="mt-10">
+            <h2 className="mb-5 text-[15px] font-bold text-black">訂單明細</h2>
+            <OrderSummaryRows
+              summary={orderSummary}
+              totalLabel="訂單總額"
+              labelClassName="text-black"
+              valueClassName="text-black"
+              discountLabelClassName="text-black"
+              discountValueClassName="text-[#c90000]"
+              freeShipValueClassName="text-[#2a514d]"
+              totalLabelClassName="text-[15px] font-semibold text-black"
+              totalValueClassName="text-[18px] font-bold text-black"
+              rowClassName="flex items-center justify-between gap-3"
+              containerClassName="space-y-3 text-[14px]"
+              showTotalDivider
+              totalRowClassName="flex items-center justify-between"
+            />
+          </section>
 
-            <div className="mt-8 space-y-2.5 text-[14px] text-black">
-              <div className="flex justify-between">
-                <span>商品總金額</span>
-                <span>{currency(checkoutPricing.subtotal)}</span>
-              </div>
-              {checkoutPricing.memberDiscountAmount > 0 && (
-                <div className="flex justify-between gap-3">
-                  <span className="min-w-0">折扣（HOVER 臻享會員 95 折）</span>
-                  <span className="shrink-0">
-                    - {currency(checkoutPricing.memberDiscountAmount)}
-                  </span>
-                </div>
+          <section className="mt-10">
+            <h2 className="mb-3 text-[15px] font-bold text-black">
+              收件 / 配送資訊
+            </h2>
+            <div className="divide-y divide-[#f0f0f0]">
+              <CheckoutReviewRow label="收件人">
+                {displayName || "—"}
+              </CheckoutReviewRow>
+              <CheckoutReviewRow label="手機">
+                {formatCheckoutPhone(addr.phone)}
+              </CheckoutReviewRow>
+              <CheckoutReviewRow label="配送方式">
+                {checkoutShipLabel(shipMethod)}
+              </CheckoutReviewRow>
+              {shipMethod === "000" ? (
+                <CheckoutReviewRow label="地址">
+                  {homeAddressDisplay || "—"}
+                </CheckoutReviewRow>
+              ) : (
+                <CheckoutReviewRow label="門市">{storeDisplay}</CheckoutReviewRow>
               )}
-              {checkoutPricing.couponDiscount > 0 && appliedCoupon && (
-                <div className="flex justify-between gap-3">
-                  <span className="min-w-0">
-                    折扣（{appliedCoupon.code || appliedCoupon.label || "折扣碼"}
-                    ）
-                  </span>
-                  <span className="shrink-0">
-                    - {currency(checkoutPricing.couponDiscount)}
-                  </span>
-                </div>
-              )}
-              <div className="flex justify-between">
-                <span>運費</span>
-                <span>
-                  {checkoutPricing.isFreeShipping ? (
+              {shipInfoOpen ? (
+                <>
+                  <CheckoutReviewRow label="Email">
+                    {contact.email?.trim() || "—"}
+                  </CheckoutReviewRow>
+                  <CheckoutReviewRow label="付款方式">
+                    {checkoutPayLabel(payMethod)}
+                  </CheckoutReviewRow>
+                  <CheckoutReviewRow label="發票方式">
+                    {checkoutInvoiceLabel(invoiceType)}
+                  </CheckoutReviewRow>
+                  {invoiceType === "carrier" && carrierCode ? (
+                    <CheckoutReviewRow label="載具條碼">
+                      {carrierCode}
+                    </CheckoutReviewRow>
+                  ) : null}
+                  {invoiceType === "triple" ? (
                     <>
-                      <span className="text-[12px] text-[#888]">
-                        已達免運門檻{" "}
-                      </span>
-                      {currency(0)}
+                      <CheckoutReviewRow label="發票抬頭">
+                        {invoiceTitle || "—"}
+                      </CheckoutReviewRow>
+                      <CheckoutReviewRow label="統一編號">
+                        {invoiceTaxId || "—"}
+                      </CheckoutReviewRow>
                     </>
-                  ) : (
-                    currency(checkoutPricing.shipping)
-                  )}
-                </span>
-              </div>
-              <div className="flex justify-between pt-2 text-[15px] font-bold">
-                <span>總金額</span>
-                <span>{currency(checkoutPricing.total)}</span>
-              </div>
+                  ) : null}
+                  {invoiceType === "donate" && donateCode ? (
+                    <CheckoutReviewRow label="愛心碼">
+                      {donateCode}
+                    </CheckoutReviewRow>
+                  ) : null}
+                  {shipMethod !== "000" && addr.storeAddr ? (
+                    <CheckoutReviewRow label="門市地址">
+                      {addr.storeAddr}
+                    </CheckoutReviewRow>
+                  ) : null}
+                </>
+              ) : null}
             </div>
+            <button
+              type="button"
+              onClick={() => setShipInfoOpen((v) => !v)}
+              className="mt-3 flex w-full items-center justify-center gap-1 text-[13px] text-[#666] transition-colors hover:text-black"
+            >
+              {shipInfoOpen ? "收合" : "查看全部"}
+              <ChevronDown
+                className={`h-4 w-4 transition-transform ${
+                  shipInfoOpen ? "rotate-180" : ""
+                }`}
+                strokeWidth={1.5}
+              />
+            </button>
           </section>
         </div>
       </div>
@@ -1837,7 +1833,7 @@ function CheckoutStep({
           disabled={isSubmitting}
           className="w-full bg-[#2a514d] py-4 text-[14px] font-semibold tracking-[0.08em] text-white transition-colors hover:bg-[#1e3d3a] disabled:opacity-50"
         >
-          {isSubmitting ? "處理中..." : "完成訂購"}
+          {isSubmitting ? "處理中..." : "前往付款"}
         </button>
       </div>
     </div>
@@ -1867,8 +1863,8 @@ function CartContent() {
     discountedSubtotal: 0,
     shipping: 0,
     total: 0,
-    needForFreeShip: 1500,
-    freeShipThreshold: 1500,
+    needForFreeShip: 2000,
+    freeShipThreshold: 2000,
   });
 
   const [contact, setContact] = useState({ email: "" });
@@ -2088,22 +2084,7 @@ function CartContent() {
 
   useEffect(() => {
     if (!itemsLoaded) return;
-    const shippingBase =
-      shipMethod === "000"
-        ? shippingSettings.homeDeliveryFee
-        : shippingSettings.cvsFee;
-
-    setPricing(
-      calcPricing(
-        items,
-        {
-          shippingBase,
-          freeShipThreshold: shippingSettings.freeShipThreshold,
-        },
-        0,
-        discountRate,
-      ),
-    );
+    setPricing(calcPricing(items, shippingSettings, shipMethod, 0, discountRate));
   }, [items, itemsLoaded, discountRate, shipMethod, shippingSettings]);
 
   // ✅ 修正數量增減與移除，先更新 Local State，再更新 Store
@@ -2168,6 +2149,8 @@ function CartContent() {
               <CartStep
                 items={items}
                 pricing={pricing}
+                shipMethod={shipMethod}
+                shippingSettings={shippingSettings}
                 onUpdateQty={updateQty}
                 onRemove={removeItem}
                 onNext={() => {

@@ -18,6 +18,12 @@ import {
   applyExclusiveCustomSession,
   upsertSocialCustomer,
 } from "@/lib/socialAccount";
+import {
+  linkAccountPath,
+  resolveSocialAccount,
+  setSocialPendingCookie,
+  signSocialPending,
+} from "@/lib/socialLink";
 import { grantWelcomeGiftIfEligible } from "@/lib/welcomeGift";
 
 export const runtime = "nodejs";
@@ -130,6 +136,34 @@ export async function GET(req: Request) {
     const profile = await exchangeLineToken(code);
     const lineUserId = String(profile.sub);
     const rawEmail = String(profile.email || "").trim().toLowerCase();
+
+    const resolved = await resolveSocialAccount({
+      provider: "line",
+      providerUserId: lineUserId,
+      email: rawEmail,
+    });
+
+    if (resolved.status === "pending") {
+      const token = signSocialPending({
+        provider: "line",
+        providerUserId: lineUserId,
+        email: rawEmail,
+        name: profile.name,
+        picture: profile.picture,
+        emailVerified: Boolean(profile.email_verified || rawEmail),
+        next: nextPath,
+      });
+      const site = getSiteUrl();
+      const response = NextResponse.redirect(
+        new URL(linkAccountPath(nextPath), site).toString(),
+      );
+      setSocialPendingCookie(response, token);
+      response.cookies.set(LINE_STATE_COOKIE, "", {
+        ...lineAuthCookieOpts(0),
+        maxAge: 0,
+      });
+      return response;
+    }
 
     const user = await upsertSocialCustomer({
       provider: "line",
