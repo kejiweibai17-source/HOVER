@@ -86,7 +86,6 @@ const MOCK_GALLERY = [
   "/images/hover/people-2.jpg",
 ];
 
-const GALLERY_IMAGE_COUNT = 8;
 /** 全站商品圖統一 3:4 */
 const GALLERY_ASPECT_RATIO = "3/4";
 
@@ -126,9 +125,7 @@ function normalizeGalleryImages(
     return true;
   });
 
-  const source = unique.length > 0 ? unique : MOCK_GALLERY;
-  // 有幾張顯示幾張，不重複補滿；最多取 8 張
-  return source.slice(0, GALLERY_IMAGE_COUNT);
+  return unique.length > 0 ? unique : [];
 }
 
 const DEFAULT_SIZES = ["S", "M", "L", "XL"];
@@ -230,8 +227,8 @@ function ProductGallery({
     part === "hero"
       ? images.slice(0, 1)
       : part === "rest"
-        ? images.slice(1, GALLERY_IMAGE_COUNT)
-        : images.slice(0, GALLERY_IMAGE_COUNT);
+        ? images.slice(1)
+        : images;
 
   return (
     <div className="flex flex-col gap-2">
@@ -560,8 +557,9 @@ export default function ProductClient({ product }: ProductProps) {
   const productId = Number(product.id) || product.id;
   const isSaved = hasItem(productId);
 
-  const baseGallery =
-    product.images && product.images.length > 0 ? product.images : MOCK_GALLERY;
+  const baseGallery = Array.isArray(product.images)
+    ? product.images
+    : MOCK_GALLERY;
   const variations = product.variations || [];
   const defaultAttributes = product.defaultAttributes || {};
 

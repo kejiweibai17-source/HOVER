@@ -19,21 +19,28 @@ function isSameCardImage(a?: ProductCardImage | null, b?: ProductCardImage | nul
 }
 
 /**
- * 卡片 hover：用後台「商品圖庫」第二張。
- * 若沒有第二張，改用圖庫中第一張與主圖不同的。
+ * 卡片 hover：後台「產品圖片」(images[0]) 為預設；
+ * hover 換成「商品圖庫」第一張 (images[1])。
  */
 export function pickProductHoverImage(
   images: ProductCardImage[] | undefined,
 ): ProductCardImage | undefined {
   if (!images?.length) return undefined;
   const featured = images[0];
-  const gallery = images.slice(1).filter((img) => img?.src);
-  if (!gallery.length) return undefined;
+  const firstGallery = images[1];
+  if (firstGallery?.src && !isSameCardImage(featured, firstGallery)) {
+    return firstGallery;
+  }
 
-  const second = gallery[1];
-  if (second?.src && !isSameCardImage(featured, second)) return second;
+  return images.slice(1).find((img) => img?.src && !isSameCardImage(featured, img));
+}
 
-  return gallery.find((img) => !isSameCardImage(featured, img));
+/** 產品內頁圖庫：僅商品圖庫 images[1..]，順序同後台，不含產品圖片 images[0] */
+export function productDetailGallerySources<T extends { src?: string }>(
+  images: T[] | undefined,
+): T[] {
+  if (!Array.isArray(images) || images.length <= 1) return [];
+  return images.slice(1);
 }
 
 export function pickProductHoverSrc(

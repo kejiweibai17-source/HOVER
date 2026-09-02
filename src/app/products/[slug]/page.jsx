@@ -6,6 +6,7 @@ import { DEFAULT_SIZE_GUIDE } from "@/lib/sizeGuide";
 import { DEFAULT_WASHING_INSTRUCTIONS } from "@/lib/washingInstructions";
 import { DEFAULT_PRODUCT_COLORS } from "@/lib/productColors";
 import { pickWpSizeUrl } from "@/lib/listImageUrl";
+import { productDetailGallerySources } from "@/lib/productCardImages";
 import { stripHtmlToText } from "@/lib/utils";
 import { fetchShippingSettings } from "@/lib/shippingDefaults";
 
@@ -131,9 +132,14 @@ export async function generateMetadata({ params }) {
   const productPath = `/products/${params.slug}`; // 相對路徑配合 metadataBase
 
   const safeImages = p?.images;
-  const images = Array.isArray(safeImages)
-    ? safeImages.map((i) => i?.src).filter(Boolean)
-    : [];
+  const gallerySources = productDetailGallerySources(safeImages);
+  const images = gallerySources.length
+    ? gallerySources
+        .map((i) => pickWpSizeUrl(i?.sizes, "pdp", "") || i?.src)
+        .filter(Boolean)
+    : Array.isArray(safeImages) && safeImages[0]?.src
+      ? [pickWpSizeUrl(safeImages[0].sizes, "pdp", "") || safeImages[0].src]
+      : [];
 
   return {
     metadataBase: new URL(SITE_URL), // 核心：設定 base URL，解決 localhost 與正式機圖片路徑問題
@@ -192,7 +198,6 @@ export default async function ProductPage({ params }) {
     shortDescription: "",
     description: "",
     images: [
-      "/images/hover/pdp-main-1.jpg",
       "/images/hover/product-2.jpg",
       "/images/hover/people-3.jpg",
       "/images/hover/product-4.jpg",
@@ -213,7 +218,6 @@ export default async function ProductPage({ params }) {
         shortDescription: "",
         description: "",
         images: [
-          mock.images[0]?.src,
           "/images/hover/product-2.jpg",
           "/images/hover/people-3.jpg",
           "/images/hover/product-4.jpg",
@@ -230,7 +234,7 @@ export default async function ProductPage({ params }) {
   // 勿臆造 -1024x1024（本站多數商品沒有此尺寸 → 404 死圖）。
   const schemaImages =
     woo && Array.isArray(woo.images)
-      ? woo.images
+      ? productDetailGallerySources(woo.images)
           .map((i) => {
             if (!i?.src) return "";
             return pickWpSizeUrl(i.sizes, "pdp", "") || i.src;

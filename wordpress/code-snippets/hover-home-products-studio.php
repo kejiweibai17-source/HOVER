@@ -235,7 +235,7 @@ function hhps_product_images(\WC_Product $product): array
         }
     }
 
-    $hover_id = isset($gallery_ids[1]) ? (int) $gallery_ids[1] : 0;
+    $hover_id = isset($gallery_ids[0]) ? (int) $gallery_ids[0] : 0;
     if (!$hover_id || $hover_id === $featured) {
         foreach ($gallery_ids as $gid) {
             if ($gid && $gid !== $featured) {

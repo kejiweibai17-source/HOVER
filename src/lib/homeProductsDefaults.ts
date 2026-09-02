@@ -4,7 +4,7 @@ export type HomeCarouselProduct = {
   name: string;
   image: string;
   gallery?: string[];
-  /** 後台商品圖庫第二張，給卡片 hover */
+  /** 後台商品圖庫第一張，給卡片 hover */
   hoverImage?: string;
   isNew?: boolean;
   originalPrice: number;
