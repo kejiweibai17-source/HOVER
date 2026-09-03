@@ -1,21 +1,22 @@
 /**
- * 生日禮補發 — 當月壽星於月中註冊／設定生日時自動發券
- * FRIENDS NT$100／臻享 NT$300（依 exclusive 效期）
- * 發券成功後寄純文字通知（先管理員，再會員）
+ * 生日禮 — 固定母券 HBDAY100 / VIPBDAY300 + meta 標記已領
  */
 import nodemailer from "nodemailer";
 import {
-  buildGiftCouponPayload,
-  birthdayCouponCode,
   HOVER_MEMBERSHIP_META,
   MEMBERSHIP_RULES,
 } from "@/lib/membership";
+import {
+  birthdayCouponCodeForTier,
+  buildMasterCouponMetaUpdates,
+  expiresAtFromClaimAt,
+} from "@/lib/masterCoupons";
+import { sendMemberBirthdayGiftMail } from "@/lib/membershipGiftMails";
 
 const BASE = process.env.WC_API_BASE || "";
 const CK = process.env.WC_CONSUMER_KEY || "";
 const CS = process.env.WC_CONSUMER_SECRET || "";
 
-/** 生日禮派發時同步通知的管理員信箱 */
 const BIRTHDAY_ADMIN_NOTIFY = [
   "service@hoverofficial.com",
   "bob112722761236tom@gmail.com",
@@ -78,38 +79,24 @@ function createTransport() {
   });
 }
 
-/**
- * 純文字生日禮通知：先寄管理員，再寄會員。無 emoji。
- */
-export async function sendBirthdayGiftNotifyMail(params: {
+async function notifyAdmins(params: {
   customerEmail: string;
   month: number;
   code: string;
   amount: number;
   tierLabel: string;
-}): Promise<void> {
-  const customerEmail = String(params.customerEmail || "")
-    .trim()
-    .toLowerCase();
-  if (!customerEmail) return;
-
+}) {
   const transporter = createTransport();
-  if (!transporter) {
-    console.warn("[birthdayGift] SMTP 未設定，略過寄信");
-    return;
-  }
+  if (!transporter) return;
 
   const mailFrom = process.env.SMTP_USER!;
-  const from = `"HOVER" <${mailFrom}>`;
   const amountLabel = Number(params.amount).toLocaleString("en-US");
   const minSpend = MEMBERSHIP_RULES.giftMinSpend.toLocaleString("en-US");
   const days = MEMBERSHIP_RULES.birthdayValidityDays;
-
-  const adminSubject = "HOVER 生日禮派發通知";
-  const adminBody = [
+  const body = [
     "HOVER 生日禮派發通知",
     "",
-    `會員 Email：${customerEmail}`,
+    `會員 Email：${params.customerEmail}`,
     `會員等級：${params.tierLabel}`,
     `生日月份：${params.month} 月`,
     `折扣碼：${params.code}`,
@@ -122,33 +109,46 @@ export async function sendBirthdayGiftNotifyMail(params: {
 
   for (const to of BIRTHDAY_ADMIN_NOTIFY) {
     await transporter.sendMail({
-      from,
+      from: `"HOVER" <${mailFrom}>`,
       to,
-      subject: adminSubject,
-      text: adminBody,
+      subject: "HOVER 生日禮派發通知",
+      text: body,
     });
   }
+}
 
-  const memberSubject = "HOVER 生日禮通知";
-  const memberBody = [
-    "親愛的會員您好：",
-    "",
-    `您的 ${params.month} 月生日禮已發放，請至會員中心查看，或於結帳時使用以下折扣碼：`,
-    "",
-    `折扣碼：${params.code}`,
-    `面額：NT$${amountLabel}`,
-    `使用條件：單筆滿 NT$${minSpend}，限本人使用一次`,
-    `有效期限：發放日起 ${days} 天內`,
-    "",
-    "祝您購物愉快",
-    "HOVER",
-  ].join("\n");
+/**
+ * 會員生日禮通知（HTML 範本）＋管理員純文字通知
+ */
+export async function sendBirthdayGiftNotifyMail(params: {
+  customerEmail: string;
+  month: number;
+  code: string;
+  amount: number;
+  tierLabel: string;
+  memberName?: string;
+  expiresAt?: string | null;
+}): Promise<void> {
+  const customerEmail = String(params.customerEmail || "")
+    .trim()
+    .toLowerCase();
+  if (!customerEmail) return;
 
-  await transporter.sendMail({
-    from,
-    to: customerEmail,
-    subject: memberSubject,
-    text: memberBody,
+  const exclusive =
+    params.amount >= MEMBERSHIP_RULES.birthdayExclusive ||
+    /臻享|EXCLUSIVE/i.test(params.tierLabel);
+
+  try {
+    await notifyAdmins(params);
+  } catch (e) {
+    console.error("[birthdayGift] admin notify failed:", e);
+  }
+
+  await sendMemberBirthdayGiftMail({
+    customerEmail,
+    memberName: params.memberName,
+    exclusive,
+    expiresAt: params.expiresAt,
   });
 }
 
@@ -160,15 +160,12 @@ export type BirthdayGiftResult = {
   amount: number;
 };
 
-/**
- * 若生日月＝當月且尚未領過該年該月生日禮 → 建立折扣碼並標記已領。
- * 兩種會員皆補發：FRIENDS 100／臻享 300。發放成功會寄通知信。
- */
 export async function grantBirthdayGiftIfEligible(params: {
   customerId: number;
   email: string;
   birthday: string;
   existingMeta?: Array<{ key?: string; value?: unknown }>;
+  memberName?: string;
 }): Promise<BirthdayGiftResult> {
   const customerId = Number(params.customerId);
   const normalizedEmail = String(params.email || "").trim().toLowerCase();
@@ -176,12 +173,12 @@ export async function grantBirthdayGiftIfEligible(params: {
   const now = new Date();
   const year = now.getFullYear();
   const currentMonth = now.getMonth() + 1;
-  const code = birthdayCouponCode(customerId, currentMonth);
+
   const empty: BirthdayGiftResult = {
     granted: false,
     already: false,
     skipped: true,
-    code,
+    code: birthdayCouponCodeForTier(false),
     amount: 0,
   };
 
@@ -194,7 +191,6 @@ export async function grantBirthdayGiftIfEligible(params: {
 
   const claimKey = birthdayClaimKey(year, currentMonth);
   let meta = params.existingMeta;
-
   const headers = authHeaders();
 
   if (!meta) {
@@ -205,13 +201,14 @@ export async function grantBirthdayGiftIfEligible(params: {
     if (uRes.ok) {
       const user = await uRes.json().catch(() => ({}));
       meta = Array.isArray(user?.meta_data) ? user.meta_data : [];
+      if (!params.memberName) {
+        const fn = String(user?.first_name || "").trim();
+        const ln = String(user?.last_name || "").trim();
+        params.memberName = `${fn} ${ln}`.trim() || undefined;
+      }
     } else {
       meta = [];
     }
-  }
-
-  if (metaValue(meta, claimKey) === "1") {
-    return { granted: false, already: true, skipped: false, code, amount: 0 };
   }
 
   const exclusive = isExclusiveActive(
@@ -220,43 +217,25 @@ export async function grantBirthdayGiftIfEligible(params: {
   const amount = exclusive
     ? MEMBERSHIP_RULES.birthdayExclusive
     : MEMBERSHIP_RULES.birthdayFriends;
+  const code = birthdayCouponCodeForTier(exclusive);
   const tierLabel = exclusive ? "臻享會員" : "品牌好友";
 
-  const existRes = await fetch(
-    `${BASE}/wp-json/wc/v3/coupons?code=${encodeURIComponent(code)}`,
-    { headers: { Authorization: basicAuth() }, cache: "no-store" },
-  );
-  const existArr = await existRes.json().catch(() => []);
-  const couponExists = Array.isArray(existArr) && existArr.length > 0;
-
-  if (!couponExists) {
-    const createRes = await fetch(`${BASE}/wp-json/wc/v3/coupons`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(
-        buildGiftCouponPayload({
-          code,
-          amount,
-          email: normalizedEmail,
-          description: `${tierLabel} 生日禮 NT$${amount}（單筆滿 NT$${MEMBERSHIP_RULES.giftMinSpend} 可使用，不可與其他優惠併用｜當月補發）`,
-          expiryDays: MEMBERSHIP_RULES.birthdayValidityDays,
-          kind: "birthday",
-        }),
-      ),
-    });
-    if (!createRes.ok) {
-      const err = await createRes.text().catch(() => "");
-      throw new Error(`create birthday coupon failed: ${err}`);
-    }
+  if (metaValue(meta, claimKey) === "1") {
+    return { granted: false, already: true, skipped: false, code, amount };
   }
 
+  const claimedAt = now.toISOString();
+  const updates = buildMasterCouponMetaUpdates(code, meta || []);
   await fetch(`${BASE}/wp-json/wc/v3/customers/${customerId}`, {
     method: "PUT",
     headers,
-    body: JSON.stringify({
-      meta_data: [{ key: claimKey, value: "1" }],
-    }),
+    body: JSON.stringify({ meta_data: updates }),
   });
+
+  const expiresAt = expiresAtFromClaimAt(
+    claimedAt,
+    MEMBERSHIP_RULES.birthdayValidityDays,
+  );
 
   try {
     await sendBirthdayGiftNotifyMail({
@@ -265,14 +244,16 @@ export async function grantBirthdayGiftIfEligible(params: {
       code,
       amount,
       tierLabel,
+      memberName: params.memberName,
+      expiresAt,
     });
   } catch (e) {
     console.error("[birthdayGift] notify mail failed:", e);
   }
 
   return {
-    granted: !couponExists,
-    already: couponExists,
+    granted: true,
+    already: false,
     skipped: false,
     code,
     amount,

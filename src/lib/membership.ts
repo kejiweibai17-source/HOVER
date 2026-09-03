@@ -25,8 +25,8 @@ export const MEMBERSHIP_RULES = {
   giftMinSpend: 1_000,
   /** 正價商品折扣 */
   exclusiveDiscountRate: 0.95,
-  giftValidityDays: 90,
-  birthdayValidityDays: 30,
+  giftValidityDays: 30, // 入會禮：發放日起算
+  birthdayValidityDays: 30, // 生日禮：發放日起算（與入會禮相同）
 } as const;
 
 export type MembershipPayload = {
@@ -272,27 +272,33 @@ export function buildExclusiveMetaUpdates(
   return updates;
 }
 
+export {
+  welcomeCouponCode,
+  birthdayCouponCode,
+  birthdayCouponCodeForTier,
+  isMasterCouponCode,
+  masterCouponKind,
+  MASTER_COUPONS,
+} from "@/lib/masterCoupons";
+
 export function couponKindFromCode(code: string): string {
   const c = String(code || "").toUpperCase();
-  if (c.startsWith("HOVER100-") || c.startsWith("HOVER-WELCOME-")) return "welcome";
-  if (c.startsWith("HOVER-BDAY-")) return "birthday";
+  if (c === "HOVER100" || c.startsWith("HOVER100-") || c.startsWith("HOVER-WELCOME-")) {
+    return "welcome";
+  }
+  if (
+    c === "HBDAY100" ||
+    c === "VIPBDAY300" ||
+    c.startsWith("HOVER-BDAY-")
+  ) {
+    return "birthday";
+  }
   if (c.startsWith("HOVER-PROMO-")) return "promo";
   if (c.startsWith("HOVER-EXCL-")) return "vip";
   if (c.startsWith("UFFRD-")) return "ref_friend";
   if (c.startsWith("UFAMB-")) return "ref_ambassador";
   if (c.startsWith("UFUP-") || c.startsWith("UFBD-")) return "legacy";
   return "other";
-}
-
-export function welcomeCouponCode(customerId: number | string): string {
-  return `HOVER100-${customerId}`;
-}
-
-export function birthdayCouponCode(
-  customerId: number | string,
-  month: number,
-): string {
-  return `HOVER-BDAY-${month}-${customerId}`;
 }
 
 export function buildGiftCouponPayload(opts: {

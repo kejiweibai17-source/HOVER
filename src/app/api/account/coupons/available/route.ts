@@ -2,11 +2,17 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import {
-  birthdayCouponCode,
   couponKindFromCode,
   MEMBERSHIP_RULES,
-  welcomeCouponCode,
 } from "@/lib/membership";
+import {
+  expiresAtFromClaimAt,
+  isMasterCouponCode,
+  MASTER_COUPONS,
+  masterCouponKind,
+  masterGiftValidityDays,
+  resolveMasterCouponStatus,
+} from "@/lib/masterCoupons";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -81,11 +87,11 @@ function belongsToEmail(coupon: any, email: string) {
   return emails.includes(email);
 }
 
-function mapCoupon(coupon: any) {
+function mapCoupon(coupon: any, statusOverride?: "usable" | "used" | "expired") {
   const code = String(coupon.code || "").toUpperCase();
   const kind = couponKindFromCode(code);
   const amount = Number(coupon.amount) || 0;
-  const status = resolveStatus(coupon);
+  const status = statusOverride || resolveStatus(coupon);
   return {
     kind,
     kindLabel: kindLabel(kind, amount),
@@ -112,6 +118,36 @@ async function fetchCouponByCode(code: string, authHeader: HeadersInit) {
   return Array.isArray(arr) && arr[0] ? arr[0] : null;
 }
 
+function metaValue(meta: any[], key: string): string {
+  const row = meta.find((m) => m.key === key);
+  return row?.value != null ? String(row.value) : "";
+}
+
+function buildVirtualMasterCoupon(
+  wcCoupon: any,
+  code: string,
+  status: "usable" | "used" | "expired",
+  expiresOverride: string | null = null,
+) {
+  const base = wcCoupon || {
+    code,
+    discount_type: "fixed_cart",
+    amount:
+      code === MASTER_COUPONS.birthdayExclusive
+        ? MEMBERSHIP_RULES.birthdayExclusive
+        : code === MASTER_COUPONS.birthdayFriends
+          ? MEMBERSHIP_RULES.birthdayFriends
+          : MEMBERSHIP_RULES.welcomeGift,
+    minimum_amount: MEMBERSHIP_RULES.giftMinSpend,
+    description: "",
+  };
+  const mapped = mapCoupon({ ...base, code }, status);
+  if (expiresOverride) {
+    mapped.expires = expiresOverride;
+  }
+  return mapped;
+}
+
 export async function GET() {
   try {
     const profile = await fetchProfileWithSameCookies();
@@ -123,56 +159,110 @@ export async function GET() {
     const customerEmail = String(profile.customer.email || "")
       .trim()
       .toLowerCase();
+    const membership = profile.membership;
     const authHeader = { Authorization: basicAuth() };
 
-    // 精確查詢：入會禮／全年各月生日禮／推薦註冊禮（含已使用、已過期）
-    const knownCodes = [
-      welcomeCouponCode(customerId),
-      `UFFRD-${customerId}`,
-      ...Array.from({ length: 12 }, (_, i) =>
-        birthdayCouponCode(customerId, i + 1),
-      ),
+    const uRes = await fetch(`${BASE}/wp-json/wc/v3/customers/${customerId}`, {
+      headers: authHeader,
+      cache: "no-store",
+    });
+    const user = uRes.ok ? await uRes.json() : { meta_data: [] };
+    const meta: any[] = Array.isArray(user?.meta_data) ? user.meta_data : [];
+
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const exclusiveActive = Boolean(membership?.exclusiveActive);
+
+    const masterCodes = [
+      MASTER_COUPONS.welcome,
+      exclusiveActive
+        ? MASTER_COUPONS.birthdayExclusive
+        : MASTER_COUPONS.birthdayFriends,
     ];
 
-    const knownResults = await Promise.all(
-      knownCodes.map((code) => fetchCouponByCode(code, authHeader)),
+    const masterWc = await Promise.all(
+      masterCodes.map((code) => fetchCouponByCode(code, authHeader)),
     );
 
-    // 再掃近期券，補抓其他 Email 綁定專屬碼（活動／客服補發等）
+    const byCode = new Map<string, ReturnType<typeof mapCoupon>>();
+
+    for (let i = 0; i < masterCodes.length; i++) {
+      const code = masterCodes[i];
+      const kind = masterCouponKind(code);
+      if (!kind) continue;
+
+      const status = resolveMasterCouponStatus(
+        kind,
+        meta,
+        membership,
+        year,
+        month,
+      );
+
+      const claimed =
+        kind === "welcome"
+          ? metaValue(meta, "hover_welcome_claimed") === "1"
+          : metaValue(meta, `hover_birthday_claim_${year}_${month}`) === "1";
+
+      if (!claimed && status === "expired") continue;
+
+      const claimAt =
+        kind === "welcome"
+          ? metaValue(meta, "hover_welcome_claimed_at")
+          : metaValue(meta, `hover_birthday_claim_at_${year}_${month}`);
+      const expiresOverride = claimAt
+        ? expiresAtFromClaimAt(claimAt, masterGiftValidityDays(kind))
+        : null;
+
+      byCode.set(
+        code,
+        buildVirtualMasterCoupon(masterWc[i], code, status, expiresOverride),
+      );
+    }
+
+    // 舊版每人專屬券（HOVER100-123、HOVER-BDAY-…）仍顯示
+    const legacyCodes = [
+      `HOVER100-${customerId}`,
+      `UFFRD-${customerId}`,
+      ...Array.from({ length: 12 }, (_, i) =>
+        `HOVER-BDAY-${i + 1}-${customerId}`,
+      ),
+    ];
+    const legacyResults = await Promise.all(
+      legacyCodes.map((code) => fetchCouponByCode(code, authHeader)),
+    );
+
     const couponsRes = await fetch(
       `${BASE}/wp-json/wc/v3/coupons?per_page=100&orderby=date&order=desc`,
       { headers: authHeader, cache: "no-store" },
     );
     const recent = couponsRes.ok ? await couponsRes.json() : [];
 
-    const byCode = new Map<string, any>();
-    for (const c of [...knownResults, ...(Array.isArray(recent) ? recent : [])]) {
+    for (const c of [...legacyResults, ...(Array.isArray(recent) ? recent : [])]) {
       if (!c) continue;
-      if (!belongsToEmail(c, customerEmail)) continue;
       const key = String(c.code || "").toUpperCase();
-      if (!key || byCode.has(key)) continue;
-      byCode.set(key, c);
+      if (!key || byCode.has(key) || isMasterCouponCode(key)) continue;
+      if (!belongsToEmail(c, customerEmail)) continue;
+      byCode.set(key, mapCoupon(c));
     }
 
-    const coupons = Array.from(byCode.values())
-      .map(mapCoupon)
-      .sort((a, b) => {
-        const rank = (k: string) =>
-          k === "welcome" || k === "legacy"
-            ? 0
-            : k === "birthday"
-              ? 1
-              : k === "ref_friend"
-                ? 2
-                : 3;
-        const statusRank = (s: string) =>
-          s === "usable" ? 0 : s === "used" ? 1 : 2;
-        const byStatus = statusRank(a.status) - statusRank(b.status);
-        if (byStatus !== 0) return byStatus;
-        return rank(a.kind) - rank(b.kind);
-      });
+    const coupons = Array.from(byCode.values()).sort((a, b) => {
+      const rank = (k: string) =>
+        k === "welcome" || k === "legacy"
+          ? 0
+          : k === "birthday"
+            ? 1
+            : k === "ref_friend"
+              ? 2
+              : 3;
+      const statusRank = (s: string) =>
+        s === "usable" ? 0 : s === "used" ? 1 : 2;
+      const byStatus = statusRank(a.status) - statusRank(b.status);
+      if (byStatus !== 0) return byStatus;
+      return rank(a.kind) - rank(b.kind);
+    });
 
-    // 結帳／購物車沿用：僅可使用
     const available = coupons.filter((c) => c.status === "usable");
 
     return NextResponse.json({ ok: true, available, coupons });

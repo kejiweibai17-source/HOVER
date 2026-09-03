@@ -2,7 +2,6 @@
 import { NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
-import { welcomeCouponCode } from "@/lib/membership";
 import { grantWelcomeGiftIfEligible } from "@/lib/welcomeGift";
 import { grantBirthdayGiftIfEligible } from "@/lib/birthdayGift";
 
@@ -231,11 +230,9 @@ export async function POST(req: Request) {
     const newCustomerId: number = data.id;
     const createdEmail = String(data?.email || email).trim().toLowerCase();
 
-    // 入會禮
-    let welcomeCode = welcomeCouponCode(newCustomerId);
+    // 入會禮（會另寄「歡迎加入 HOVER FRIENDS」）
     try {
       await grantWelcomeGiftIfEligible(newCustomerId, createdEmail);
-      welcomeCode = welcomeCouponCode(newCustomerId);
     } catch (e) {
       console.error("grantWelcomeCoupon error:", e);
     }
@@ -276,29 +273,22 @@ export async function POST(req: Request) {
     const url = new URL("/verify-email", SITE_URL);
     url.searchParams.set("token", token);
 
-    // 3) 寄出驗證信（加上美化樣式與 LINE 連結）
+    // 3) 寄出信箱驗證信（入會禮另封寄送）
     try {
       const transporter = createTransport();
       await transporter.verify();
 
       const mailFrom = process.env.SMTP_USER!;
-      
-      // 🚀 優化信件排版 HTML
+
       const html = `
         <div style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
-          <h2 style="color: #222; border-bottom: 2px solid #f58a9c; padding-bottom: 10px;">會員註冊信箱驗證</h2>
+          <h2 style="color: #222; border-bottom: 2px solid #2a514d; padding-bottom: 10px;">會員註冊信箱驗證</h2>
           <p>親愛的會員您好：</p>
           <p>感謝您註冊 HOVER，請點擊下方按鈕完成信箱驗證：</p>
 
-          <div style="margin: 24px 0; padding: 16px; background: #f6f7f7; border-radius: 8px; text-align: left;">
-            <p style="margin: 0 0 8px; font-weight: 700;">🎁 入會禮折扣碼</p>
-            <p style="margin: 0 0 6px; font-size: 14px;">您的專屬代碼：<strong style="letter-spacing: 0.08em;">${welcomeCode}</strong></p>
-            <p style="margin: 0; font-size: 13px; color: #666;">NT$100 購物金，單筆滿 NT$1,000 可使用，限登入會員本人使用一次。</p>
-          </div>
-          
           <div style="margin: 30px 0; text-align: center;">
             <a href="${url.toString()}" target="_blank"
-               style="display: inline-block; padding: 14px 28px; background-color: #f58a9c; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; letter-spacing: 1px;">
+               style="display: inline-block; padding: 14px 28px; background-color: #2a514d; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; letter-spacing: 1px;">
               完成信箱驗證
             </a>
           </div>
@@ -307,27 +297,27 @@ export async function POST(req: Request) {
           <div style="background-color: #f8f9fa; padding: 12px; border-radius: 4px; word-break: break-all; font-size: 13px; color: #0056b3;">
             ${url.toString()}
           </div>
-          
-          <p style="color: #e63946; font-weight: bold; margin-top: 20px;">⚠️ 此驗證連結將在 15 分鐘後失效。</p>
+
+          <p style="color: #e63946; font-weight: bold; margin-top: 20px;">此驗證連結將在 15 分鐘後失效。</p>
 
           <hr style="border: none; border-top: 1px solid #eaeaea; margin: 30px 0;" />
 
-          <p style="font-size: 14px; color: #666;">若您在驗證過程中遇到任何問題，或需要協助，歡迎隨時透過 LINE 官方客服與我們聯繫：</p>
+          <p style="font-size: 14px; color: #666;">若您在驗證過程中遇到任何問題，歡迎透過 LINE 官方客服與我們聯繫：</p>
           <div style="margin-top: 15px;">
             <a href="https://lin.ee/uKRvV64" target="_blank"
                style="display: inline-block; padding: 10px 20px; background-color: #00B900; color: #ffffff; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 14px;">
-              💬 聯繫 LINE 客服
+              聯繫 LINE 客服
             </a>
           </div>
-          
+
           <div style="margin-top: 40px; font-size: 12px; color: #999; text-align: center;">
-            <p>HOVER 威爾特 | 官方網站</p>
+            <p>HOVER｜官方網站</p>
           </div>
         </div>
       `;
 
       const info = await transporter.sendMail({
-        from: `"HOVER 威爾特" <${mailFrom}>`,
+        from: `"HOVER" <${mailFrom}>`,
         to: createdEmail,
         subject: "HOVER – 會員信箱驗證",
         html,

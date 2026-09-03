@@ -8,6 +8,12 @@ import {
   computeMembership,
   mapWcOrdersToLite,
 } from "@/lib/membership";
+import {
+  buildMasterCouponUsedMeta,
+  fetchCustomerMembership,
+  isMasterCouponCode,
+  validateMasterCouponForMeta,
+} from "@/lib/masterCoupons";
 import { checkCartStock } from "@/lib/validateCartStock";
 import { fetchShippingSettings, shippingFeeFor } from "@/lib/shippingDefaults";
 import { generateCheckMacValue, getEcpayDate } from "@/lib/ecpay";
@@ -108,6 +114,25 @@ async function bumpCouponUsage(auth: string, code: string, email: string) {
   }
 }
 
+async function markMasterCouponUsed(
+  auth: string,
+  customerId: number,
+  code: string,
+) {
+  if (!customerId || !isMasterCouponCode(code)) return;
+  try {
+    const updates = buildMasterCouponUsedMeta(code);
+    if (!updates.length) return;
+    await fetch(`${BASE.replace(/\/$/, "")}/wp-json/wc/v3/customers/${customerId}`, {
+      method: "PUT",
+      headers: { Authorization: auth, "Content-Type": "application/json" },
+      body: JSON.stringify({ meta_data: updates }),
+    });
+  } catch (e) {
+    console.error("markMasterCouponUsed failed:", e);
+  }
+}
+
 async function validateCouponOnServer(
   auth: string,
   code: string,
@@ -115,6 +140,7 @@ async function validateCouponOnServer(
   subtotalAfterMember: number,
   hasMemberDiscount: boolean,
   hasSaleItems = false,
+  customerId = 0,
 ): Promise<{ amount: number; code: string } | null> {
   const res = await fetch(
     `${BASE.replace(/\/$/, "")}/wp-json/wc/v3/coupons?code=${encodeURIComponent(code)}`,
@@ -124,6 +150,33 @@ async function validateCouponOnServer(
   const arr = await res.json();
   if (!Array.isArray(arr) || arr.length === 0) return null;
   const coupon = arr[0];
+
+  if (isMasterCouponCode(code)) {
+    if (!customerId) return null;
+    const { meta, membership } = await fetchCustomerMembership(
+      BASE,
+      auth,
+      customerId,
+    );
+    const eligibility = validateMasterCouponForMeta(code, meta, membership, {
+      loggedIn: true,
+    });
+    if (!eligibility.valid) return null;
+    if (coupon.individual_use && hasMemberDiscount) return null;
+
+    const minAmount = Number(coupon.minimum_amount || 0);
+    if (minAmount > 0 && subtotalAfterMember < minAmount) return null;
+
+    const type = String(coupon.discount_type || "fixed_cart");
+    const amount = Number(coupon.amount || 0);
+    let discount = 0;
+    if (type === "percent") discount = Math.round(subtotalAfterMember * (amount / 100));
+    else if (type === "fixed_cart" || type === "fixed_product") {
+      discount = Math.min(amount, subtotalAfterMember);
+    }
+    if (discount <= 0) return null;
+    return { amount: discount, code: String(coupon.code || code) };
+  }
 
   if (coupon.individual_use && hasMemberDiscount) return null;
   if (coupon.exclude_sale_items && hasSaleItems) return null;
@@ -318,6 +371,7 @@ export async function POST(req: Request) {
         subtotalAfterMember,
         serverMemberDiscount > 0,
         hasSaleItems,
+        Number(loggedInCustomerId) || 0,
       );
       if (!validated) {
         return NextResponse.json(
@@ -521,6 +575,13 @@ export async function POST(req: Request) {
               validatedCouponCode,
               contact?.email || session?.user?.email || "",
             );
+            if (loggedInCustomerId) {
+              await markMasterCouponUsed(
+                auth,
+                Number(loggedInCustomerId),
+                validatedCouponCode,
+              );
+            }
           }
           // 再對齊一次：WC 總額應等於站內 secureTotal（綠界／發票同源）
           const wcTotal = Math.round(Number(wcData.total) || 0);

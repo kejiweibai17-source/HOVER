@@ -2,13 +2,13 @@
 import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import {
-  HOVER_MEMBERSHIP_META,
-  MEMBERSHIP_RULES,
-  birthdayCouponCode,
-  buildGiftCouponPayload,
+  birthdayCouponCodeForTier,
+  buildMasterCouponMetaUpdates,
+  expiresAtFromClaimAt,
   welcomeCouponCode,
-} from "@/lib/membership";
+} from "@/lib/masterCoupons";
 import { sendBirthdayGiftNotifyMail } from "@/lib/birthdayGift";
+import { MEMBERSHIP_RULES, HOVER_MEMBERSHIP_META } from "@/lib/membership";
 
 export const runtime = "nodejs";
 
@@ -31,32 +31,12 @@ async function fetchProfileWithSameCookies() {
   return r.json();
 }
 
-async function findOrCreateCoupon(
-  authHeader: Record<string, string>,
-  payload: ReturnType<typeof buildGiftCouponPayload>,
-) {
-  const s = await fetch(
-    `${BASE}/wp-json/wc/v3/coupons?code=${encodeURIComponent(payload.code)}`,
-    { headers: authHeader },
-  );
-  const arr = await s.json();
-  if (Array.isArray(arr) && arr.length > 0) return arr[0];
-
-  const c = await fetch(`${BASE}/wp-json/wc/v3/coupons`, {
-    method: "POST",
-    headers: { ...authHeader, "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  return c.json();
-}
-
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
     const kind: "welcome" | "birthday" | "upgrade" = body.kind;
 
-    const normalizedKind =
-      kind === "upgrade" ? "welcome" : kind;
+    const normalizedKind = kind === "upgrade" ? "welcome" : kind;
 
     if (!["welcome", "birthday"].includes(normalizedKind)) {
       return NextResponse.json(
@@ -79,6 +59,7 @@ export async function POST(req: Request) {
       .toLowerCase();
     const membership = profile.membership;
     const tierLabel = membership?.tierLabel || "品牌好友";
+    const exclusiveActive = Boolean(membership?.exclusiveActive);
 
     const authHeader = { Authorization: basicAuth() };
     const uRes = await fetch(`${BASE}/wp-json/wc/v3/customers/${customerId}`, {
@@ -91,44 +72,41 @@ export async function POST(req: Request) {
     if (normalizedKind === "welcome") {
       const welcomeKey = HOVER_MEMBERSHIP_META.welcomeClaimed;
       if (meta.find((m) => m.key === welcomeKey && m.value === "1")) {
+        // 舊資料可能缺 claimed_at → 補寫，從此刻起算 30 天
+        const backfill = buildMasterCouponMetaUpdates(welcomeCouponCode(), meta);
+        if (backfill.length) {
+          await fetch(`${BASE}/wp-json/wc/v3/customers/${customerId}`, {
+            method: "PUT",
+            headers: { ...authHeader, "Content-Type": "application/json" },
+            body: JSON.stringify({ meta_data: backfill }),
+          });
+        }
         return NextResponse.json({
           ok: true,
           already: true,
           message: "入會禮已領取過，請至優惠券查看。",
+          coupon: { code: welcomeCouponCode() },
         });
       }
 
       const amount = membership?.welcomeGift || MEMBERSHIP_RULES.welcomeGift;
-      const code = welcomeCouponCode(customerId);
-      const coupon = await findOrCreateCoupon(
-        authHeader,
-        buildGiftCouponPayload({
-          code,
-          amount,
-          email: customerEmail,
-          description: `HOVER FRIENDS 入會禮 HOVER100（單筆滿 NT$${MEMBERSHIP_RULES.giftMinSpend} 可使用）`,
-          expiryDays: MEMBERSHIP_RULES.giftValidityDays,
-          kind: "welcome",
-        }),
-      );
+      const code = welcomeCouponCode();
+      const updates = buildMasterCouponMetaUpdates(code, meta);
 
       await fetch(`${BASE}/wp-json/wc/v3/customers/${customerId}`, {
         method: "PUT",
         headers: { ...authHeader, "Content-Type": "application/json" },
-        body: JSON.stringify({
-          meta_data: [{ key: welcomeKey, value: "1" }],
-        }),
+        body: JSON.stringify({ meta_data: updates }),
       });
 
       return NextResponse.json({
         ok: true,
         already: false,
-        coupon,
-        message: `入會禮 NT$${amount} 領取成功！`,
+        coupon: { code, amount },
+        message: `入會禮 NT$${amount} 領取成功！結帳時請輸入 ${code}（限 ${MEMBERSHIP_RULES.giftValidityDays} 天內使用）`,
       });
     }
 
-    // birthday — 當月壽星可領／補發（不限註冊須早於當月 1 日）
     const now = new Date();
     const currentMonth = now.getMonth() + 1;
 
@@ -155,41 +133,50 @@ export async function POST(req: Request) {
 
     const metaKey = `${HOVER_MEMBERSHIP_META.birthdayClaimPrefix}${now.getFullYear()}_${currentMonth}`;
     if (meta.find((m) => m.key === metaKey && m.value === "1")) {
+      const code = birthdayCouponCodeForTier(exclusiveActive);
+      const backfill = buildMasterCouponMetaUpdates(code, meta);
+      if (backfill.length) {
+        await fetch(`${BASE}/wp-json/wc/v3/customers/${customerId}`, {
+          method: "PUT",
+          headers: { ...authHeader, "Content-Type": "application/json" },
+          body: JSON.stringify({ meta_data: backfill }),
+        });
+      }
       return NextResponse.json({
         ok: true,
         already: true,
         message: "本月生日禮已領取過，請於結帳時使用。",
+        coupon: { code },
       });
     }
 
     const amount =
       membership?.birthdayCredit || MEMBERSHIP_RULES.birthdayFriends;
-    const code = birthdayCouponCode(customerId, currentMonth);
-    const coupon = await findOrCreateCoupon(
-      authHeader,
-      buildGiftCouponPayload({
-        code,
-        amount,
-        email: customerEmail,
-        description: `${tierLabel} 生日禮 NT$${amount}（單筆滿 NT$${MEMBERSHIP_RULES.giftMinSpend} 可使用，不可與其他優惠併用）`,
-        expiryDays: MEMBERSHIP_RULES.birthdayValidityDays,
-        kind: "birthday",
-      }),
-    );
+    const code = birthdayCouponCodeForTier(exclusiveActive);
+    const updates = buildMasterCouponMetaUpdates(code, meta);
 
     await fetch(`${BASE}/wp-json/wc/v3/customers/${customerId}`, {
       method: "PUT",
       headers: { ...authHeader, "Content-Type": "application/json" },
-      body: JSON.stringify({ meta_data: [{ key: metaKey, value: "1" }] }),
+      body: JSON.stringify({ meta_data: updates }),
     });
 
     try {
+      const claimedAt = new Date().toISOString();
       await sendBirthdayGiftNotifyMail({
         customerEmail,
         month: currentMonth,
         code,
         amount,
         tierLabel,
+        memberName:
+          String(profile.customer?.first_name || "").trim() ||
+          String(profile.customer?.name || "").trim() ||
+          undefined,
+        expiresAt: expiresAtFromClaimAt(
+          claimedAt,
+          MEMBERSHIP_RULES.birthdayValidityDays,
+        ),
       });
     } catch (e) {
       console.error("birthday claim notify mail failed:", e);
@@ -198,8 +185,8 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       already: false,
-      coupon,
-      message: `生日禮 NT$${amount} 領取成功！（限 ${MEMBERSHIP_RULES.birthdayValidityDays} 天內使用）`,
+      coupon: { code, amount },
+      message: `生日禮 NT$${amount} 領取成功！結帳時請輸入 ${code}（限 ${MEMBERSHIP_RULES.birthdayValidityDays} 天內使用）`,
     });
   } catch (err) {
     console.error("claim coupon error:", err);

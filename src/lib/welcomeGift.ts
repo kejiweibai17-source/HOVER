@@ -1,12 +1,16 @@
 /**
- * 入會禮 HOVER100 — Email 註冊與社群登入共用
+ * 入會禮 HOVER100 — 固定母券 + meta 標記已領 + 寄送入會禮信
  */
 import {
-  buildGiftCouponPayload,
   HOVER_MEMBERSHIP_META,
   MEMBERSHIP_RULES,
-  welcomeCouponCode,
 } from "@/lib/membership";
+import {
+  buildMasterCouponMetaUpdates,
+  expiresAtFromClaimAt,
+  welcomeCouponCode,
+} from "@/lib/masterCoupons";
+import { sendWelcomeGiftMail } from "@/lib/membershipGiftMails";
 
 const BASE = process.env.WC_API_BASE || "";
 const CK = process.env.WC_CONSUMER_KEY || "";
@@ -45,15 +49,15 @@ export type WelcomeGiftResult = {
 };
 
 /**
- * 若該會員尚未領過入會禮，建立 HOVER100 優惠券並標記 hover_welcome_claimed。
- * 同一 customerId / email 只會發一次。
+ * 若該會員尚未領過入會禮，標記 meta 並寄「歡迎加入 HOVER FRIENDS」信。
  */
 export async function grantWelcomeGiftIfEligible(
   customerId: number,
   email: string,
   existingMeta?: Array<{ key?: string; value?: unknown }>,
+  memberName?: string,
 ): Promise<WelcomeGiftResult> {
-  const code = welcomeCouponCode(customerId);
+  const code = welcomeCouponCode();
   const normalizedEmail = String(email || "").trim().toLowerCase();
 
   if (!hasWooConfig() || !customerId || !normalizedEmail) {
@@ -61,63 +65,66 @@ export async function grantWelcomeGiftIfEligible(
   }
 
   if (hasWelcomeClaimed(existingMeta)) {
+    const updates = buildMasterCouponMetaUpdates(code, existingMeta || []);
+    if (updates.length && hasWooConfig()) {
+      await fetch(`${BASE}/wp-json/wc/v3/customers/${customerId}`, {
+        method: "PUT",
+        headers: authHeaders(),
+        body: JSON.stringify({ meta_data: updates }),
+      });
+    }
     return { granted: false, already: true, code };
   }
 
   const headers = authHeaders();
+  let meta = existingMeta;
+  let resolvedName = String(memberName || "").trim();
 
-  if (!existingMeta) {
+  if (!meta) {
     const uRes = await fetch(`${BASE}/wp-json/wc/v3/customers/${customerId}`, {
       headers: { Authorization: basicAuth() },
       cache: "no-store",
     });
     if (uRes.ok) {
       const user = await uRes.json().catch(() => ({}));
-      const meta = Array.isArray(user?.meta_data) ? user.meta_data : [];
+      meta = Array.isArray(user?.meta_data) ? user.meta_data : [];
+      if (!resolvedName) {
+        const fn = String(user?.first_name || "").trim();
+        const ln = String(user?.last_name || "").trim();
+        resolvedName = `${fn} ${ln}`.trim();
+      }
       if (hasWelcomeClaimed(meta)) {
         return { granted: false, already: true, code };
       }
+    } else {
+      meta = [];
     }
   }
 
-  const existRes = await fetch(
-    `${BASE}/wp-json/wc/v3/coupons?code=${encodeURIComponent(code)}`,
-    { headers: { Authorization: basicAuth() }, cache: "no-store" },
-  );
-  const existArr = await existRes.json().catch(() => []);
-  const couponExists = Array.isArray(existArr) && existArr.length > 0;
-
-  if (!couponExists) {
-    const createRes = await fetch(`${BASE}/wp-json/wc/v3/coupons`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(
-        buildGiftCouponPayload({
-          code,
-          amount: MEMBERSHIP_RULES.welcomeGift,
-          email: normalizedEmail,
-          description:
-            "HOVER FRIENDS 入會禮 HOVER100（單筆滿 NT$1,000 可使用，限本人一次）",
-          expiryDays: MEMBERSHIP_RULES.giftValidityDays,
-          kind: "welcome",
-        }),
-      ),
-    });
-    if (!createRes.ok) {
-      const err = await createRes.text().catch(() => "");
-      throw new Error(`create welcome coupon failed: ${err}`);
-    }
+  const updates = buildMasterCouponMetaUpdates(code, meta || []);
+  if (!updates.length) {
+    return { granted: false, already: true, code };
   }
 
+  const claimedAt = new Date().toISOString();
   await fetch(`${BASE}/wp-json/wc/v3/customers/${customerId}`, {
     method: "PUT",
     headers,
-    body: JSON.stringify({
-      meta_data: [
-        { key: HOVER_MEMBERSHIP_META.welcomeClaimed, value: "1" },
-      ],
-    }),
+    body: JSON.stringify({ meta_data: updates }),
   });
 
-  return { granted: !couponExists, already: couponExists, code };
+  try {
+    await sendWelcomeGiftMail({
+      customerEmail: normalizedEmail,
+      memberName: resolvedName || undefined,
+      expiresAt: expiresAtFromClaimAt(
+        claimedAt,
+        MEMBERSHIP_RULES.giftValidityDays,
+      ),
+    });
+  } catch (e) {
+    console.error("[welcomeGift] mail failed:", e);
+  }
+
+  return { granted: true, already: false, code };
 }

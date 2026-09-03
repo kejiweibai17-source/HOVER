@@ -3,7 +3,7 @@
  * HOVER — 優惠碼後台（精簡版）
  *
  * 對齊會員制度：
- * - 入會禮 NT$100｜滿 NT$1,000｜90 天
+ * - 入會禮 NT$100｜滿 NT$1,000｜30 天
  * - 生日禮 好友 NT$100／臻享 NT$300｜滿 NT$1,000｜30 天
  * - 好友推薦禮 NT$50
  *
@@ -247,8 +247,8 @@ function hcs_tpls(): array
         [
             ['tg-g', '入會'],
             '入會禮 NT$100',
-            '品牌好友新會員。滿 NT$1,000、90 天、限一次。',
-            'NT$100 · 最低 NT$1,000 · 90 天',
+            '品牌好友新會員。滿 NT$1,000、30 天、限一次。',
+            'NT$100 · 最低 NT$1,000 · 30 天',
             [
                 'prefix'      => 'HOVER-WELCOME',
                 'type'        => 'fixed_cart',
@@ -530,7 +530,7 @@ function hcs_page(): void
 
 <div class="hcs-note">
     <strong>會員規則對齊：</strong>
-    入會禮 NT$100（滿 1,000／90 天）·
+    入會禮 NT$100（滿 1,000／30 天）·
     生日禮 好友 NT$100／臻享 NT$300（滿 1,000／30 天／不可併用）·
     推薦禮 NT$50。
     臻享 95 折與滿額免運由官網／結帳自動計算，不透過此處發券。
@@ -693,7 +693,7 @@ function hcs_page(): void
             <div class="hcs-f" style="max-width:200px">
                 <label>有效天數</label>
                 <input type="number" name="days" min="1" value="30">
-                <span class="sub">入會 90／生日 30</span>
+                <span class="sub">入會 30／生日 30</span>
             </div>
         </div>
         <div id="hcs-date-row" style="display:none">

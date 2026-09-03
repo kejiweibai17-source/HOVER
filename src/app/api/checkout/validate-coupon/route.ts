@@ -2,6 +2,11 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
+import {
+  fetchCustomerMembership,
+  isMasterCouponCode,
+  validateMasterCouponForMeta,
+} from "@/lib/masterCoupons";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -82,6 +87,79 @@ export async function POST(req: Request) {
 
     const coupon = arr[0];
 
+    const session = await getServerSession(authOptions);
+    const userEmail = String(session?.user?.email || "").trim().toLowerCase();
+    const customerId = Number((session as any)?.customerId || 0);
+
+    if (isMasterCouponCode(code)) {
+      if (!customerId || !userEmail) {
+        return NextResponse.json(
+          { valid: false, message: "請先登入會員後再使用此折扣碼" },
+          { status: 200, headers: noCache },
+        );
+      }
+
+      const { meta, membership } = await fetchCustomerMembership(
+        BASE,
+        auth,
+        customerId,
+      );
+      const eligibility = validateMasterCouponForMeta(code, meta, membership, {
+        loggedIn: true,
+      });
+      if (!eligibility.valid) {
+        return NextResponse.json(
+          { valid: false, message: eligibility.message },
+          { status: 200, headers: noCache },
+        );
+      }
+
+      if (coupon.individual_use && hasMemberDiscount) {
+        return NextResponse.json(
+          {
+            valid: false,
+            message: "此折扣碼不可與會員折扣或其他優惠併用",
+          },
+          { status: 200, headers: noCache },
+        );
+      }
+
+      const minAmount = Number(coupon.minimum_amount || 0);
+      if (minAmount > 0 && subtotalAfterMember < minAmount) {
+        return NextResponse.json(
+          {
+            valid: false,
+            message: `此折扣碼需滿 NT$${minAmount.toLocaleString()} 才可使用`,
+          },
+          { status: 200, headers: noCache },
+        );
+      }
+
+      const discount = calcDiscountAmount(coupon, subtotalAfterMember);
+      if (discount == null || discount <= 0) {
+        return NextResponse.json(
+          { valid: false, message: "目前訂單不符合此折扣碼使用條件" },
+          { status: 200, headers: noCache },
+        );
+      }
+
+      const label =
+        coupon.description ||
+        `折 NT$${Number(coupon.amount).toLocaleString()}`;
+
+      return NextResponse.json(
+        {
+          valid: true,
+          code: coupon.code,
+          amount: discount,
+          label,
+          discountType: coupon.discount_type,
+          coupon,
+        },
+        { headers: noCache },
+      );
+    }
+
     if (coupon.individual_use && hasMemberDiscount) {
       return NextResponse.json(
         {
@@ -136,8 +214,6 @@ export async function POST(req: Request) {
       ? coupon.email_restrictions.map((e: string) => String(e).toLowerCase())
       : [];
     if (emailRestrictions.length > 0) {
-      const session = await getServerSession(authOptions);
-      const userEmail = String(session?.user?.email || "").trim().toLowerCase();
       if (!userEmail || !emailRestrictions.includes(userEmail)) {
         return NextResponse.json(
           { valid: false, message: "此折扣碼僅限指定會員使用" },
