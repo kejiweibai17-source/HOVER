@@ -25,7 +25,7 @@ export function verifyEcpayMac(data: Record<string, string>) {
   return received === computed;
 }
 
-/** 綠界 ATM/超商取號成功後寫入 Woo；顧客通知信由 WooCommerce「顧客備註」郵件寄出 */
+/** 綠界 ATM/超商取號成功後寫入 Woo；ATM 以顧客備註觸發通知（snippet 覆蓋成第 4 封） */
 export async function saveEcpayPaymentInfo(data: Record<string, string>) {
   const orderId = data.CustomField1;
   const auth = basicAuth();
@@ -73,6 +73,7 @@ export async function saveEcpayPaymentInfo(data: Record<string, string>) {
       body: JSON.stringify({ meta_data: metaData }),
     });
 
+    // 顧客備註會觸發 WC「顧客備註」信 → snippet 覆蓋為第 4 封「訂單已建立｜請完成付款」
     if (!alreadyHasAccount && customerNote) {
       await fetch(`${base}/wp-json/wc/v3/orders/${orderId}/notes`, {
         method: "POST",

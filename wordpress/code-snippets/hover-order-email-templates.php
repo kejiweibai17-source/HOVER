@@ -3,15 +3,17 @@
  * HOVER — 訂單信件自訂範本（覆蓋 WC 後台文案）
  *
  * 對應：
- * 4. customer_on_hold_order     → ATM 未付款／訂單建立成功
+ * 4. ATM 未付款／訂單建立成功
+ *    - new_order（後台名稱「新訂單」，主旨常為「您有一筆新訂單」）
+ *    - customer_note（綠界取號後寫入轉帳備註時寄給顧客）
+ *    - customer_on_hold_order（若訂單改為保留也套用）
  * 5. customer_processing_order  → 付款完成
- * 6. customer_cancelled_order   → ATM 未付款取消
+ * 6. customer_cancelled_order   → 訂單取消
  * 7. customer_completed_order   → 出貨通知
  *
  * 使用方式：
- * 1. Code Snippets → Add New → 貼上本檔 → Everywhere → 啟用
- * 2. 後台仍需「啟用」上述 4 封顧客信（主旨／內文以本 snippet 為準）
- * 3. 可與 hover-email-hide-billing-address 並存（本檔以完整 HTML 覆蓋內文）
+ * 1. Code Snippets → 貼上本檔 → Everywhere → 啟用
+ * 2. 後台「新訂單／訂單保留／處理中／已取消／完成訂購」保持啟用即可
  */
 
 if (!defined('ABSPATH')) {
@@ -35,7 +37,9 @@ const HOET_GREEN = '#2a514d';
 function hoet_email_ids(): array
 {
     return [
-        'customer_on_hold_order',
+        'new_order',                 // 您有一筆新訂單（第 4 封 ATM）
+        'customer_note',            // 取號備註通知（第 4 封 ATM）
+        'customer_on_hold_order',   // 訂單保留（第 4 封 ATM）
         'customer_processing_order',
         'customer_cancelled_order',
         'customer_completed_order',
@@ -45,6 +49,8 @@ function hoet_email_ids(): array
 function hoet_subject_map(): array
 {
     return [
+        'new_order'                  => '訂單已建立｜請完成付款',
+        'customer_note'             => '訂單已建立｜請完成付款',
         'customer_on_hold_order'    => '訂單已建立｜請完成付款',
         'customer_processing_order' => '付款完成｜訂單確認中',
         'customer_cancelled_order'  => '訂單已取消',
@@ -53,7 +59,13 @@ function hoet_subject_map(): array
 }
 
 foreach (hoet_subject_map() as $email_id => $subject) {
-    add_filter("woocommerce_email_subject_{$email_id}", function ($default, $order) use ($subject) {
+    add_filter("woocommerce_email_subject_{$email_id}", function ($default, $order) use ($email_id, $subject) {
+        // 新訂單／備註／保留：僅 ATM 單改主旨
+        if (in_array($email_id, ['new_order', 'customer_note', 'customer_on_hold_order'], true)) {
+            if ($order instanceof WC_Order && !hoet_is_atm_order($order)) {
+                return $default;
+            }
+        }
         return $subject;
     }, 50, 2);
     add_filter("woocommerce_email_heading_{$email_id}", function ($heading, $order, $email) {
@@ -76,7 +88,7 @@ add_action('woocommerce_email_header', function ($heading, $email = null) {
 }, 1, 2);
 
 /**
- * 以完整 HTML 覆蓋 4 封顧客信內文
+ * 以完整 HTML 覆蓋指定信件內文
  */
 add_filter('woocommerce_mail_content', function ($content) {
     $email = $GLOBALS['hoet_sending_email'] ?? null;
@@ -95,15 +107,37 @@ add_filter('woocommerce_mail_content', function ($content) {
         return $content;
     }
 
-    // 4：僅 ATM／有虛擬帳號的待付款單用自訂範本，其餘 on-hold 維持 WC 預設
-    if ($email->id === 'customer_on_hold_order' && !hoet_is_atm_order($order)) {
-        return $content;
+    // 第 4 封：僅 ATM 相關的新訂單／備註／保留
+    if (in_array($email->id, ['new_order', 'customer_note', 'customer_on_hold_order'], true)) {
+        if (!hoet_should_use_atm_created_template($email, $order)) {
+            return $content;
+        }
+        $html = hoet_tpl_atm_created($order);
+        return $html !== '' ? $html : $content;
     }
 
-    // 6：未付款取消用 ATM 取消範本；已付款後取消仍覆蓋為簡化取消信（同結構）
     $html = hoet_render_email($email->id, $order);
     return $html !== '' ? $html : $content;
 }, 999);
+
+/** 是否套用「ATM 訂單建立成功」範本 */
+function hoet_should_use_atm_created_template($email, WC_Order $order): bool
+{
+    if (hoet_is_atm_order($order)) {
+        return true;
+    }
+    if (is_object($email) && !empty($email->id) && $email->id === 'customer_note') {
+        $note = '';
+        if (isset($email->customer_note)) {
+            $note = (string) $email->customer_note;
+        }
+        if ($note === '' && method_exists($order, 'get_customer_note')) {
+            $note = (string) $order->get_customer_note();
+        }
+        return (bool) preg_match('/轉帳資訊|虛擬帳號|繳費期限/u', $note);
+    }
+    return false;
+}
 
 /* -------------------------------------------------------------------------- */
 /* Helpers                                                                     */
@@ -156,15 +190,6 @@ function hoet_shipped_date(WC_Order $order): string
     return $d ? $d->date_i18n('Y/m/d H:i') : '';
 }
 
-function hoet_is_atm_order(WC_Order $order): bool
-{
-    if (hoet_atm_account($order) !== '') {
-        return true;
-    }
-    $method = strtolower($order->get_payment_method() . ' ' . $order->get_payment_method_title());
-    return (bool) preg_match('/atm|虛擬帳號|轉帳/', $method);
-}
-
 function hoet_meta(WC_Order $order, array $keys): string
 {
     foreach ($keys as $key) {
@@ -180,27 +205,76 @@ function hoet_meta(WC_Order $order, array $keys): string
     return '';
 }
 
-function hoet_atm_account(WC_Order $order): string
+function hoet_is_atm_order(WC_Order $order): bool
 {
-    return hoet_meta($order, ['_vAccount', '_PaymentNo', 'vAccount', '_ecpay_atm_vaccount']);
+    if (hoet_atm_account($order) !== '') {
+        return true;
+    }
+    $method = strtolower($order->get_payment_method() . ' ' . $order->get_payment_method_title());
+    if (preg_match('/atm|虛擬帳號|轉帳/', $method)) {
+        return true;
+    }
+    // 備援：舊流程寫在顧客備註
+    $note = (string) $order->get_customer_note();
+    return (bool) preg_match('/虛擬帳號|轉帳資訊|_vAccount/u', $note);
 }
 
 function hoet_atm_bank(WC_Order $order): string
 {
     $code = preg_replace('/\D/', '', hoet_meta($order, ['_BankCode', 'BankCode', '_ecpay_atm_bank_code', '_atm_bank']));
-    if ($code === '' || $code === '007') {
-        return '第一商業銀行（007）';
+    if ($code === '') {
+        $note = (string) $order->get_customer_note();
+        if (preg_match('/銀行代碼[:：\s]*(\d{3})/u', $note, $m)) {
+            $code = $m[1];
+        }
+    }
+    $names = [
+        '007' => '第一商業銀行',
+        '004' => '臺灣銀行',
+        '005' => '土地銀行',
+        '008' => '華南銀行',
+        '009' => '彰化銀行',
+        '012' => '台北富邦銀行',
+        '013' => '國泰世華銀行',
+        '017' => '兆豐銀行',
+        '812' => '台新銀行',
+        '822' => '中國信託',
+        '118' => '板信商業銀行',
+    ];
+    if ($code === '') {
+        return '（請依繳款頁顯示為準）';
+    }
+    if (isset($names[$code])) {
+        return $names[$code] . '（' . $code . '）';
     }
     return '銀行代碼 ' . $code;
+}
+
+function hoet_atm_account(WC_Order $order): string
+{
+    $acc = hoet_meta($order, ['_vAccount', '_PaymentNo', 'vAccount', '_ecpay_atm_vaccount']);
+    if ($acc !== '') {
+        return $acc;
+    }
+    $note = (string) $order->get_customer_note();
+    if (preg_match('/虛擬帳號[:：\s]*(\d{10,20})/u', $note, $m)) {
+        return $m[1];
+    }
+    return '';
 }
 
 function hoet_atm_expire(WC_Order $order): string
 {
     $raw = hoet_meta($order, ['_ExpireDate', 'ExpireDate', '_ecpay_atm_expire_date']);
     if ($raw === '') {
+        $note = (string) $order->get_customer_note();
+        if (preg_match('/繳費期限[:：\s]*([0-9\/\-:\s]+)/u', $note, $m)) {
+            $raw = trim($m[1]);
+        }
+    }
+    if ($raw === '') {
         return '';
     }
-    // 綠界常見 Y/m/d 或 Y-m-d
     $ts = strtotime(str_replace('/', '-', $raw));
     if ($ts) {
         return wp_date('Y/m/d H:i', $ts);
@@ -597,6 +671,8 @@ function hoet_amount_block(WC_Order $order): string
 function hoet_render_email(string $email_id, WC_Order $order): string
 {
     switch ($email_id) {
+        case 'new_order':
+        case 'customer_note':
         case 'customer_on_hold_order':
             return hoet_tpl_atm_created($order);
         case 'customer_processing_order':
