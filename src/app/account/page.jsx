@@ -38,8 +38,10 @@ import {
   getOrderActionHref,
   getOrderActionVariant,
   buildReturnLineUrl,
+  buildContactCsUrl,
   buildReturnLineQrImageUrl,
   buildReturnLineBridgePath,
+  buildContactLineBridgePath,
 } from "@/lib/orderActions";
 import {
   Home,
@@ -483,13 +485,23 @@ function isLikelyMobileDevice() {
   return Boolean(coarse || narrow || ua);
 }
 
-function ReturnLineModal({ order, open, onClose }) {
-  const lineUrl = buildReturnLineUrl(order);
+function OrderLineCsModal({ order, open, onClose, intent = "return" }) {
+  const isContact = intent === "contact";
+  const lineUrl = isContact
+    ? buildContactCsUrl(order)
+    : buildReturnLineUrl(order);
+  const bridgePath = isContact
+    ? buildContactLineBridgePath(order)
+    : buildReturnLineBridgePath(order);
   const bridgeUrl =
     typeof window !== "undefined"
-      ? `${window.location.origin}${buildReturnLineBridgePath(order)}`
-      : buildReturnLineBridgePath(order);
+      ? `${window.location.origin}${bridgePath}`
+      : bridgePath;
   const qrUrl = buildReturnLineQrImageUrl(bridgeUrl, 280);
+  const title = isContact ? "聯繫客服" : "申請退貨";
+  const hint = isContact
+    ? "請用手機打開 LINE／相機掃描下方 QR Code，將開啟 HOVER 官方客服。"
+    : "請用手機打開 LINE／相機掃描下方 QR Code，將開啟 HOVER 官方客服申請退貨。";
 
   useEffect(() => {
     if (!open) return undefined;
@@ -513,18 +525,16 @@ function ReturnLineModal({ order, open, onClose }) {
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
-        aria-label="申請退貨 LINE"
+        aria-label={`${title} LINE`}
       >
-        <h3 className="text-[17px] font-semibold text-black">申請退貨</h3>
-        <p className="mt-2 text-[13px] leading-relaxed text-[#666]">
-          請用手機打開 LINE／相機掃描下方 QR Code，將自動帶入退貨訂單資訊。
-        </p>
+        <h3 className="text-[17px] font-semibold text-black">{title}</h3>
+        <p className="mt-2 text-[13px] leading-relaxed text-[#666]">{hint}</p>
 
         <div className="mx-auto mt-5 flex h-[280px] w-[280px] items-center justify-center rounded border border-[#eee] bg-white p-2">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={qrUrl}
-            alt="申請退貨 LINE QR Code"
+            alt={`${title} LINE QR Code`}
             width={280}
             height={280}
             className="h-[260px] w-[260px]"
@@ -558,7 +568,7 @@ function OrderActionButton({
   className = "",
   fullWidth = false,
 }) {
-  const [returnOpen, setReturnOpen] = useState(false);
+  const [lineModalOpen, setLineModalOpen] = useState(false);
   const kind = resolveOrderAction(order);
   const label = getOrderActionLabel(kind, order);
   const variant = getOrderActionVariant(kind);
@@ -587,27 +597,36 @@ function OrderActionButton({
     );
   }
 
-  if (kind === "return") {
+  if (kind === "return" || kind === "contact") {
+    const intent = kind === "contact" ? "contact" : "return";
+    const openLine = () => {
+      if (isLikelyMobileDevice()) {
+        const url =
+          kind === "contact"
+            ? buildContactCsUrl(order)
+            : buildReturnLineUrl(order);
+        window.open(url, "_blank", "noopener,noreferrer");
+        return;
+      }
+      setLineModalOpen(true);
+    };
     return (
       <>
         <button
           type="button"
           onClick={(e) => {
             e.stopPropagation();
-            if (isLikelyMobileDevice()) {
-              window.open(buildReturnLineUrl(order), "_blank", "noopener,noreferrer");
-              return;
-            }
-            setReturnOpen(true);
+            openLine();
           }}
           className={base}
         >
           {label}
         </button>
-        <ReturnLineModal
+        <OrderLineCsModal
           order={order}
-          open={returnOpen}
-          onClose={() => setReturnOpen(false)}
+          open={lineModalOpen}
+          onClose={() => setLineModalOpen(false)}
+          intent={intent}
         />
       </>
     );

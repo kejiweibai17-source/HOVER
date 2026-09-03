@@ -220,7 +220,16 @@ export function resolveOrderAction(order: OrderLike): OrderActionKind {
   return "contact";
 }
 
-export function buildContactCsUrl(): string {
+export type LineCsIntent = "return" | "contact";
+
+function lineCsGreeting(intent: LineCsIntent): string {
+  return intent === "return"
+    ? "你好，我想申請退貨。"
+    : "你好，我想聯繫客服詢問訂單。";
+}
+
+/** 聯繫客服：開啟 LINE OA（不帶 text 預填） */
+export function buildContactCsUrl(_order?: OrderLike | null): string {
   return HOVER_LINE_OA;
 }
 
@@ -272,15 +281,15 @@ export function getFirstOrderItemImage(order: OrderLike): string {
 }
 
 /**
- * 申請退貨預填訊息（LINE 對話）
+ * LINE 預填訊息（申請退貨／聯繫客服共用訂單欄位）
  * 保持精簡：過長會讓 QR 過密、掃不到。
  */
-export function buildReturnLineMessage(order: OrderLike): string {
+export function buildOrderLineMessage(
+  order: OrderLike,
+  intent: LineCsIntent = "return",
+): string {
   const orderNo = String(order.number || order.id || "").trim() || "（未知）";
-  const lines: string[] = [
-    "你好，我想申請退貨。",
-    `訂單編號：${orderNo}`,
-  ];
+  const lines: string[] = [lineCsGreeting(intent), `訂單編號：${orderNo}`];
 
   const date = formatReturnYmd(order.date_created);
   if (date) lines.push(`訂單日期：${date}`);
@@ -326,19 +335,27 @@ export function buildReturnLineMessage(order: OrderLike): string {
   return lines.join("\n");
 }
 
-/** 申請退貨：LINE OA 預填連結 */
-export function buildReturnLineUrl(order: OrderLike): string {
-  const text = buildReturnLineMessage(order);
-  return `https://line.me/R/oaMessage/${HOVER_LINE_OA_ID}/?text=${encodeURIComponent(text)}`;
+/** @deprecated 請改用 buildOrderLineMessage(order, "return") */
+export function buildReturnLineMessage(order: OrderLike): string {
+  return buildOrderLineMessage(order, "return");
+}
+
+/** 申請退貨：開啟 LINE OA（不帶 text 預填） */
+export function buildReturnLineUrl(_order: OrderLike): string {
+  return HOVER_LINE_OA;
 }
 
 /**
  * 電腦版 QR 掃的短網址（落地頁再轉 LINE）
  * 避免直接把超長 LINE URL 編進 QR 造成「怪點、掃不到」
  */
-export function buildReturnLineBridgePath(order: OrderLike): string {
+export function buildOrderLineBridgePath(
+  order: OrderLike,
+  intent: LineCsIntent = "return",
+): string {
   const orderNo = String(order.number || order.id || "").trim();
   const params = new URLSearchParams();
+  if (intent === "contact") params.set("m", "contact");
   params.set("n", orderNo);
   const date = formatReturnYmd(order.date_created);
   if (date) params.set("d", date);
@@ -365,6 +382,14 @@ export function buildReturnLineBridgePath(order: OrderLike): string {
   return `/return-line?${params.toString()}`;
 }
 
+export function buildReturnLineBridgePath(order: OrderLike): string {
+  return buildOrderLineBridgePath(order, "return");
+}
+
+export function buildContactLineBridgePath(order: OrderLike): string {
+  return buildOrderLineBridgePath(order, "contact");
+}
+
 export function buildReturnLineQrImageUrl(
   bridgeAbsoluteUrl: string,
   size = 260,
@@ -374,10 +399,12 @@ export function buildReturnLineQrImageUrl(
 }
 
 /** 從 /return-line query 還原預填文字 */
-export function buildReturnLineMessageFromParams(
+export function buildOrderLineMessageFromParams(
   params: Record<string, string | null | undefined>,
 ): string {
-  const lines = ["你好，我想申請退貨。"];
+  const intent: LineCsIntent =
+    String(params.m || "").toLowerCase() === "contact" ? "contact" : "return";
+  const lines = [lineCsGreeting(intent)];
   if (params.n) lines.push(`訂單編號：${params.n}`);
   if (params.d) lines.push(`訂單日期：${params.d}`);
   if (params.t) lines.push(`訂單金額：${formatReturnNt(params.t)}`);
@@ -396,9 +423,16 @@ export function buildReturnLineMessageFromParams(
   return lines.join("\n");
 }
 
+/** @deprecated 請改用 buildOrderLineMessageFromParams */
+export function buildReturnLineMessageFromParams(
+  params: Record<string, string | null | undefined>,
+): string {
+  return buildOrderLineMessageFromParams(params);
+}
+
 export function getOrderActionHref(order: OrderLike, kind: OrderActionKind): string {
   if (kind === "return") return buildReturnLineUrl(order);
-  if (kind === "contact") return buildContactCsUrl();
+  if (kind === "contact") return buildContactCsUrl(order);
   return "#";
 }
 
