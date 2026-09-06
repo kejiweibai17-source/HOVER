@@ -2,6 +2,14 @@
 import { NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import { applyExclusiveEmailSession } from "@/lib/socialAccount";
+import {
+  authRateLimitCookieOptions,
+  checkAuthRateLimit,
+  clearAuthRateLimitCookie,
+  clientIp,
+  recordAuthFailure,
+} from "@/lib/authRateLimit";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 
 const BASE = process.env.WC_API_BASE;
 const CK = process.env.WC_CONSUMER_KEY;
@@ -56,7 +64,18 @@ async function findCustomerByLogin(login: string) {
   const authHeader = basicAuth();
   if (!authHeader || !BASE) return null;
 
-  const emailLike = login.includes("@") ? login.trim().toLowerCase() : "";
+  const raw = String(login || "").trim();
+  if (!raw) return null;
+
+  const { normalizeTwPhone, isValidTwMobile, findCustomerByPhone } =
+    await import("@/lib/socialLink");
+  const phone = normalizeTwPhone(raw);
+  if (isValidTwMobile(phone)) {
+    const byPhone = await findCustomerByPhone(phone);
+    if (byPhone) return byPhone;
+  }
+
+  const emailLike = raw.includes("@") ? raw.toLowerCase() : "";
   if (emailLike) {
     const custRes = await fetch(
       `${BASE}/wp-json/wc/v3/customers?email=${encodeURIComponent(emailLike)}&role=all`,
@@ -190,49 +209,117 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json().catch(() => ({}));
-    const username: string = String(body?.username || "").trim();
+    const usernameRaw: string = String(
+      body?.username || body?.phone || "",
+    ).trim();
     const password: string = String(body?.password || "").trim();
+    const turnstileToken = String(body?.turnstileToken || "").trim();
 
-    if (!username || !password) {
+    if (!usernameRaw || !password) {
       return NextResponse.json(
-        { message: "請輸入帳號/信箱與密碼" },
+        { message: "請輸入手機號碼與密碼" },
         { status: 400 },
       );
     }
 
-    // 先查會員（用於未驗證提示）
+    const rate = checkAuthRateLimit({
+      req,
+      action: "login",
+      identifier: usernameRaw,
+    });
+    if (!rate.ok) {
+      return NextResponse.json(
+        {
+          message: rate.message,
+          code: "rate_limited",
+          retryAfterSec: rate.retryAfterSec,
+        },
+        {
+          status: 429,
+          headers: { "Retry-After": String(rate.retryAfterSec) },
+        },
+      );
+    }
+
+    const captcha = await verifyTurnstileToken(turnstileToken, clientIp(req));
+    if (!captcha.ok) {
+      return NextResponse.json(
+        { message: captcha.message, code: "captcha_failed" },
+        { status: 400 },
+      );
+    }
+
+    // 先查會員（手機為主；亦相容舊的 email 登入）
     let customer: any = null;
     try {
-      customer = await findCustomerByLogin(username);
+      customer = await findCustomerByLogin(usernameRaw);
     } catch (e) {
       console.error("findCustomerByLogin error:", e);
     }
 
-    const auth = await authenticateWithWordPress(username, password);
+    // WP 帳號多半是 email：手機登入時改用會員 email 驗證密碼
+    const authLogin =
+      String(customer?.email || "").trim().toLowerCase() || usernameRaw;
+
+    let auth = await authenticateWithWordPress(authLogin, password);
+    if (!auth.ok && authLogin !== usernameRaw) {
+      auth = await authenticateWithWordPress(usernameRaw, password);
+    }
     const unverified = isUnverifiedCustomer(customer);
 
     if (!auth.ok) {
+      const fail = recordAuthFailure({
+        req,
+        action: "login",
+        identifier: usernameRaw,
+      });
       if (unverified) {
-        return NextResponse.json(
+        const res = NextResponse.json(
           {
             message: UNVERIFIED_MESSAGE,
             code: "email_not_verified",
+            email:
+              String(customer?.email || "").trim().toLowerCase() || undefined,
           },
           { status: 403 },
         );
+        if (fail.cookieValue) {
+          res.cookies.set(
+            "hover_auth_rl",
+            fail.cookieValue,
+            authRateLimitCookieOptions(),
+          );
+        }
+        return res;
       }
 
-      return NextResponse.json(
+      const res = NextResponse.json(
         {
-          message: friendlyAuthError(auth.status, auth.data),
-          code: auth.data?.code || String(auth.status),
+          message: fail.locked
+            ? `嘗試次數過多，請 ${Math.ceil(fail.retryAfterSec / 60)} 分鐘後再試`
+            : friendlyAuthError(auth.status, auth.data),
+          code: fail.locked ? "rate_limited" : auth.data?.code || String(auth.status),
+          retryAfterSec: fail.locked ? fail.retryAfterSec : undefined,
         },
-        { status: auth.status || 401 },
+        { status: fail.locked ? 429 : auth.status || 401 },
       );
+      if (fail.cookieValue) {
+        res.cookies.set(
+          "hover_auth_rl",
+          fail.cookieValue,
+          authRateLimitCookieOptions(),
+        );
+      }
+      return res;
     }
 
     const email = String(auth.email || customer?.email || "").trim();
-    const name = String(auth.name || email.split("@")[0] || "HOVER 會員").trim();
+    const name = String(
+      auth.name ||
+        customer?.first_name ||
+        email.split("@")[0] ||
+        "HOVER 會員",
+    ).trim();
 
     // 擋未驗證帳號
     if (unverified) {
@@ -240,6 +327,7 @@ export async function POST(req: Request) {
         {
           message: UNVERIFIED_MESSAGE,
           code: "email_not_verified",
+          email: email || undefined,
         },
         { status: 403 },
       );
@@ -253,6 +341,7 @@ export async function POST(req: Request) {
             {
               message: UNVERIFIED_MESSAGE,
               code: "email_not_verified",
+              email,
             },
             { status: 403 },
           );
@@ -294,6 +383,8 @@ export async function POST(req: Request) {
     }
     res.cookies.set("user_name", name, cookieOpts());
     applyExclusiveEmailSession(res);
+    const clearRl = clearAuthRateLimitCookie();
+    res.cookies.set(clearRl.name, clearRl.value, clearRl.options);
 
     return res;
   } catch (err: any) {

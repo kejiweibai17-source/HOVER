@@ -1,5 +1,6 @@
 /**
  * 入會禮 HOVER100 — 固定母券 + meta 標記已領 + 寄送入會禮信
+ * 資格：同一手機號碼限一次
  */
 import {
   HOVER_MEMBERSHIP_META,
@@ -11,6 +12,12 @@ import {
   welcomeCouponCode,
 } from "@/lib/masterCoupons";
 import { sendWelcomeGiftMail } from "@/lib/membershipGiftMails";
+import {
+  PHONE_GIFT_META,
+  phoneHasWelcomeGift,
+  resolveCustomerPhone,
+} from "@/lib/phoneGiftGuard";
+import { isValidTwMobile } from "@/lib/socialLink";
 
 const BASE = process.env.WC_API_BASE || "";
 const CK = process.env.WC_CONSUMER_KEY || "";
@@ -49,7 +56,7 @@ export type WelcomeGiftResult = {
 };
 
 /**
- * 若該會員尚未領過入會禮，標記 meta 並寄「歡迎加入 HOVER FRIENDS」信。
+ * 若該手機尚未領過入會禮，標記 meta 並寄「歡迎加入 HOVER FRIENDS」信。
  */
 export async function grantWelcomeGiftIfEligible(
   customerId: number,
@@ -79,6 +86,7 @@ export async function grantWelcomeGiftIfEligible(
   const headers = authHeaders();
   let meta = existingMeta;
   let resolvedName = String(memberName || "").trim();
+  let customerPhone = "";
 
   if (!meta) {
     const uRes = await fetch(`${BASE}/wp-json/wc/v3/customers/${customerId}`, {
@@ -88,6 +96,7 @@ export async function grantWelcomeGiftIfEligible(
     if (uRes.ok) {
       const user = await uRes.json().catch(() => ({}));
       meta = Array.isArray(user?.meta_data) ? user.meta_data : [];
+      customerPhone = await resolveCustomerPhone(customerId, user);
       if (!resolvedName) {
         const fn = String(user?.first_name || "").trim();
         const ln = String(user?.last_name || "").trim();
@@ -99,9 +108,25 @@ export async function grantWelcomeGiftIfEligible(
     } else {
       meta = [];
     }
+  } else {
+    customerPhone = await resolveCustomerPhone(customerId, {
+      meta_data: meta,
+    });
+  }
+
+  if (!isValidTwMobile(customerPhone)) {
+    return { granted: false, already: false, code };
+  }
+
+  if (await phoneHasWelcomeGift(customerPhone, customerId)) {
+    return { granted: false, already: true, code };
   }
 
   const updates = buildMasterCouponMetaUpdates(code, meta || []);
+  if (!updates.some((u) => u.key === HOVER_MEMBERSHIP_META.welcomeClaimed)) {
+    // buildMasterCouponMetaUpdates 可能因已標記回傳空；此處已排除
+  }
+  updates.push({ key: PHONE_GIFT_META.welcomePhone, value: customerPhone });
   if (!updates.length) {
     return { granted: false, already: true, code };
   }

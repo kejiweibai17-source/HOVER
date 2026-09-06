@@ -100,6 +100,7 @@ export function AuthField({
   id,
 }) {
   const fieldId = id || name || label.replace(/\s/g, "-");
+  const displayLabel = required ? `${label} *` : label;
 
   if (type === "date") {
     return (
@@ -109,6 +110,11 @@ export function AuthField({
           className="mb-1 block text-[12px] text-[#888]"
         >
           {label}
+          {required ? (
+            <span className="ml-0.5 text-[#c90000]" aria-hidden>
+              *
+            </span>
+          ) : null}
         </label>
         <input
           id={fieldId}
@@ -133,7 +139,7 @@ export function AuthField({
         <PasswordInput
           id={fieldId}
           name={name}
-          placeholder={label}
+          placeholder={displayLabel}
           value={value}
           onChange={onChange}
           valueMode="string"
@@ -152,7 +158,7 @@ export function AuthField({
         id={fieldId}
         name={name}
         type={type}
-        placeholder={label}
+        placeholder={displayLabel}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
@@ -163,12 +169,13 @@ export function AuthField({
         minLength={minLength}
         maxLength={maxLength}
         className={inputClass}
+        aria-required={required || undefined}
       />
     </div>
   );
 }
 
-/** Login account field: accepts email or Taiwan mobile */
+/** Login account field: Taiwan mobile (primary) */
 export function AuthAccountField({
   value,
   onChange,
@@ -180,15 +187,18 @@ export function AuthAccountField({
       <input
         id="login-account"
         name="username"
-        type="text"
-        placeholder="信箱或手機號碼"
+        type="tel"
+        placeholder={required ? "手機號碼 *" : "手機號碼"}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         disabled={disabled}
         required={required}
-        autoComplete="username email tel"
-        inputMode="email"
+        autoComplete="tel"
+        inputMode="tel"
+        pattern="09[0-9]{8}"
+        maxLength={10}
         className={inputClass}
+        aria-required={required || undefined}
       />
     </div>
   );

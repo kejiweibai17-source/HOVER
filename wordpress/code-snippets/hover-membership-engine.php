@@ -15,7 +15,10 @@
  * - 到期方式請設「無到期日」（不要用「有效天數從現在起算」——那是整張券共用到期日）
  * - 每人效期：發放當下寫入 claimed_at meta，結帳時驗證「發放日起 30 天內」
  * - 入會禮與生日禮皆為 30 天（HME_WELCOME_DAYS / HME_BIRTHDAY_DAYS）
- * 每人限用一次由會員 meta（hover_welcome_* / hover_birthday_*）控管，Next.js 結帳 + 本 snippet 雙重驗證。
+ * 每人限用／手機去重由會員 meta（hover_welcome_* / hover_birthday_*）控管：
+ * - 入會禮：同一手機限一次
+ * - 生日禮：同一手機同一年度限一次
+ * Next.js 結帳 + 本 snippet 雙重驗證。
  */
 
 if (!defined('ABSPATH')) {
@@ -40,6 +43,16 @@ const HME_WELCOME_DAYS = 30;
 const HME_CODE_WELCOME = 'HOVER100';
 const HME_CODE_BDAY_FRIENDS = 'HBDAY100';
 const HME_CODE_BDAY_EXCLUSIVE = 'VIPBDAY300';
+
+/** 正規化台灣手機為 09xxxxxxxx（僅數字） */
+function hme_normalize_mobile(string $raw): string
+{
+    $digits = preg_replace('/\D+/', '', $raw);
+    if (preg_match('/^8869\d{8}$/', $digits)) {
+        $digits = '0' . substr($digits, 3);
+    }
+    return $digits;
+}
 
 add_action('woocommerce_order_status_processing', 'hme_on_order_paid', 20, 1);
 add_action('woocommerce_order_status_completed', 'hme_on_order_paid', 20, 1);
@@ -213,6 +226,7 @@ function hme_mark_master_coupon_used_on_order($order_id): void
     $year = (int) $now->format('Y');
     $month = (int) $now->format('n');
     update_user_meta($customer_id, 'hover_birthday_used_' . $year . '_' . $month, '1');
+    update_user_meta($customer_id, 'hover_birthday_used_year_' . $year, '1');
 }
 
 function hme_master_coupon_codes(): array
@@ -304,21 +318,23 @@ function hme_validate_master_coupon_for_user(int $user_id, string $code): array
         }
 
         $claim_key = 'hover_birthday_claim_' . $year . '_' . $month;
-        if (get_user_meta($user_id, $claim_key, true) !== '1') {
-            return ['valid' => false, 'message' => '您尚未領取本月生日禮，請至會員中心領取'];
+        $year_claim = (string) get_user_meta($user_id, 'hover_birthday_claim_year_' . $year, true);
+        if ($year_claim !== '1' && get_user_meta($user_id, $claim_key, true) !== '1') {
+            return ['valid' => false, 'message' => '您尚未領取今年生日禮，請至會員中心領取'];
         }
 
+        $year_used = (string) get_user_meta($user_id, 'hover_birthday_used_year_' . $year, true);
         $used_key = 'hover_birthday_used_' . $year . '_' . $month;
-        if (get_user_meta($user_id, $used_key, true) === '1') {
-            return ['valid' => false, 'message' => '本月生日禮折扣碼已使用過'];
+        if ($year_used === '1' || get_user_meta($user_id, $used_key, true) === '1') {
+            return ['valid' => false, 'message' => '今年生日禮折扣碼已使用過'];
         }
 
         $claim_at = (string) get_user_meta($user_id, 'hover_birthday_claim_at_' . $year . '_' . $month, true);
         if ($claim_at === '') {
-            return ['valid' => false, 'message' => '本月生日禮尚未完成發放，請至會員中心重新領取或聯繫客服'];
+            return ['valid' => false, 'message' => '今年生日禮尚未完成發放，請至會員中心重新領取或聯繫客服'];
         }
         if (!hme_meta_within_days($claim_at, HME_BIRTHDAY_DAYS)) {
-            return ['valid' => false, 'message' => '本月生日禮折扣碼已逾期（發放日起 ' . HME_BIRTHDAY_DAYS . ' 天內有效）'];
+            return ['valid' => false, 'message' => '生日禮折扣碼已逾期（發放日起 ' . HME_BIRTHDAY_DAYS . ' 天內有效）'];
         }
 
         if ($code === HME_CODE_BDAY_FRIENDS && $exclusive) {
@@ -459,7 +475,7 @@ function hme_send_birthday_gift_mail(
 
 /**
  * 派發／補發單一位會員的當月生日禮（FRIENDS／臻享皆適用）。
- * 已領過同年同月則略過。
+ * 同一手機／同一會員：同一年度限一次。
  *
  * @return bool 是否新發成功
  */
@@ -498,8 +514,46 @@ function hme_try_grant_birthday_for_user(int $user_id, bool $send_mail = true): 
     }
 
     $meta_key = 'hover_birthday_claim_' . $year . '_' . $month;
-    if (get_user_meta($user_id, $meta_key, true) === '1') {
+    $year_key = 'hover_birthday_claim_year_' . $year;
+    if (get_user_meta($user_id, $year_key, true) === '1' || get_user_meta($user_id, $meta_key, true) === '1') {
         return false;
+    }
+
+    // 同手機其他帳號已領過今年生日禮 → 不重發（比對時正規化，避免 09xx-xxx-xxx 漏擋）
+    $phone = hme_normalize_mobile((string) get_user_meta($user_id, 'billing_phone', true));
+    if ($phone !== '' && preg_match('/^09\d{8}$/', $phone)) {
+        $tail = substr($phone, -9); // 912345678
+        $others = get_users([
+            'role__in' => ['customer', 'administrator'],
+            'number' => 100,
+            'fields' => ['ID'],
+            'meta_query' => [
+                [
+                    'key' => 'billing_phone',
+                    'value' => $tail,
+                    'compare' => 'LIKE',
+                ],
+            ],
+        ]);
+        foreach ($others as $other) {
+            $oid = (int) $other->ID;
+            if ($oid === $user_id) {
+                continue;
+            }
+            $other_phone = hme_normalize_mobile((string) get_user_meta($oid, 'billing_phone', true));
+            if ($other_phone !== $phone) {
+                continue;
+            }
+            if (get_user_meta($oid, $year_key, true) === '1') {
+                return false;
+            }
+            // 相容舊版：同年任一月份 claim
+            for ($m = 1; $m <= 12; $m++) {
+                if (get_user_meta($oid, 'hover_birthday_claim_' . $year . '_' . $m, true) === '1') {
+                    return false;
+                }
+            }
+        }
     }
 
     $expires = (string) get_user_meta($user_id, 'hover_exclusive_expires', true);
@@ -510,6 +564,7 @@ function hme_try_grant_birthday_for_user(int $user_id, bool $send_mail = true): 
     $now_iso = (new DateTime('now', wp_timezone()))->format('c');
 
     update_user_meta($user_id, $meta_key, '1');
+    update_user_meta($user_id, $year_key, '1');
     update_user_meta($user_id, 'hover_birthday_claim_at_' . $year . '_' . $month, $now_iso);
 
     if ($send_mail) {

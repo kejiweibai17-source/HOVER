@@ -14,6 +14,14 @@ import {
   SOCIAL_PENDING_COOKIE,
   verifySocialPending,
 } from "@/lib/socialLink";
+import {
+  authRateLimitCookieOptions,
+  checkAuthRateLimit,
+  clearAuthRateLimitCookie,
+  clientIp,
+  recordAuthFailure,
+} from "@/lib/authRateLimit";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -94,6 +102,7 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const phone = normalizeTwPhone(String(body.phone || ""));
     const password = String(body.password || "");
+    const turnstileToken = String(body.turnstileToken || "").trim();
 
     if (!isValidTwMobile(phone) || !password) {
       return NextResponse.json(
@@ -102,15 +111,56 @@ export async function POST(req: Request) {
       );
     }
 
+    const rate = checkAuthRateLimit({
+      req,
+      action: "social_bind",
+      identifier: phone,
+    });
+    if (!rate.ok) {
+      return NextResponse.json(
+        {
+          ok: false,
+          message: rate.message,
+          code: "rate_limited",
+          retryAfterSec: rate.retryAfterSec,
+        },
+        {
+          status: 429,
+          headers: { "Retry-After": String(rate.retryAfterSec) },
+        },
+      );
+    }
+
+    const captcha = await verifyTurnstileToken(turnstileToken, clientIp(req));
+    if (!captcha.ok) {
+      return NextResponse.json(
+        { ok: false, message: captcha.message, code: "captcha_failed" },
+        { status: 400 },
+      );
+    }
+
     const customer = await findCustomerByPhone(phone);
     if (!customer?.id) {
-      return NextResponse.json(
+      const fail = recordAuthFailure({
+        req,
+        action: "social_bind",
+        identifier: phone,
+      });
+      const out = NextResponse.json(
         {
           ok: false,
           message: "找不到此手機對應的會員，請確認是否已基本註冊",
         },
         { status: 404 },
       );
+      if (fail.cookieValue) {
+        out.cookies.set(
+          "hover_auth_rl",
+          fail.cookieValue,
+          authRateLimitCookieOptions(),
+        );
+      }
+      return out;
     }
 
     const customerEmail = String(customer.email || "").trim().toLowerCase();
@@ -120,10 +170,29 @@ export async function POST(req: Request) {
       // 再試一次用手機當 username（舊資料可能用手機當帳號）
       const authPhone = await authenticateWithWordPress(phone, password);
       if (!authPhone.ok) {
-        return NextResponse.json(
-          { ok: false, message: "手機號碼或密碼錯誤" },
-          { status: 401 },
+        const fail = recordAuthFailure({
+          req,
+          action: "social_bind",
+          identifier: phone,
+        });
+        const out = NextResponse.json(
+          {
+            ok: false,
+            message: fail.locked
+              ? `嘗試次數過多，請 ${Math.ceil(fail.retryAfterSec / 60)} 分鐘後再試`
+              : "手機號碼或密碼錯誤",
+            code: fail.locked ? "rate_limited" : "invalid_login",
+          },
+          { status: fail.locked ? 429 : 401 },
         );
+        if (fail.cookieValue) {
+          out.cookies.set(
+            "hover_auth_rl",
+            fail.cookieValue,
+            authRateLimitCookieOptions(),
+          );
+        }
+        return out;
       }
     }
 
@@ -173,6 +242,8 @@ export async function POST(req: Request) {
     res.cookies.set("user_email", email, cookieOpts());
     res.cookies.set("user_name", name, cookieOpts());
     clearSocialPendingCookie(res);
+    const clearRl = clearAuthRateLimitCookie();
+    res.cookies.set(clearRl.name, clearRl.value, clearRl.options);
     return res;
   } catch (e) {
     console.error("[social/bind]", e);

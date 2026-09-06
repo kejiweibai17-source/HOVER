@@ -4,6 +4,13 @@ import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
 import { grantWelcomeGiftIfEligible } from "@/lib/welcomeGift";
 import { grantBirthdayGiftIfEligible } from "@/lib/birthdayGift";
+import {
+  authRateLimitCookieOptions,
+  checkAuthRateLimit,
+  clientIp,
+  recordAuthFailure,
+} from "@/lib/authRateLimit";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 
 export const runtime = "nodejs";
 
@@ -142,15 +149,61 @@ export async function POST(req: Request) {
 
     const body = await req.json().catch(() => ({}));
     const email: string = String(body.email || "").trim().toLowerCase();
-    const username: string = String(body.username || "").trim();
+    const fullName: string = String(body.name || body.full_name || "").trim();
     const password: string = String(body.password || "");
     const birthday: string = String(body.birthday || "").trim();
-    const phoneRaw: string = String(body.phone || body.username || "").trim();
+    const phoneRaw: string = String(body.phone || "").trim();
     const ref: string | null = body.ref ? String(body.ref) : null;
+    const turnstileToken = String(body.turnstileToken || "").trim();
+
+    const rate = checkAuthRateLimit({
+      req,
+      action: "register",
+      identifier: phoneRaw || email,
+    });
+    if (!rate.ok) {
+      return NextResponse.json(
+        {
+          message: rate.message,
+          code: "rate_limited",
+          retryAfterSec: rate.retryAfterSec,
+        },
+        {
+          status: 429,
+          headers: { "Retry-After": String(rate.retryAfterSec) },
+        },
+      );
+    }
+
+    const captcha = await verifyTurnstileToken(turnstileToken, clientIp(req));
+    if (!captcha.ok) {
+      return NextResponse.json(
+        { message: captcha.message, code: "captcha_failed" },
+        { status: 400 },
+      );
+    }
+
+    if (!fullName) {
+      return NextResponse.json({ message: "請填寫姓名" }, { status: 400 });
+    }
 
     if (!email || !password) {
       return NextResponse.json(
         { message: "缺少 email 或 password" },
+        { status: 400 }
+      );
+    }
+
+    if (password.length < 8) {
+      return NextResponse.json(
+        { message: "密碼至少需要 8 碼" },
+        { status: 400 }
+      );
+    }
+
+    if (birthday && !/^\d{4}-\d{2}-\d{2}$/.test(birthday)) {
+      return NextResponse.json(
+        { message: "生日格式請使用 YYYY-MM-DD" },
         { status: 400 }
       );
     }
@@ -207,9 +260,13 @@ export async function POST(req: Request) {
       body: JSON.stringify({
         email,
         // 以 Email 作為 WP 登入帳號；手機另存 billing.phone 供綁定查詢
-        username: username && username.includes("@") ? username : email,
+        username: email,
         password,
+        first_name: fullName,
+        last_name: "",
         billing: {
+          first_name: fullName,
+          last_name: "",
           phone,
           email,
         },
@@ -221,10 +278,23 @@ export async function POST(req: Request) {
     const data = await res.json();
 
     if (!res.ok) {
-      return NextResponse.json(
+      const fail = recordAuthFailure({
+        req,
+        action: "register",
+        identifier: phone || email,
+      });
+      const out = NextResponse.json(
         { message: data?.message || "WooCommerce 建立帳號失敗" },
         { status: res.status }
       );
+      if (fail.cookieValue) {
+        out.cookies.set(
+          "hover_auth_rl",
+          fail.cookieValue,
+          authRateLimitCookieOptions(),
+        );
+      }
+      return out;
     }
 
     const newCustomerId: number = data.id;

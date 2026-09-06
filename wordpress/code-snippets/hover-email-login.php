@@ -1,7 +1,7 @@
 <?php
 /**
  * Plugin Name: HOVER Email Login API
- * Description: Email/密碼登入 REST API（取代 jwt-auth）
+ * Description: Email／手機＋密碼登入 REST API（取代 jwt-auth）
  *
  * Code Snippets 設定：
  * - Title：HOVER Email Login
@@ -15,7 +15,7 @@
  *
  * 登入 API：
  *   POST /wp-json/hover/v1/login
- *   Body：{"username":"email","password":"密碼"}
+ *   Body：{"username":"09xxxxxxxx 或 email","password":"密碼"}
  */
 
 if (!defined('ABSPATH')) {
@@ -45,6 +45,49 @@ if (!function_exists('hover_email_login_register_routes')) {
     add_action('rest_api_init', 'hover_email_login_register_routes');
 }
 
+if (!function_exists('hover_normalize_tw_phone')) {
+    function hover_normalize_tw_phone($raw)
+    {
+        return preg_replace('/\D+/', '', (string) $raw);
+    }
+}
+
+if (!function_exists('hover_find_user_login_by_phone')) {
+    /**
+     * 以 billing_phone 找 WP user_login
+     */
+    function hover_find_user_login_by_phone($phone)
+    {
+        $phone = hover_normalize_tw_phone($phone);
+        if (!preg_match('/^09\d{8}$/', $phone)) {
+            return '';
+        }
+
+        $q = new WP_User_Query([
+            'number'     => 5,
+            'meta_query' => [
+                'relation' => 'OR',
+                [
+                    'key'   => 'billing_phone',
+                    'value' => $phone,
+                ],
+                [
+                    'key'   => 'billing_phone',
+                    'value' => '+886' . substr($phone, 1),
+                ],
+            ],
+            'fields' => ['ID', 'user_login', 'user_email'],
+        ]);
+
+        $users = $q->get_results();
+        if (!empty($users[0]->user_login)) {
+            return (string) $users[0]->user_login;
+        }
+
+        return '';
+    }
+}
+
 if (!function_exists('hover_email_login_handle')) {
     /**
      * @param WP_REST_Request $request
@@ -58,7 +101,7 @@ if (!function_exists('hover_email_login_handle')) {
         if ($username === '' || $password === '') {
             return new WP_Error(
                 'missing_credentials',
-                '請輸入帳號/信箱與密碼',
+                '請輸入手機號碼與密碼',
                 ['status' => 400]
             );
         }
@@ -69,6 +112,15 @@ if (!function_exists('hover_email_login_handle')) {
             if ($user_by_email && !empty($user_by_email->user_login)) {
                 $username = $user_by_email->user_login;
             }
+        } else {
+            // 允許用手機登入
+            $phone = hover_normalize_tw_phone($username);
+            if (preg_match('/^09\d{8}$/', $phone)) {
+                $login = hover_find_user_login_by_phone($phone);
+                if ($login !== '') {
+                    $username = $login;
+                }
+            }
         }
 
         $user = wp_authenticate($username, $password);
@@ -76,7 +128,7 @@ if (!function_exists('hover_email_login_handle')) {
         if (is_wp_error($user)) {
             return new WP_Error(
                 'invalid_login',
-                '帳號或密碼錯誤',
+                '手機號碼或密碼錯誤',
                 ['status' => 401]
             );
         }

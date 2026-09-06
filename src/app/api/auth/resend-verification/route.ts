@@ -65,11 +65,26 @@ function isUnverified(customer: any) {
 export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
-    const email = String(body.email || "").trim().toLowerCase();
+    let email = String(body.email || "").trim().toLowerCase();
+    const phoneRaw = String(body.phone || "").trim();
+
+    if ((!email || !/.+@.+\..+/.test(email)) && phoneRaw) {
+      const { normalizeTwPhone, isValidTwMobile, findCustomerByPhone } =
+        await import("@/lib/socialLink");
+      const phone = normalizeTwPhone(phoneRaw);
+      if (!isValidTwMobile(phone)) {
+        return NextResponse.json(
+          { ok: false, message: "請輸入正確的手機號碼" },
+          { status: 400 },
+        );
+      }
+      const byPhone = await findCustomerByPhone(phone);
+      email = String(byPhone?.email || "").trim().toLowerCase();
+    }
 
     if (!email || !/.+@.+\..+/.test(email)) {
       return NextResponse.json(
-        { ok: false, message: "請輸入正確的 Email" },
+        { ok: false, message: "請輸入正確的 Email 或手機號碼" },
         { status: 400 },
       );
     }

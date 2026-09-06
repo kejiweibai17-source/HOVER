@@ -12,6 +12,13 @@ import {
   expiresAtFromClaimAt,
 } from "@/lib/masterCoupons";
 import { sendMemberBirthdayGiftMail } from "@/lib/membershipGiftMails";
+import {
+  birthdayClaimYearKey,
+  metaHasBirthdayYearClaim,
+  phoneHasBirthdayGiftYear,
+  resolveCustomerPhone,
+} from "@/lib/phoneGiftGuard";
+import { isValidTwMobile } from "@/lib/socialLink";
 
 const BASE = process.env.WC_API_BASE || "";
 const CK = process.env.WC_CONSUMER_KEY || "";
@@ -190,8 +197,10 @@ export async function grantBirthdayGiftIfEligible(params: {
   }
 
   const claimKey = birthdayClaimKey(year, currentMonth);
+  const yearKey = birthdayClaimYearKey(year);
   let meta = params.existingMeta;
   const headers = authHeaders();
+  let customerPhone = "";
 
   if (!meta) {
     const uRes = await fetch(`${BASE}/wp-json/wc/v3/customers/${customerId}`, {
@@ -201,6 +210,7 @@ export async function grantBirthdayGiftIfEligible(params: {
     if (uRes.ok) {
       const user = await uRes.json().catch(() => ({}));
       meta = Array.isArray(user?.meta_data) ? user.meta_data : [];
+      customerPhone = await resolveCustomerPhone(customerId, user);
       if (!params.memberName) {
         const fn = String(user?.first_name || "").trim();
         const ln = String(user?.last_name || "").trim();
@@ -209,6 +219,10 @@ export async function grantBirthdayGiftIfEligible(params: {
     } else {
       meta = [];
     }
+  } else {
+    customerPhone = await resolveCustomerPhone(customerId, {
+      meta_data: meta,
+    });
   }
 
   const exclusive = isExclusiveActive(
@@ -220,12 +234,27 @@ export async function grantBirthdayGiftIfEligible(params: {
   const code = birthdayCouponCodeForTier(exclusive);
   const tierLabel = exclusive ? "臻享會員" : "品牌好友";
 
-  if (metaValue(meta, claimKey) === "1") {
+  if (
+    metaHasBirthdayYearClaim(meta, year) ||
+    metaValue(meta, claimKey) === "1"
+  ) {
+    return { granted: false, already: true, skipped: false, code, amount };
+  }
+
+  if (!isValidTwMobile(customerPhone)) {
+    return { granted: false, already: false, skipped: true, code, amount };
+  }
+
+  if (await phoneHasBirthdayGiftYear(customerPhone, year, customerId)) {
     return { granted: false, already: true, skipped: false, code, amount };
   }
 
   const claimedAt = now.toISOString();
   const updates = buildMasterCouponMetaUpdates(code, meta || []);
+  // 年度限一次（跨好友／臻享）
+  if (!updates.some((u) => u.key === yearKey)) {
+    updates.push({ key: yearKey, value: "1" });
+  }
   await fetch(`${BASE}/wp-json/wc/v3/customers/${customerId}`, {
     method: "PUT",
     headers,

@@ -4,11 +4,13 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Link } from "next-view-transitions";
 import { AuthField } from "@/components/hover/AuthField";
+import { TurnstileWidget } from "@/components/hover/TurnstileWidget";
 
 function LinkAccountContent() {
   const router = useRouter();
   const search = useSearchParams();
   const next = search.get("next") || "/account";
+  const registerHref = `/register?next=${encodeURIComponent(next)}`;
 
   const [providerLabel, setProviderLabel] = useState("第三方");
   const [ready, setReady] = useState(false);
@@ -16,9 +18,9 @@ function LinkAccountContent() {
 
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
   const [error, setError] = useState("");
   const [bindLoading, setBindLoading] = useState(false);
-  const [createLoading, setCreateLoading] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -51,7 +53,7 @@ function LinkAccountContent() {
 
   async function handleBind(e: React.FormEvent) {
     e.preventDefault();
-    if (bindLoading || createLoading) return;
+    if (bindLoading) return;
     setError("");
     setBindLoading(true);
     try {
@@ -59,7 +61,7 @@ function LinkAccountContent() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ phone, password }),
+        body: JSON.stringify({ phone, password, turnstileToken }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.ok) {
@@ -71,28 +73,6 @@ function LinkAccountContent() {
       setError("綁定失敗，請稍後再試");
     } finally {
       setBindLoading(false);
-    }
-  }
-
-  async function handleCreate() {
-    if (bindLoading || createLoading) return;
-    setError("");
-    setCreateLoading(true);
-    try {
-      const res = await fetch("/api/auth/social/create", {
-        method: "POST",
-        credentials: "include",
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data?.ok) {
-        setError(String(data?.message || "建立會員失敗"));
-        return;
-      }
-      router.replace(String(data.next || next || "/account"));
-    } catch {
-      setError("建立會員失敗，請稍後再試");
-    } finally {
-      setCreateLoading(false);
     }
   }
 
@@ -124,12 +104,11 @@ function LinkAccountContent() {
   return (
     <div className="mx-auto max-w-md px-6 py-12 md:py-16">
       <h1 className="text-center text-[22px] font-bold text-black">
-        完成 {providerLabel} 登入
+        綁定 {providerLabel}
       </h1>
       <p className="mt-3 text-center text-[13px] leading-relaxed text-[#666]">
-        若您已用手機註冊過會員，請驗證後綁定原帳號。
-        <br />
-        若是第一次加入，可直接建立新會員（手機之後結帳再填）。
+        第一次使用社群登入時，請用註冊時的手機號碼與密碼驗證，綁定到既有會員帳號。
+        綁定後即可直接使用 {providerLabel} 登入。
       </p>
 
       {error ? (
@@ -138,7 +117,7 @@ function LinkAccountContent() {
 
       <section className="mt-8 border border-[#ddd] bg-white px-5 py-6">
         <h2 className="text-[15px] font-semibold text-black">
-          已有會員？綁定既有帳號
+          已是 HOVER 會員？驗證並綁定
         </h2>
         <form onSubmit={handleBind} className="mt-5 space-y-4">
           <AuthField
@@ -152,7 +131,7 @@ function LinkAccountContent() {
             inputMode="tel"
             pattern="09[0-9]{8}"
             maxLength={10}
-            disabled={bindLoading || createLoading}
+            disabled={bindLoading}
           />
           <AuthField
             label="密碼"
@@ -162,11 +141,15 @@ function LinkAccountContent() {
             onChange={setPassword}
             required
             autoComplete="current-password"
-            disabled={bindLoading || createLoading}
+            disabled={bindLoading}
+          />
+          <TurnstileWidget
+            onToken={setTurnstileToken}
+            onExpire={() => setTurnstileToken("")}
           />
           <button
             type="submit"
-            disabled={bindLoading || createLoading}
+            disabled={bindLoading}
             className="w-full bg-[#2a514d] py-3.5 text-[14px] font-semibold tracking-[0.06em] text-white disabled:opacity-60"
           >
             {bindLoading ? "驗證中…" : "驗證並綁定"}
@@ -174,27 +157,18 @@ function LinkAccountContent() {
         </form>
       </section>
 
-      <div className="my-8 flex items-center gap-3 text-[12px] text-[#999]">
-        <span className="h-px flex-1 bg-[#ddd]" />
-        或
-        <span className="h-px flex-1 bg-[#ddd]" />
-      </div>
-
-      <section className="border border-[#ddd] bg-white px-5 py-6 text-center">
-        <h2 className="text-[15px] font-semibold text-black">
-          第一次使用？建立新會員
-        </h2>
+      <section className="mt-6 border border-[#ddd] bg-white px-5 py-6 text-center">
+        <h2 className="text-[15px] font-semibold text-black">尚未加入 HOVER？</h2>
         <p className="mt-2 text-[12px] leading-relaxed text-[#888]">
-          不需現在填手機，結帳時再補即可。
+          不會另外建立第三方會員。請先完成基本會員註冊，再回來綁定{" "}
+          {providerLabel}。
         </p>
-        <button
-          type="button"
-          onClick={handleCreate}
-          disabled={bindLoading || createLoading}
-          className="mt-5 w-full border border-[#2a514d] py-3.5 text-[14px] font-semibold tracking-[0.06em] text-[#2a514d] disabled:opacity-60"
+        <Link
+          href={registerHref}
+          className="mt-5 inline-flex w-full items-center justify-center border border-[#2a514d] py-3.5 text-[14px] font-semibold tracking-[0.06em] text-[#2a514d]"
         >
-          {createLoading ? "建立中…" : "建立新會員並繼續"}
-        </button>
+          前往加入會員
+        </Link>
       </section>
 
       <p className="mt-8 text-center text-[12px] text-[#888]">

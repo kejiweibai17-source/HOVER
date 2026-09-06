@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Image from "next/image";
 import { Link } from "next-view-transitions";
 import { AuthField, AuthAccountField } from "@/components/hover/AuthField";
+import { TurnstileWidget } from "@/components/hover/TurnstileWidget";
 import { oauthSignIn } from "@/lib/oauthSignIn";
 
 export const dynamic = "force-dynamic";
@@ -51,7 +52,9 @@ export default function LoginClient() {
   const authError = search.get("error");
 
   const [username, setUsername] = useState("");
+  const [verifyEmail, setVerifyEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [turnstileToken, setTurnstileToken] = useState("");
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
@@ -96,7 +99,7 @@ export default function LoginClient() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, turnstileToken }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
@@ -106,16 +109,18 @@ export default function LoginClient() {
         const code = String(data?.code || "");
         if (code === "email_not_verified") {
           setNeedsVerify(true);
+          setVerifyEmail(String(data?.email || "").trim());
           setError(
             data?.message ||
               "此帳號尚未完成信箱驗證，請先至信箱點擊驗證連結後再登入。",
           );
         } else {
           setNeedsVerify(false);
+          setVerifyEmail("");
           setError(
             String(data?.message || "")
               .replace(/<[^>]*>/g, "")
-              .trim() || "登入失敗，請確認帳號與密碼。",
+              .trim() || "登入失敗，請確認手機號碼與密碼。",
           );
         }
       }
@@ -127,14 +132,19 @@ export default function LoginClient() {
   }
 
   async function handleResendVerification() {
-    if (resendLoading || !username.trim()) return;
+    const target = (verifyEmail || username).trim();
+    if (resendLoading || !target) return;
     setResendLoading(true);
     setSuccess("");
     try {
       const res = await fetch("/api/auth/resend-verification", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: username.trim() }),
+        body: JSON.stringify(
+          verifyEmail
+            ? { email: verifyEmail }
+            : { phone: username.trim() },
+        ),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data.ok) {
@@ -240,7 +250,7 @@ export default function LoginClient() {
                 <button
                   type="button"
                   onClick={handleResendVerification}
-                  disabled={resendLoading || !username.trim()}
+                  disabled={resendLoading || !(verifyEmail || username).trim()}
                   className="text-[13px] font-medium text-[#2a514d] underline underline-offset-2 hover:opacity-70 disabled:opacity-50"
                 >
                   {resendLoading ? "寄送中…" : "重新寄送驗證信"}
@@ -271,6 +281,11 @@ export default function LoginClient() {
                 autoComplete="current-password"
                 name="password"
               />
+              <TurnstileWidget
+                className="mt-4"
+                onToken={setTurnstileToken}
+                onExpire={() => setTurnstileToken("")}
+              />
               <div className="mt-1 text-right">
                 <Link
                   href="/forgot-password"
@@ -292,7 +307,10 @@ export default function LoginClient() {
 
           {/* Social login */}
           <div className="mt-8">
-            <p className="mb-4 text-[13px] text-[#555]">快速登入</p>
+            <p className="mb-1 text-[13px] text-[#555]">社群登入</p>
+            <p className="mb-4 text-[12px] leading-[1.6] text-[#888]">
+              已註冊會員可綁定後使用。尚未加入請先至「加入會員」完成基本註冊。
+            </p>
             <div className="flex flex-col gap-2">
               <button
                 type="button"

@@ -1,13 +1,11 @@
 /**
- * 第三方首次登入：綁定既有帳（手機＋密碼）或新建會員
+ * 第三方首次登入：僅綁定既有帳（手機＋密碼）；不可直接新建會員
  */
 import jwt from "jsonwebtoken";
 import type { NextResponse } from "next/server";
 import {
   type SocialProvider,
-  findCustomerByEmail,
   findCustomerBySocialId,
-  isUsableSocialEmail,
   SOCIAL_ID_META,
   upsertSocialCustomer,
   wooAuthHeaders,
@@ -62,13 +60,26 @@ function phoneFromCustomer(customer: any): string {
   return normalizeTwPhone(billing || shipping || metaPhone || "");
 }
 
+export function getCustomerPhone(customer: any): string {
+  return phoneFromCustomer(customer);
+}
+
 /** 以手機反查會員（billing.phone 或 username＝手機） */
 export async function findCustomerByPhone(phone: string) {
-  const headers = wooAuthHeaders();
-  if (!headers || !BASE()) return null;
-  const target = normalizeTwPhone(phone);
-  if (!isValidTwMobile(target)) return null;
+  const list = await findCustomersByPhone(phone);
+  return list[0] || null;
+}
 
+/** 同一手機可能對到多筆舊帳（防重複領禮） */
+export async function findCustomersByPhone(
+  phone: string,
+): Promise<Array<Record<string, unknown>>> {
+  const headers = wooAuthHeaders();
+  if (!headers || !BASE()) return [];
+  const target = normalizeTwPhone(phone);
+  if (!isValidTwMobile(target)) return [];
+
+  const hits: Array<Record<string, unknown>> = [];
   for (let page = 1; page <= 8; page++) {
     const res = await fetch(
       `${BASE()}/wp-json/wc/v3/customers?per_page=100&page=${page}&role=all&orderby=registered_date&order=desc`,
@@ -77,15 +88,17 @@ export async function findCustomerByPhone(phone: string) {
     if (!res.ok) break;
     const arr = (await res.json().catch(() => [])) as any[];
     if (!Array.isArray(arr) || arr.length === 0) break;
-    const hit = arr.find((c) => {
-      if (phoneFromCustomer(c) === target) return true;
+    for (const c of arr) {
+      if (phoneFromCustomer(c) === target) {
+        hits.push(c as Record<string, unknown>);
+        continue;
+      }
       const username = normalizeTwPhone(String(c?.username || ""));
-      return username === target;
-    });
-    if (hit) return hit as Record<string, unknown>;
+      if (username === target) hits.push(c as Record<string, unknown>);
+    }
     if (arr.length < 100) break;
   }
-  return null;
+  return hits;
 }
 
 export function signSocialPending(
@@ -134,9 +147,9 @@ export function clearSocialPendingCookie(res: NextResponse) {
 }
 
 /**
- * 社群登入是否已有可合併帳號：
- * - 有社群 ID 或真實 Email 對到 → existing
- * - 否則 → pending（導向綁定／新建頁）
+ * 社群登入是否已綁定：
+ * - 僅在已寫入社群 ID meta 時視為 existing（可直接登入）
+ * - Email 相同仍不算綁定：第一次第三方登入必須走手機＋密碼驗證綁定
  */
 export async function resolveSocialAccount(input: {
   provider: SocialProvider;
@@ -152,16 +165,6 @@ export async function resolveSocialAccount(input: {
   const bySocial = await findCustomerBySocialId(input.provider, providerUserId);
   if (bySocial?.id) {
     return { status: "existing", customer: bySocial };
-  }
-
-  const email = isUsableSocialEmail(input.email)
-    ? String(input.email).trim().toLowerCase()
-    : "";
-  if (email) {
-    const byEmail = await findCustomerByEmail(email);
-    if (byEmail?.id) {
-      return { status: "existing", customer: byEmail };
-    }
   }
 
   return { status: "pending" };

@@ -11,6 +11,12 @@ import {
   type MembershipPayload,
   type WcOrderLite,
 } from "@/lib/membership";
+import {
+  birthdayClaimYearKey,
+  birthdayUsedYearKey,
+  metaHasBirthdayYearClaim,
+  metaHasBirthdayYearUsed,
+} from "@/lib/phoneGiftGuard";
 
 export const MASTER_COUPONS = {
   welcome: "HOVER100",
@@ -202,26 +208,27 @@ export function validateMasterCouponForMeta(
   }
 
   const claimKey = birthdayClaimKey(year, month);
-  if (metaValue(meta, claimKey) !== "1") {
-    return { valid: false, message: "您尚未領取本月生日禮，請至會員中心領取" };
+  if (!metaHasBirthdayYearClaim(meta, year) && metaValue(meta, claimKey) !== "1") {
+    return { valid: false, message: "您尚未領取今年生日禮，請至會員中心領取" };
   }
 
-  const usedKey = birthdayUsedKey(year, month);
-  if (metaValue(meta, usedKey) === "1") {
-    return { valid: false, message: "本月生日禮折扣碼已使用過" };
+  if (metaHasBirthdayYearUsed(meta, year)) {
+    return { valid: false, message: "今年生日禮折扣碼已使用過" };
   }
 
-  const claimAt = metaValue(meta, birthdayClaimAtKey(year, month));
+  const claimAt =
+    metaValue(meta, birthdayClaimAtKey(year, month)) ||
+    metaValue(meta, `${META.birthdayClaimAtPrefix}${year}`);
   if (!claimAt) {
     return {
       valid: false,
-      message: "本月生日禮尚未完成發放，請至會員中心重新領取或聯繫客服",
+      message: "今年生日禮尚未完成發放，請至會員中心重新領取或聯繫客服",
     };
   }
   if (!isWithinDays(claimAt, MEMBERSHIP_RULES.birthdayValidityDays)) {
     return {
       valid: false,
-      message: "本月生日禮折扣碼已逾期（發放日起 30 天內有效）",
+      message: "生日禮折扣碼已逾期（發放日起 30 天內有效）",
     };
   }
 
@@ -264,12 +271,15 @@ export function resolveMasterCouponStatus(
   }
 
   const claimKey = birthdayClaimKey(year, month);
-  if (metaValue(meta, claimKey) !== "1") return "expired";
+  if (!metaHasBirthdayYearClaim(meta, year) && metaValue(meta, claimKey) !== "1") {
+    return "expired";
+  }
 
-  const usedKey = birthdayUsedKey(year, month);
-  if (metaValue(meta, usedKey) === "1") return "used";
+  if (metaHasBirthdayYearUsed(meta, year)) return "used";
 
-  const claimAt = metaValue(meta, birthdayClaimAtKey(year, month));
+  const claimAt =
+    metaValue(meta, birthdayClaimAtKey(year, month)) ||
+    metaValue(meta, `${META.birthdayClaimAtPrefix}${year}`);
   if (!claimAt) return "expired";
   if (!isWithinDays(claimAt, MEMBERSHIP_RULES.birthdayValidityDays)) {
     return "expired";
@@ -312,9 +322,13 @@ export function buildMasterCouponMetaUpdates(
   }
 
   const claimKey = birthdayClaimKey(year, month);
+  const yearKey = birthdayClaimYearKey(year);
   const updates: { key: string; value: string }[] = [];
   if (metaValue(meta, claimKey) !== "1") {
     updates.push({ key: claimKey, value: "1" });
+  }
+  if (metaValue(meta, yearKey) !== "1") {
+    updates.push({ key: yearKey, value: "1" });
   }
   const atKey = birthdayClaimAtKey(year, month);
   if (!metaValue(meta, atKey)) {
@@ -332,11 +346,11 @@ export function buildMasterCouponUsedMeta(code: string): { key: string; value: s
   }
 
   const now = new Date();
+  const year = now.getFullYear();
+  const month = now.getMonth() + 1;
   return [
-    {
-      key: birthdayUsedKey(now.getFullYear(), now.getMonth() + 1),
-      value: "1",
-    },
+    { key: birthdayUsedKey(year, month), value: "1" },
+    { key: birthdayUsedYearKey(year), value: "1" },
   ];
 }
 
