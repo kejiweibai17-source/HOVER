@@ -4,9 +4,10 @@
  *
  * 產單／列印請用 RY Tools。
  * 本檔負責：
- * 1. 綠界／RY 貨態 → `_hel_LogisticsPhase`（會員中心：已出貨／已到貨／逾期未取）
+ * 1. 綠界／RY 貨態 → `_hel_LogisticsPhase`（會員中心：已出貨／已到店／已取／逾期未取）
  * 2. 店到店／交貨便代碼 → `_hel_CVSPaymentNo` + `_hel_CVSValidationNo`（後台側欄顯示）
- * 3. 後台側欄操作：取消訂單／標記已出貨／已到貨／退貨（同步前台按鈕）
+ * 3. 後台側欄操作：取消訂單／標記已出貨／已到店／已取貨／退貨（同步前台按鈕）
+ * 4. 鑑賞期 `_hover_arrived_at`：僅在消費者成功取件／宅配簽收（picked）寫入
  *
  * Code Snippets → Everywhere → 啟用（更新本檔即可；勿另開 hover-order-actions）
  */
@@ -21,13 +22,18 @@ define('HEL_LOADED', true);
 
 /** @var array<string, string[]> RtnCode → phase */
 const HEL_RTN_PHASE = [
-    'arrived'   => ['2063', '2073', '3018'], // 商品已送達門市
-    'picked'    => ['2067', '3022'],         // 消費者成功取件
+    'arrived'   => ['2063', '2073', '3018'], // 商品已送達門市（鑑賞期尚未開始）
+    'picked'    => ['2067', '3022'],         // 消費者成功取件（鑑賞期起算）
     'unclaimed' => ['2074', '3020'],         // 七天未取
     'shipped'   => ['2030', '3024'],         // 已送至物流中心
 ];
 
-function hel_map_rtn_phase(string $code, string $msg): ?string
+/**
+ * 綠界／RY 貨態 → HOVER phase
+ *
+ * @param string $logistics_type CVS｜HOME（可空）
+ */
+function hel_map_rtn_phase(string $code, string $msg, string $logistics_type = ''): ?string
 {
     $code = trim($code);
     foreach (HEL_RTN_PHASE as $phase => $codes) {
@@ -42,16 +48,41 @@ function hel_map_rtn_phase(string $code, string $msg): ?string
     if (preg_match('/逾期未取|七天未取|未取件退回|逾時退貨/u', $msg)) {
         return 'unclaimed';
     }
-    if (preg_match('/成功取件|消費者已取|客戶已取|取件完成/u', $msg)) {
+    // 取件／簽收／宅配配達完成 → 消費者已收受（鑑賞期起算）
+    if (preg_match('/成功取件|消費者已取|客戶已取|取件完成|已簽收|收件人已收|買家已收|配達買家|貨物配達/u', $msg)) {
         return 'picked';
     }
-    if (preg_match('/已送達門市|送達門市|配達完成|配送完成|已送達|成功送達|貨件配達|等待取貨/u', $msg)) {
+    if (preg_match('/配達完成|配送完成|成功送達|貨件配達/u', $msg)) {
+        return 'picked';
+    }
+    // 僅「到門市待取」— 不算收受
+    if (preg_match('/已送達門市|送達門市|等待取貨|貨到門市|可取貨/u', $msg)) {
         return 'arrived';
+    }
+    // 宅配：訊息較籠統的「已送達」視為已配達簽收
+    $type = strtoupper(trim($logistics_type));
+    if ($type === 'HOME' && preg_match('/已送達|配達/u', $msg)) {
+        return 'picked';
     }
     if (preg_match('/物流中心|已集貨|配送中|運送中|已收件|已出貨/u', $msg)) {
         return 'shipped';
     }
     return null;
+}
+
+/** 解析綠界 UpdateStatusDate（Y/m/d H:i:s） */
+function hel_parse_status_date(string $raw): string
+{
+    $raw = trim($raw);
+    if ($raw === '') {
+        return '';
+    }
+    $normalized = str_replace('/', '-', $raw);
+    $ts = strtotime($normalized);
+    if (!$ts) {
+        return '';
+    }
+    return wp_date('Y-m-d H:i:s', $ts);
 }
 
 function hel_map_status_phase(string $status): ?string
@@ -218,8 +249,16 @@ function hel_sync_cvs_from_ry(WC_Order $order): void
     }
 }
 
-function hel_set_phase(WC_Order $order, ?string $phase, string $code = '', string $msg = ''): void
-{
+/**
+ * @param string $status_date 綠界 UpdateStatusDate（可空，空則用當下時間）
+ */
+function hel_set_phase(
+    WC_Order $order,
+    ?string $phase,
+    string $code = '',
+    string $msg = '',
+    string $status_date = ''
+): void {
     if ($code !== '') {
         $order->update_meta_data('_hel_RtnCode', $code);
     }
@@ -236,9 +275,13 @@ function hel_set_phase(WC_Order $order, ?string $phase, string $code = '', strin
     $prev = (string) $order->get_meta('_hel_LogisticsPhase');
     $order->update_meta_data('_hel_LogisticsPhase', $phase);
 
-    // 到貨時間：前台 7 日鑑賞期起算
-    if (in_array($phase, ['arrived', 'picked'], true) && !(string) $order->get_meta('_hover_arrived_at')) {
-        $order->update_meta_data('_hover_arrived_at', wp_date('Y-m-d H:i:s'));
+    // 鑑賞期起算：僅消費者成功取件／宅配簽收（picked），不是「貨到門市」
+    if ($phase === 'picked' && !(string) $order->get_meta('_hover_arrived_at')) {
+        $at = hel_parse_status_date($status_date);
+        if ($at === '') {
+            $at = wp_date('Y-m-d H:i:s');
+        }
+        $order->update_meta_data('_hover_arrived_at', $at);
     }
 
     $order->save();
@@ -252,6 +295,9 @@ function hel_set_phase(WC_Order $order, ?string $phase, string $code = '', strin
     }
     if ($msg !== '') {
         $note .= ' ' . $msg;
+    }
+    if ($phase === 'picked') {
+        $note .= '（鑑賞期起算）';
     }
     $order->add_order_note($note);
 }
@@ -343,9 +389,11 @@ function hel_on_ry_response($ipn = null, $order_or_id = null): void
     hel_save_cvs_meta($order, hel_extract_cvs_fields($ipn), false);
 
     $code  = sanitize_text_field((string) ($ipn['RtnCode'] ?? ''));
-    $msg   = sanitize_text_field((string) ($ipn['RtnMsg'] ?? ''));
-    $phase = hel_map_rtn_phase($code, $msg);
-    hel_set_phase($order, $phase, $code, $msg);
+    $msg   = sanitize_text_field((string) ($ipn['RtnMsg'] ?? $ipn['LogisticsStatusName'] ?? ''));
+    $type  = sanitize_text_field((string) ($ipn['LogisticsType'] ?? ''));
+    $when  = sanitize_text_field((string) ($ipn['UpdateStatusDate'] ?? ''));
+    $phase = hel_map_rtn_phase($code, $msg, $type);
+    hel_set_phase($order, $phase, $code, $msg, $when);
 }
 
 add_action('ry_ecpay_shipping_response', 'hel_on_ry_response', 20, 2);
@@ -488,8 +536,8 @@ function hel_render_phase_box($post_or_order): void
     $phase = (string) $order->get_meta('_hel_LogisticsPhase');
     $labels = [
         'shipped'   => '已出貨',
-        'arrived'   => '已到貨',
-        'picked'    => '已到貨（已取）',
+        'arrived'   => '已到店（待取）',
+        'picked'    => '已取貨／已簽收',
         'unclaimed' => '逾期未取',
     ];
     $label = $labels[$phase] ?? ($phase !== '' ? $phase : '（尚未設定）');
@@ -498,12 +546,13 @@ function hel_render_phase_box($post_or_order): void
     if ($phase !== '') {
         echo '<p class="description"><code>_hel_LogisticsPhase</code> = <code>' . esc_html($phase) . '</code></p>';
     }
-    echo '<p class="description">綠界「物流狀態」無法在測試環境模擬到貨；用下面按鈕測前端即可。</p>';
+    echo '<p class="description">鑑賞期自「已取貨／已簽收」起算（到店待取不算）。綠界測試環境多無法模擬貨態，可用下方按鈕測前端。</p>';
 
     $id = $order->get_id();
     $btns = [
         'shipped'   => '模擬已出貨',
-        'arrived'   => '模擬已到貨',
+        'arrived'   => '模擬已到店（待取）',
+        'picked'    => '模擬已取貨／已簽收',
         'unclaimed' => '模擬逾期未取',
         'clear'     => '清除貨態（改回處理中）',
     ];
@@ -512,7 +561,7 @@ function hel_render_phase_box($post_or_order): void
             admin_url('admin-post.php?action=hel_sim_phase&order_id=' . $id . '&phase=' . $key),
             'hel_sim_' . $id
         );
-        $class = $key === 'arrived' ? 'button button-primary' : 'button';
+        $class = $key === 'picked' ? 'button button-primary' : 'button';
         echo '<p style="margin:6px 0;"><a class="' . esc_attr($class) . '" href="' . esc_url($url) . '">' . esc_html($text) . '</a></p>';
     }
 
@@ -590,14 +639,18 @@ function hel_render_order_ops(WC_Order $order): void
     } elseif ($phase === 'shipped') {
         echo ' → 按鈕「聯繫客服」';
     } elseif ($phase === 'arrived') {
-        echo ' → 按鈕「申請退貨」（7 日內）／「聯繫客服」';
+        if ($arrived !== '') {
+            echo ' → 按鈕「申請退貨」（取貨／簽收日起 7 日內）／「聯繫客服」';
+        } else {
+            echo ' → 按鈕「聯繫客服」（到店待取，鑑賞期尚未開始）';
+        }
     } else {
         echo ' → 按鈕「聯繫客服」';
     }
     echo '</p>';
 
     if ($arrived !== '') {
-        echo '<p class="description" style="margin:0 0 8px;">到貨時間 <code>' . esc_html($arrived) . '</code>（鑑賞期起算）</p>';
+        echo '<p class="description" style="margin:0 0 8px;">收受時間 <code>' . esc_html($arrived) . '</code>（鑑賞期起算：取貨／簽收日）</p>';
     }
     if ($ret !== '') {
         echo '<p class="description" style="margin:0 0 8px;">退貨 <code>' . esc_html($ret) . '</code></p>';
@@ -609,12 +662,17 @@ function hel_render_order_ops(WC_Order $order): void
         $ops[] = ['ship', '標記已出貨', 'button button-primary', ''];
     }
     if (in_array($phase, ['processing', 'shipped'], true)) {
-        // 已出貨後可標記到貨；處理中也可直接測到貨
         if ($phase === 'shipped') {
-            $ops[] = ['arrive', '標記已到貨', 'button button-primary', ''];
+            $ops[] = ['arrive', '標記已到店（待取）', 'button', ''];
+            $ops[] = ['pickup', '標記已取貨／已簽收', 'button button-primary', ''];
         }
     }
-    if ($phase === 'arrived') {
+    // 已到店待取 → 可手動補記取貨／簽收（綠界延遲或宅配）
+    $raw_phase = strtolower((string) $order->get_meta('_hel_LogisticsPhase'));
+    if ($raw_phase === 'arrived') {
+        $ops[] = ['pickup', '標記已取貨／已簽收', 'button button-primary', ''];
+    }
+    if ($phase === 'arrived' && $arrived !== '') {
         $ops[] = ['returning', '退貨處理中', 'button', 'color:#6b21a8;border-color:#6b21a8;'];
     }
     if ($phase === 'returning') {
@@ -630,7 +688,7 @@ function hel_render_order_ops(WC_Order $order): void
         echo '<p style="margin:6px 0;"><a class="' . esc_attr($class) . '" style="' . esc_attr($style) . '" href="' . esc_url(hel_ops_url($id, $action)) . '">' . esc_html($text) . '</a></p>';
     }
 
-    echo '<p class="description" style="margin:10px 0 0;">正式流程：處理中 → 標記已出貨 →（綠界到貨或手動標記已到貨）→ 客服 LINE 受理後按退貨處理中／完成。</p>';
+    echo '<p class="description" style="margin:10px 0 0;">正式流程：出貨 → 到店待取（綠界）→ 取貨／簽收後開始 7 日鑑賞期 → 客服 LINE 受理後退貨處理中／完成。</p>';
 }
 
 add_action('admin_post_hel_sim_phase', function () {
@@ -710,7 +768,11 @@ add_action('admin_post_hel_order_ops', function () {
             break;
 
         case 'arrive':
-            hel_set_phase($order, 'arrived', '3018', '後台標記已到貨');
+            hel_set_phase($order, 'arrived', '3018', '後台標記已到店（待取）');
+            break;
+
+        case 'pickup':
+            hel_set_phase($order, 'picked', '3022', '後台標記已取貨／已簽收');
             break;
 
         case 'returning':

@@ -8,7 +8,7 @@
 export const HOVER_LINE_OA = "https://line.me/R/ti/p/@330kefmm";
 export const HOVER_LINE_OA_ID = "@330kefmm";
 
-/** 鑑賞期（天）— 以到貨日起算 */
+/** 鑑賞期（天）— 以消費者實際取貨／簽收日起算（不是貨到超商門市日） */
 export const RETURN_WINDOW_DAYS = 7;
 
 export type OrderActionKind = "cancel" | "return" | "contact";
@@ -158,6 +158,11 @@ export function getOrderStatusLabelFromPhase(phase: OrderDisplayPhase, fallback 
 }
 
 export function getOrderStatusLabel(order: OrderLike): string {
+  const raw = String(order.logistics_phase || "").toLowerCase();
+  if (raw === "arrived") return "已到店（待取）";
+  if (raw === "picked") return "已取貨";
+  if (raw === "unclaimed") return "逾期未取";
+
   const phase = resolveOrderDisplayPhase(order);
   if (phase === "other") {
     return String(order.status || "—");
@@ -165,30 +170,34 @@ export function getOrderStatusLabel(order: OrderLike): string {
   return getOrderStatusLabelFromPhase(phase);
 }
 
-function parseArrivedDate(order: OrderLike): Date | null {
+function parseReceivedDate(order: OrderLike): Date | null {
   const raw = resolveArrivedAt(order);
-  if (raw) {
-    // 綠界 UpdateStatusDate 常為 Y/m/d H:i:s 或 Y-m-d
-    const normalized = raw.replace(/\//g, "-");
-    const d = new Date(normalized);
-    if (!Number.isNaN(d.getTime())) return d;
-  }
-  // 後備：訂單完成日／付款日（無精確到貨日時）
-  for (const key of [order.date_completed, order.date_paid, order.date_created]) {
-    if (!key) continue;
-    const d = new Date(key);
-    if (!Number.isNaN(d.getTime())) return d;
-  }
+  if (!raw) return null;
+  // 綠界 UpdateStatusDate 常為 Y/m/d H:i:s 或 Y-m-d
+  const normalized = raw.replace(/\//g, "-");
+  const d = new Date(normalized);
+  if (!Number.isNaN(d.getTime())) return d;
   return null;
 }
 
-/** 已到貨且在鑑賞期內 */
+/**
+ * 已取貨／已簽收，且在鑑賞期內。
+ * 貨到門市尚未取貨 → 不算；無收受時間 → 不開放申請退貨按鈕。
+ */
 export function isWithinReturnWindow(order: OrderLike, now = new Date()): boolean {
   const phase = resolveOrderDisplayPhase(order);
   if (phase !== "arrived") return false;
-  const arrived = parseArrivedDate(order);
-  if (!arrived) return true; // 無日期時保守開放申請入口
-  const end = new Date(arrived);
+
+  const rawPhase = String(order.logistics_phase || "").toLowerCase();
+  // 逾期未取：未收受商品
+  if (rawPhase === "unclaimed") return false;
+  // 僅到店待取、尚未寫入收受時間
+  if (rawPhase === "arrived") return false;
+
+  const received = parseReceivedDate(order);
+  if (!received) return false;
+
+  const end = new Date(received);
   end.setDate(end.getDate() + RETURN_WINDOW_DAYS);
   end.setHours(23, 59, 59, 999);
   return now.getTime() <= end.getTime();
@@ -228,9 +237,11 @@ function lineCsGreeting(intent: LineCsIntent): string {
     : "你好，我想聯繫客服詢問訂單。";
 }
 
-/** 聯繫客服：開啟 LINE OA（不帶 text 預填） */
-export function buildContactCsUrl(_order?: OrderLike | null): string {
-  return HOVER_LINE_OA;
+/** 聯繫客服：LINE OA 預填連結（含訂單資訊） */
+export function buildContactCsUrl(order?: OrderLike | null): string {
+  if (!order) return HOVER_LINE_OA;
+  const text = buildOrderLineMessage(order, "contact");
+  return `https://line.me/R/oaMessage/${HOVER_LINE_OA_ID}/?text=${encodeURIComponent(text)}`;
 }
 
 function formatReturnNt(value: string | number | null | undefined): string {
@@ -340,9 +351,10 @@ export function buildReturnLineMessage(order: OrderLike): string {
   return buildOrderLineMessage(order, "return");
 }
 
-/** 申請退貨：開啟 LINE OA（不帶 text 預填） */
-export function buildReturnLineUrl(_order: OrderLike): string {
-  return HOVER_LINE_OA;
+/** 申請退貨：LINE OA 預填連結（含訂單編號／商品摘要） */
+export function buildReturnLineUrl(order: OrderLike): string {
+  const text = buildOrderLineMessage(order, "return");
+  return `https://line.me/R/oaMessage/${HOVER_LINE_OA_ID}/?text=${encodeURIComponent(text)}`;
 }
 
 /**

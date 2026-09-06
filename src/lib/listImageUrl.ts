@@ -8,15 +8,15 @@ export type ImageRole = "card" | "pdp" | "banner" | "thumb";
 
 const ROLE_MAX: Record<ImageRole, number> = {
   thumb: 200,
-  card: 600,
+  card: 900,
   pdp: 1024,
   banner: 1536,
 };
 
-/** 依角色嘗試的 WP 尺寸後綴（card 優先已存在的 Woo 縮圖，再試 3:4） */
+/** 依角色嘗試的 WP 尺寸後綴（card 避開過小的 300×300） */
 const ROLE_SUFFIXES: Record<ImageRole, string[]> = {
   thumb: ["-150x200", "-150x150", "-300x300"],
-  card: ["-600x750", "-600x800", "-300x300", "-300x400"],
+  card: ["-600x800", "-600x750", "-768x1024", "-900x1200", "-1024x1024"],
   pdp: [
     "-900x1200",
     "-768x1024",
@@ -57,14 +57,10 @@ export function toFullUploadUrl(src: string): string {
 }
 
 /**
- * 商品圖：若目前是 1:1 方圖等非直式縮圖，還原原圖再重選。
- * 4:5（600×750）保留——列表用 object-cover 裁成 3:4 即可。
+ * 商品圖：方圖／過小縮圖（如 300×300）還原原圖，再選較大尺寸。
  */
 export function unwrapNonProductRatioUrl(src: string, role: ImageRole = "card"): string {
   if (!src || typeof src !== "string") return src;
-  if (role === "card" || role === "thumb") {
-    return src;
-  }
   try {
     const u = new URL(src);
     if (!u.pathname.includes("/wp-content/uploads/")) return src;
@@ -72,6 +68,12 @@ export function unwrapNonProductRatioUrl(src: string, role: ImageRole = "card"):
     if (!m) return src;
     const w = Number(m[1]);
     const h = Number(m[2]);
+    if (role === "card" || role === "thumb") {
+      if (isNearRatio(w, h, 1, 1) || Math.max(w, h) < 480) {
+        return toFullUploadUrl(src);
+      }
+      return src;
+    }
     if (isNearRatio(w, h, 3, 4) || isNearRatio(w, h, 4, 5)) return src;
     if (isNearRatio(w, h, 1, 1)) return toFullUploadUrl(src);
     return src;
@@ -110,17 +112,17 @@ export function pickWpSizeUrl(
 ): string {
   if (!sizes) return fallbackSrc || "";
 
-  // card：優先夠小的現有縮圖（含 600×750），避免跳過壓縮圖去載原圖
+  // card：優先較大現有縮圖，避免卡在 300×300
   const order: Array<keyof NonNullable<typeof sizes>> =
     role === "thumb"
       ? ["woocommerce_thumbnail", "medium", "thumbnail", "full"]
       : role === "card"
         ? [
-            "woocommerce_thumbnail",
-            "medium",
             "woocommerce_single",
             "medium_large",
             "large",
+            "medium",
+            "woocommerce_thumbnail",
             "thumbnail",
             "full",
           ]
@@ -177,14 +179,17 @@ export function toOptimizedImageUrl(
       return baseSrc;
     }
 
-    // 列表 card：已有夠小的縮圖就直接用（600×750 等），CSS 裁成 3:4
+    // 列表 card：過小／方圖不沿用，改挑較大後綴
     const sized = u.pathname.match(/-(\d+)x(\d+)(\.[a-z]+)$/i);
     if (sized) {
       const w = Number(sized[1]);
       const h = Number(sized[2]);
-      if (Math.max(w, h) <= maxEdge * 1.25) {
+      const maxSide = Math.max(w, h);
+      if (maxSide >= 560 && maxSide <= maxEdge * 1.25 && !isNearRatio(w, h, 1, 1)) {
         return baseSrc;
       }
+      // 過小或方圖：還原原圖路徑再套用較大後綴
+      u.pathname = u.pathname.replace(/-\d+x\d+(\.[a-z]+)$/i, "$1");
     }
 
     const suffix = ROLE_SUFFIXES[role][0];

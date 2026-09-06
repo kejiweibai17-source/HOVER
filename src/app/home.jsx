@@ -30,6 +30,13 @@ const CATEGORIES = FALLBACK_CATEGORY_TILES;
 
 /* ─── Section 3 & 6 · Product Grid (NEW ARRIVALS / BEST SELLER) ─────── */
 
+/* 圖片內距：略留白避免裁切；標題／商品文字對齊圖片內緣 */
+const HOME_CARD_INSET = "p-3 md:p-4";
+const HOME_CARD_TEXT_INSET = "px-3 md:px-4";
+/** 區塊 px-4／md:px-16 + 圖片 p-3／md:p-4 → 標題對齊第一張圖左緣 */
+const HOME_TITLE_ALIGN =
+  "!pl-[calc(1rem_+_0.75rem)] md:!pl-[calc(4rem_+_1rem)]";
+
 function ProductCard({ product }) {
   const router = useRouter();
   const toggleItem = useWishlistStore((s) => s.toggleItem);
@@ -71,47 +78,54 @@ function ProductCard({ product }) {
   const [hoverReady, setHoverReady] = useState(false);
 
   return (
-    <article className="group relative flex min-w-0 w-full flex-col overflow-hidden">
-      {/* Image + badges + wishlist */}
+    <article className="group relative flex h-full min-w-0 w-full flex-col overflow-hidden">
+      {/* 3:4 外框；object-contain 不裁切商品；白底留白 */}
       <ProductImageFrame
         onMouseEnter={() => {
           if (hasHoverImage) setHoverReady(true);
         }}
       >
-        <Link href={product.href} className="absolute inset-0 block">
-          <OptimizedImage
-            src={product.image}
-            fullSrc={product.image}
-            role="card"
-            alt={product.name}
-            fill
-            className={`object-cover object-center transition-opacity duration-300 ${
-              hasHoverImage && hoverReady
-                ? "opacity-100 group-hover:opacity-0"
-                : ""
-            }`}
-            sizes="(max-width: 768px) 50vw, 28vw"
-          />
-          {hasHoverImage && hoverReady && (
+        <Link
+          href={product.href}
+          className={`absolute inset-0 block ${HOME_CARD_INSET}`}
+        >
+          <span className="relative block h-full w-full overflow-hidden bg-white">
             <OptimizedImage
-              src={hoverImage}
-              fullSrc={hoverImage}
+              src={product.image}
+              fullSrc={product.image}
               role="card"
-              alt={`${product.name} alternate view`}
+              alt={product.name}
               fill
-              className="object-cover object-center opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+              className={`object-contain object-center transition-opacity duration-300 ${
+                hasHoverImage && hoverReady
+                  ? "opacity-100 group-hover:opacity-0"
+                  : ""
+              }`}
               sizes="(max-width: 768px) 50vw, 28vw"
             />
-          )}
+            {hasHoverImage && hoverReady && (
+              <OptimizedImage
+                src={hoverImage}
+                fullSrc={hoverImage}
+                role="card"
+                alt={`${product.name} alternate view`}
+                fill
+                className="object-contain object-center opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+                sizes="(max-width: 768px) 50vw, 28vw"
+              />
+            )}
+          </span>
         </Link>
       </ProductImageFrame>
 
-      {/* Info */}
-      <div className="mt-2 min-w-0 space-y-1 pr-1 text-left md:mt-3">
-        <div className="flex min-h-9 min-w-0 items-center justify-between gap-2">
+      {/* Info：左右與圖片內緣切齊 */}
+      <div
+        className={`mt-2 flex min-w-0 flex-col gap-1 text-left md:mt-3 ${HOME_CARD_TEXT_INSET}`}
+      >
+        <div className="flex min-h-[2.75rem] min-w-0 items-start justify-between gap-2">
           <Link
             href={product.href}
-            className="flex min-w-0 flex-1 items-center break-words text-[14px] font-semibold leading-snug text-black line-clamp-2 hover:opacity-60 md:text-[15px]"
+            className="min-w-0 flex-1 break-words text-[14px] font-semibold leading-snug text-black line-clamp-2 hover:opacity-60 md:text-[15px]"
           >
             {product.name}
           </Link>
@@ -120,7 +134,7 @@ function ProductCard({ product }) {
             aria-label={isSaved ? "取消收藏" : "加入收藏"}
             onClick={handleWishlist}
             disabled={wishlistPending}
-            className={`flex h-9 w-9 shrink-0 items-center justify-center transition-opacity hover:opacity-60 ${
+            className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center transition-opacity hover:opacity-60 ${
               isSaved ? "opacity-100" : "opacity-80"
             }`}
           >
@@ -128,16 +142,17 @@ function ProductCard({ product }) {
           </button>
         </div>
 
-        {product.colorHex ? (
-          <div className="flex min-w-0 items-center gap-1.5 pt-0.5">
+        <div className="flex min-h-3 min-w-0 items-center gap-1.5">
+          {product.colorHex ? (
             <span
               className="inline-block h-3 w-3 shrink-0 rounded-full border border-[#ccc]"
               style={{ background: product.colorHex }}
+              aria-hidden
             />
-          </div>
-        ) : null}
+          ) : null}
+        </div>
 
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 pt-0.5">
+        <div className="flex min-h-5 min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <span
             className={`text-[14px] font-bold text-[#222] md:text-[15px] ${
               product.soldOut ? "line-through" : ""
@@ -165,6 +180,8 @@ function ProductSection({ title, products }) {
       visibleSm={2}
       className="py-0"
       imageAspectRatio="3/4"
+      headerClassName={HOME_TITLE_ALIGN}
+      slideClassName="pr-2 md:pr-3 flex"
       renderItem={(product) => <ProductCard product={product} />}
     />
   );

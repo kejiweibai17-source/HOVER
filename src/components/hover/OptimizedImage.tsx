@@ -34,18 +34,21 @@ export default function OptimizedImage({
     const list: string[] = [];
     const normalized = toOptimizedImageUrl(original, role);
 
-    // 若來源已是夠小的 WP 縮圖，優先使用（避免先打 404 的臆造尺寸）
     if (src && src !== original) {
       const fromSrc = toOptimizedImageUrl(src, role);
       if (fromSrc) list.push(fromSrc);
     }
-    if (original.includes("-") && /-\d+x\d+\.[a-z]+$/i.test(original)) {
-      list.push(original);
+
+    // 已存在的尺寸檔：夠大才優先（避免先載 300×300 糊圖）
+    const sized = original.match(/-(\d+)x(\d+)\.[a-z]+$/i);
+    if (sized) {
+      const maxSide = Math.max(Number(sized[1]), Number(sized[2]));
+      if (maxSide >= 560) list.push(original);
     }
 
     list.push(normalized);
     for (const suffix of getFallbackSuffixes(role)) {
-      const next = applyWpSuffix(original, suffix);
+      const next = applyWpSuffix(toFullUploadUrl(original), suffix);
       if (!list.includes(next)) list.push(next);
     }
     const full = toFullUploadUrl(original);

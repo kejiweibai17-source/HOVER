@@ -10,11 +10,12 @@
  * 客戶可自行：
  * - 先選分類，再從下拉選單加入單一商品
  * - 兩個輪播各自獨立新增／移除／排序
+ * - 每件商品自選「預設圖」與「Hover 圖」（來自該商品主圖＋圖庫）
  *
  * REST API（給 Next.js）：
  * GET /wp-json/hover/v1/home-products
  *
- * 卡片 hover 圖：取 Woo「商品圖庫」第二張；沒有第二張則用圖庫中第一張與主圖不同的。
+ * 若未指定，預設圖＝Woo 主圖；Hover＝圖庫第一張與主圖不同者。
  */
 
 if (!defined('ABSPATH')) {
@@ -98,6 +99,7 @@ function hhps_default_section(): array
     return [
         'enabled' => true,
         'ids'     => [],
+        'items'   => [],
     ];
 }
 
@@ -130,15 +132,65 @@ function hhps_normalize_ids($raw): array
     return $ids;
 }
 
+/**
+ * 每列：product id + 可選的預設圖／hover 圖 attachment id
+ *
+ * @return array<int, array{id:int,imageId:int,hoverImageId:int}>
+ */
+function hhps_normalize_items($raw): array
+{
+    $items = [];
+    $seen = [];
+
+    if (is_array($raw)) {
+        foreach ($raw as $row) {
+            if (is_numeric($row)) {
+                $id = (int) $row;
+                $image_id = 0;
+                $hover_id = 0;
+            } elseif (is_array($row)) {
+                $id = (int) ($row['id'] ?? 0);
+                $image_id = (int) ($row['imageId'] ?? $row['image_id'] ?? 0);
+                $hover_id = (int) ($row['hoverImageId'] ?? $row['hover_image_id'] ?? 0);
+            } else {
+                continue;
+            }
+            if ($id <= 0 || isset($seen[$id])) {
+                continue;
+            }
+            $seen[$id] = true;
+            $items[] = [
+                'id'           => $id,
+                'imageId'      => max(0, $image_id),
+                'hoverImageId' => max(0, $hover_id),
+            ];
+            if (count($items) >= HHPS_MAX_PER_SECTION) {
+                break;
+            }
+        }
+    }
+
+    return $items;
+}
+
 function hhps_normalize_section($raw): array
 {
     $d = hhps_default_section();
     if (!is_array($raw)) {
         return $d;
     }
+
+    $items = [];
+    if (!empty($raw['items']) && is_array($raw['items'])) {
+        $items = hhps_normalize_items($raw['items']);
+    } elseif (!empty($raw['ids']) && is_array($raw['ids'])) {
+        $items = hhps_normalize_items($raw['ids']);
+    }
+
     return [
         'enabled' => !isset($raw['enabled']) || !empty($raw['enabled']),
-        'ids'     => hhps_normalize_ids($raw['ids'] ?? []),
+        'items'   => $items,
+        'ids'     => array_map(static fn($row) => (int) $row['id'], $items),
     ];
 }
 
@@ -214,14 +266,26 @@ function hhps_product_color_label(\WC_Product $product): string
 
 function hhps_attachment_display_url(int $aid): string
 {
-    // 列表用 Woo 縮圖（常見 600×750）；前端 3:4 外框 + object-cover 裁切。
-    foreach (['woocommerce_thumbnail', 'medium', 'woocommerce_single', 'large'] as $size) {
+    // 前台卡片用較大圖（避免 300×300 糊）；含 Woo single／large
+    foreach (['woocommerce_single', 'large', 'medium_large', 'medium', 'full'] as $size) {
         $url = wp_get_attachment_image_url($aid, $size);
         if ($url) {
             return (string) $url;
         }
     }
     return (string) (wp_get_attachment_url($aid) ?: '');
+}
+
+/** 後台縮圖用小圖即可 */
+function hhps_attachment_thumb_url(int $aid): string
+{
+    foreach (['woocommerce_gallery_thumbnail', 'thumbnail', 'woocommerce_thumbnail', 'medium'] as $size) {
+        $url = wp_get_attachment_image_url($aid, $size);
+        if ($url) {
+            return (string) $url;
+        }
+    }
+    return hhps_attachment_display_url($aid);
 }
 
 function hhps_product_images(\WC_Product $product): array
@@ -266,10 +330,44 @@ function hhps_product_images(\WC_Product $product): array
     $hover = $hover_id ? hhps_attachment_display_url($hover_id) : '';
 
     return [
-        'featured' => $urls[0] ?? '',
-        'gallery'  => $urls,
-        'hover'    => $hover && $hover !== ($urls[0] ?? '') ? $hover : '',
+        'featured'   => $urls[0] ?? '',
+        'featuredId' => $featured,
+        'gallery'    => $urls,
+        'galleryIds' => $ids,
+        'hover'      => $hover && $hover !== ($urls[0] ?? '') ? $hover : '',
+        'hoverId'    => ($hover_id && $hover_id !== $featured) ? $hover_id : 0,
     ];
+}
+
+/** 商品可用圖片清單（主圖＋圖庫）供後台挑選 */
+function hhps_product_image_choices(\WC_Product $product): array
+{
+    $ids = [];
+    $featured = (int) $product->get_image_id();
+    if ($featured) {
+        $ids[] = $featured;
+    }
+    foreach ($product->get_gallery_image_ids() as $gid) {
+        $gid = (int) $gid;
+        if ($gid && !in_array($gid, $ids, true)) {
+            $ids[] = $gid;
+        }
+    }
+
+    $out = [];
+    foreach ($ids as $aid) {
+        $url = hhps_attachment_display_url($aid);
+        $thumb = hhps_attachment_thumb_url($aid);
+        if (!$url) {
+            continue;
+        }
+        $out[] = [
+            'id'    => $aid,
+            'url'   => $url,
+            'thumb' => $thumb ?: $url,
+        ];
+    }
+    return $out;
 }
 
 function hhps_product_prices(\WC_Product $product): array
@@ -315,7 +413,7 @@ function hhps_is_new_product(\WC_Product $product): bool
     return false;
 }
 
-function hhps_map_card(\WC_Product $product): ?array
+function hhps_map_card(\WC_Product $product, int $image_id = 0, int $hover_image_id = 0): ?array
 {
     if (!$product || $product->get_status() !== 'publish') {
         return null;
@@ -327,14 +425,41 @@ function hhps_map_card(\WC_Product $product): ?array
     $hex = hhps_guess_hex($color);
     $slug = $product->get_slug();
 
+    $main = $images['featured'] ?? '';
+    $hover = $images['hover'] ?? '';
+
+    if ($image_id > 0) {
+        $custom_main = hhps_attachment_display_url($image_id);
+        if ($custom_main !== '') {
+            $main = $custom_main;
+        }
+    }
+    if ($hover_image_id > 0) {
+        $custom_hover = hhps_attachment_display_url($hover_image_id);
+        if ($custom_hover !== '' && $custom_hover !== $main) {
+            $hover = $custom_hover;
+        } elseif ($custom_hover === $main) {
+            $hover = '';
+        }
+    }
+
+    if ($main === '') {
+        return null;
+    }
+
+    $gallery = $images['gallery'] ?? [];
+    if ($main !== '' && (!isset($gallery[0]) || $gallery[0] !== $main)) {
+        $gallery = array_values(array_unique(array_merge([$main], $gallery)));
+    }
+
     return [
         'id'            => $product->get_id(),
         'slug'          => $slug,
         'href'          => '/products/' . $slug,
         'name'          => $product->get_name(),
-        'image'         => $images['featured'] ?? '',
-        'gallery'       => $images['gallery'] ?? [],
-        'hoverImage'    => $images['hover'] ?? '',
+        'image'         => $main,
+        'gallery'       => $gallery,
+        'hoverImage'    => $hover,
         'isNew'         => hhps_is_new_product($product),
         'originalPrice' => $prices['regular'],
         'salePrice'     => $prices['sale'],
@@ -346,23 +471,39 @@ function hhps_map_card(\WC_Product $product): ?array
     ];
 }
 
-function hhps_admin_row(\WC_Product $product): array
+function hhps_admin_row(\WC_Product $product, int $image_id = 0, int $hover_image_id = 0): array
 {
-    $thumb = wp_get_attachment_image_url((int) $product->get_image_id(), 'woocommerce_thumbnail');
-    if (!$thumb) {
-        $thumb = wp_get_attachment_image_url((int) $product->get_image_id(), 'thumbnail');
+    $choices = hhps_product_image_choices($product);
+    $defaults = hhps_product_images($product);
+    $default_image_id = $image_id > 0 ? $image_id : (int) ($defaults['featuredId'] ?? 0);
+    $default_hover_id = $hover_image_id > 0 ? $hover_image_id : (int) ($defaults['hoverId'] ?? 0);
+
+    $thumb = '';
+    foreach ($choices as $choice) {
+        if ((int) $choice['id'] === $default_image_id) {
+            $thumb = (string) $choice['thumb'];
+            break;
+        }
     }
+    if ($thumb === '' && $choices) {
+        $thumb = (string) $choices[0]['thumb'];
+        $default_image_id = (int) $choices[0]['id'];
+    }
+
     $prices = hhps_product_prices($product);
 
     return [
-        'id'     => $product->get_id(),
-        'name'   => $product->get_name(),
-        'slug'   => $product->get_slug(),
-        'sku'    => $product->get_sku(),
-        'image'  => $thumb ?: '',
-        'price'  => $prices['sale'] ?? $prices['regular'],
-        'status' => $product->get_status(),
-        'stock'  => $product->is_in_stock() ? 'instock' : 'outofstock',
+        'id'           => $product->get_id(),
+        'name'         => $product->get_name(),
+        'slug'         => $product->get_slug(),
+        'sku'          => $product->get_sku(),
+        'image'        => $thumb,
+        'price'        => $prices['sale'] ?? $prices['regular'],
+        'status'       => $product->get_status(),
+        'stock'        => $product->is_in_stock() ? 'instock' : 'outofstock',
+        'images'       => $choices,
+        'imageId'      => $default_image_id,
+        'hoverImageId' => $default_hover_id,
     ];
 }
 
@@ -382,11 +523,29 @@ function hhps_load_products(array $ids): array
     return $out;
 }
 
-function hhps_hydrate_cards(array $ids): array
+function hhps_hydrate_cards(array $items): array
 {
     $cards = [];
-    foreach (hhps_load_products($ids) as $product) {
-        $card = hhps_map_card($product);
+    foreach ($items as $row) {
+        if (is_numeric($row)) {
+            $id = (int) $row;
+            $image_id = 0;
+            $hover_id = 0;
+        } elseif (is_array($row)) {
+            $id = (int) ($row['id'] ?? 0);
+            $image_id = (int) ($row['imageId'] ?? 0);
+            $hover_id = (int) ($row['hoverImageId'] ?? 0);
+        } else {
+            continue;
+        }
+        if ($id <= 0 || !function_exists('wc_get_product')) {
+            continue;
+        }
+        $product = wc_get_product($id);
+        if (!$product) {
+            continue;
+        }
+        $card = hhps_map_card($product, $image_id, $hover_id);
         if ($card && $card['image'] !== '') {
             $cards[] = $card;
         }
@@ -394,11 +553,29 @@ function hhps_hydrate_cards(array $ids): array
     return $cards;
 }
 
-function hhps_hydrate_admin_rows(array $ids): array
+function hhps_hydrate_admin_rows(array $items): array
 {
     $rows = [];
-    foreach (hhps_load_products($ids) as $product) {
-        $rows[] = hhps_admin_row($product);
+    foreach ($items as $row) {
+        if (is_numeric($row)) {
+            $id = (int) $row;
+            $image_id = 0;
+            $hover_id = 0;
+        } elseif (is_array($row)) {
+            $id = (int) ($row['id'] ?? 0);
+            $image_id = (int) ($row['imageId'] ?? 0);
+            $hover_id = (int) ($row['hoverImageId'] ?? 0);
+        } else {
+            continue;
+        }
+        if ($id <= 0 || !function_exists('wc_get_product')) {
+            continue;
+        }
+        $product = wc_get_product($id);
+        if (!$product) {
+            continue;
+        }
+        $rows[] = hhps_admin_row($product, $image_id, $hover_id);
     }
     return $rows;
 }
@@ -431,6 +608,7 @@ function hhps_save_from_post(): ?array
 
     foreach (HHPS_SECTIONS as $key) {
         if (!empty($raw[$key]['items']) && is_array($raw[$key]['items'])) {
+            $raw[$key]['items'] = hhps_normalize_items($raw[$key]['items']);
             $raw[$key]['ids'] = array_map(
                 static fn($row) => (int) ($row['id'] ?? 0),
                 $raw[$key]['items']
@@ -459,10 +637,10 @@ function hhps_rest_home_products(): WP_REST_Response
     ];
 
     if ($payload['enabled'] && $payload['newArrivals']['enabled']) {
-        $payload['newArrivals']['products'] = hhps_hydrate_cards($s['newArrivals']['ids']);
+        $payload['newArrivals']['products'] = hhps_hydrate_cards($s['newArrivals']['items'] ?? $s['newArrivals']['ids'] ?? []);
     }
     if ($payload['enabled'] && $payload['bestSeller']['enabled']) {
-        $payload['bestSeller']['products'] = hhps_hydrate_cards($s['bestSeller']['ids']);
+        $payload['bestSeller']['products'] = hhps_hydrate_cards($s['bestSeller']['items'] ?? $s['bestSeller']['ids'] ?? []);
     }
 
     return new WP_REST_Response([
@@ -579,6 +757,9 @@ function hhps_rest_search(WP_REST_Request $request): WP_REST_Response
 
 function hhps_section_count(array $s, string $key): int
 {
+    if (!empty($s[$key]['items']) && is_array($s[$key]['items'])) {
+        return count($s[$key]['items']);
+    }
     return count($s[$key]['ids'] ?? []);
 }
 
@@ -602,11 +783,11 @@ function hhps_render_page(): void
         'version'     => $s['version'],
         'newArrivals' => [
             'enabled' => !empty($s['newArrivals']['enabled']),
-            'items'   => hhps_hydrate_admin_rows($s['newArrivals']['ids']),
+            'items'   => hhps_hydrate_admin_rows($s['newArrivals']['items'] ?? $s['newArrivals']['ids'] ?? []),
         ],
         'bestSeller' => [
             'enabled' => !empty($s['bestSeller']['enabled']),
-            'items'   => hhps_hydrate_admin_rows($s['bestSeller']['ids']),
+            'items'   => hhps_hydrate_admin_rows($s['bestSeller']['items'] ?? $s['bestSeller']['ids'] ?? []),
         ],
         'categories' => hhps_category_options(),
     ];
@@ -616,7 +797,7 @@ function hhps_render_page(): void
             <div class="hhps-topbar">
                 <div>
                     <h1>HOVER 首頁商品</h1>
-                    <p class="description">兩個輪播各自獨立：先選分類 → 點選商品加入 → 拖曳／↑↓ 調整順序或移除。儲存後約 1 分鐘內同步至前台。</p>
+                    <p class="description">兩個輪播各自獨立：先選分類 → 點選商品加入 → 為每件選「預設圖／Hover 圖」→ 拖曳排序。儲存後約 1 分鐘內同步至前台。</p>
                 </div>
                 <div class="hhps-topbar-actions">
                     <span class="hhps-status <?php echo !empty($s['enabled']) ? 'is-live' : ''; ?>">
@@ -783,17 +964,26 @@ function hhps_print_admin_styles(): void
         .hover-hp-admin .hhps-list-label { margin:0 0 8px; }
         .hover-hp-admin .hhps-count { font-weight:500; color:#646970; }
         .hover-hp-admin .hhps-list { display:flex; flex-direction:column; gap:8px; min-height:24px; }
-        .hover-hp-admin .hhps-row { display:grid; grid-template-columns:18px 48px 1fr auto; gap:10px; align-items:center; border:1px solid #dcdcde; border-radius:8px; padding:8px 10px; background:#fcfcfd; }
+        .hover-hp-admin .hhps-row { display:grid; grid-template-columns:18px 1fr auto; gap:10px; align-items:start; border:1px solid #dcdcde; border-radius:8px; padding:10px; background:#fcfcfd; }
         .hover-hp-admin .hhps-row.is-dragging { background:#edf7f1; }
-        .hover-hp-admin .hhps-handle { cursor:grab; color:#8c8f94; font-size:14px; text-align:center; }
-        .hover-hp-admin .hhps-row-thumb { width:40px; height:48px; object-fit:cover; border-radius:4px; background:#f0f0f1; }
+        .hover-hp-admin .hhps-handle { cursor:grab; color:#8c8f94; font-size:14px; text-align:center; padding-top:14px; }
+        .hover-hp-admin .hhps-row-main { min-width:0; display:flex; flex-direction:column; gap:8px; }
+        .hover-hp-admin .hhps-row-title { display:flex; gap:10px; align-items:center; }
+        .hover-hp-admin .hhps-row-thumb { width:40px; height:48px; object-fit:cover; border-radius:4px; background:#f0f0f1; flex-shrink:0; }
         .hover-hp-admin .hhps-row-name { font-weight:600; font-size:13px; }
         .hover-hp-admin .hhps-row-sub { font-size:11px; color:#646970; }
-        .hover-hp-admin .hhps-row-actions { display:flex; gap:4px; }
+        .hover-hp-admin .hhps-img-pick { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+        .hover-hp-admin .hhps-img-pick-label { display:block; font-size:11px; font-weight:600; color:#1d2327; margin-bottom:4px; }
+        .hover-hp-admin .hhps-img-choices { display:flex; flex-wrap:wrap; gap:6px; }
+        .hover-hp-admin .hhps-img-choice { width:44px; height:54px; padding:0; border:2px solid transparent; border-radius:4px; background:#f0f0f1; cursor:pointer; overflow:hidden; }
+        .hover-hp-admin .hhps-img-choice img { width:100%; height:100%; object-fit:cover; display:block; }
+        .hover-hp-admin .hhps-img-choice.is-selected { border-color:#2a514d; box-shadow:0 0 0 1px #2a514d; }
+        .hover-hp-admin .hhps-img-empty { font-size:11px; color:#646970; }
+        .hover-hp-admin .hhps-row-actions { display:flex; flex-direction:column; gap:2px; padding-top:4px; }
         .hover-hp-admin .hhps-empty-hint { margin:8px 0 0; }
         .hover-hp-admin .hhps-reset-form { margin-top:8px; }
         @media (max-width: 960px) {
-            .hover-hp-admin .hhps-layout, .hover-hp-admin .hhps-grid-2 { grid-template-columns:1fr; }
+            .hover-hp-admin .hhps-layout, .hover-hp-admin .hhps-grid-2, .hover-hp-admin .hhps-img-pick { grid-template-columns:1fr; }
         }
     </style>
     <?php
@@ -828,17 +1018,48 @@ function hhps_admin_footer_script(): void
         function esc(s){ return $('<div/>').text(s || '').html(); }
 
         function syncPayload(){
+            function slimItems(items){
+                return (items || []).map(function(i){
+                    return {
+                        id: Number(i.id) || 0,
+                        imageId: Number(i.imageId) || 0,
+                        hoverImageId: Number(i.hoverImageId) || 0
+                    };
+                }).filter(function(i){ return i.id > 0; });
+            }
             var payload = {
                 enabled: !!state.enabled,
                 version: state.version || '1',
-                newArrivals: { enabled: !!(state.newArrivals && state.newArrivals.enabled), items: (state.newArrivals && state.newArrivals.items) || [] },
-                bestSeller: { enabled: !!(state.bestSeller && state.bestSeller.enabled), items: (state.bestSeller && state.bestSeller.items) || [] }
+                newArrivals: {
+                    enabled: !!(state.newArrivals && state.newArrivals.enabled),
+                    items: slimItems(state.newArrivals && state.newArrivals.items)
+                },
+                bestSeller: {
+                    enabled: !!(state.bestSeller && state.bestSeller.enabled),
+                    items: slimItems(state.bestSeller && state.bestSeller.items)
+                }
             };
             $('#hhps-payload').val(JSON.stringify(payload));
         }
 
         function idsOf(section){
             return (state[section].items || []).map(function(i){ return Number(i.id); });
+        }
+
+        function choiceButtons(images, selectedId, role){
+            var list = Array.isArray(images) ? images : [];
+            if (!list.length) {
+                return '<span class="hhps-img-empty">此商品尚無圖庫，請先到商品編輯上傳圖片</span>';
+            }
+            return '<div class="hhps-img-choices" data-role="'+role+'">'+
+                list.map(function(img){
+                    var sid = Number(img.id) || 0;
+                    var selected = sid === Number(selectedId);
+                    return '<button type="button" class="hhps-img-choice'+(selected?' is-selected':'')+'" data-image-id="'+sid+'" title="選擇此圖">'+
+                        '<img src="'+esc(img.thumb || img.url || '')+'" alt="">'+
+                    '</button>';
+                }).join('')+
+            '</div>';
         }
 
         function fillCategorySelects(){
@@ -876,9 +1097,20 @@ function hhps_admin_footer_script(): void
                 $list.append(
                     '<div class="hhps-row" data-index="'+i+'">'+
                         '<span class="hhps-handle" title="拖曳排序">⋮⋮</span>'+
-                        thumb+
-                        '<div><div class="hhps-row-name">'+esc(item.name)+'</div>'+
-                        '<div class="hhps-row-sub">'+esc(sub.join(' · '))+'</div></div>'+
+                        '<div class="hhps-row-main">'+
+                            '<div class="hhps-row-title">'+thumb+
+                                '<div><div class="hhps-row-name">'+esc(item.name)+'</div>'+
+                                '<div class="hhps-row-sub">'+esc(sub.join(' · '))+'</div></div>'+
+                            '</div>'+
+                            '<div class="hhps-img-pick">'+
+                                '<div><span class="hhps-img-pick-label">預設圖（卡片平常顯示）</span>'+
+                                    choiceButtons(item.images, item.imageId, 'image')+
+                                '</div>'+
+                                '<div><span class="hhps-img-pick-label">Hover 圖（滑過變換）</span>'+
+                                    choiceButtons(item.images, item.hoverImageId, 'hover')+
+                                '</div>'+
+                            '</div>'+
+                        '</div>'+
                         '<div class="hhps-row-actions">'+
                             '<button type="button" class="button-link hhps-up" aria-label="上移">↑</button>'+
                             '<button type="button" class="button-link hhps-down" aria-label="下移">↓</button>'+
@@ -914,8 +1146,36 @@ function hhps_admin_footer_script(): void
                 window.alert('此區塊最多 ' + MAX + ' 件商品');
                 return;
             }
-            state[section].items.push(item);
+            var images = Array.isArray(item.images) ? item.images : [];
+            var imageId = Number(item.imageId) || (images[0] && images[0].id) || 0;
+            var hoverImageId = Number(item.hoverImageId) || 0;
+            if (!hoverImageId && images.length > 1) {
+                hoverImageId = Number(images[1].id) || 0;
+            }
+            state[section].items.push({
+                id: Number(item.id),
+                name: item.name || '',
+                slug: item.slug || '',
+                sku: item.sku || '',
+                image: item.image || (images[0] && (images[0].thumb || images[0].url)) || '',
+                price: item.price,
+                status: item.status || '',
+                stock: item.stock || '',
+                images: images,
+                imageId: imageId,
+                hoverImageId: hoverImageId
+            });
             renderSection(section);
+        }
+
+        function thumbFor(item, imageId){
+            var list = Array.isArray(item.images) ? item.images : [];
+            for (var i = 0; i < list.length; i++) {
+                if (Number(list[i].id) === Number(imageId)) {
+                    return list[i].thumb || list[i].url || item.image || '';
+                }
+            }
+            return item.image || '';
         }
 
         $('input[data-field="enabled"]').on('change', function(){
@@ -933,6 +1193,25 @@ function hhps_admin_footer_script(): void
             var section = $card.data('section');
             var i = parseInt($(this).closest('.hhps-row').attr('data-index'), 10);
             state[section].items.splice(i, 1);
+            renderSection(section);
+        });
+        $(document).on('click', '.hhps-img-choice', function(e){
+            e.preventDefault();
+            e.stopPropagation();
+            var $btn = $(this);
+            var $row = $btn.closest('.hhps-row');
+            var section = $btn.closest('[data-section]').data('section');
+            var i = parseInt($row.attr('data-index'), 10);
+            var role = $btn.closest('.hhps-img-choices').attr('data-role');
+            var imageId = parseInt($btn.attr('data-image-id'), 10) || 0;
+            var item = state[section].items[i];
+            if (!item || !imageId) return;
+            if (role === 'hover') {
+                item.hoverImageId = imageId;
+            } else {
+                item.imageId = imageId;
+                item.image = thumbFor(item, imageId);
+            }
             renderSection(section);
         });
         $(document).on('click', '.hhps-up', function(){
