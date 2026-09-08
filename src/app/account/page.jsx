@@ -1355,9 +1355,7 @@ function AccountPageContent() {
         setCustomer(nextCustomer);
         setAuthProvider(data.authProvider || null);
         setProfileForm({
-          name:
-            String(nextCustomer.display_name || "").trim() ||
-            `${nextCustomer.first_name || ""} ${nextCustomer.last_name || ""}`.trim(),
+          name: String(nextCustomer.display_name || "").trim(),
           phone: nextCustomer.phone || nextCustomer.billing_phone || "",
           address: nextCustomer.billing_address || nextCustomer.address || "",
         });
@@ -1885,7 +1883,7 @@ function AccountPageContent() {
         <div className="w-full max-w-md text-center">
           <h2 className="mb-2 text-xl font-semibold text-black">尚未登入</h2>
           <p className="mb-8 text-sm text-[#666]">
-            請先登入以檢視您的會員中心與專屬優惠。
+            登入會員即可查看會員資料、訂單與專屬優惠。
           </p>
           <button
             onClick={() => {
@@ -1903,7 +1901,7 @@ function AccountPageContent() {
           <p className="mt-4 text-[13px] text-[#888]">
             還不是會員？{" "}
             <Link href="/register" className="text-black underline hover:opacity-60">
-              立即註冊
+              註冊會員
             </Link>
           </p>
           {error && (
@@ -2039,6 +2037,11 @@ function AccountPageContent() {
                         }))
                       }
                     />
+                    {!profileForm.name && !profileEditing ? (
+                      <p className="-mt-3 mb-5 text-[12px] leading-relaxed text-[#888] sm:-mt-2 sm:mb-6">
+                        尚未設定姓名，請點選「會員資料修改」補填。
+                      </p>
+                    ) : null}
                     <HoverUnderlineField
                       label="電話"
                       value={profileForm.phone}

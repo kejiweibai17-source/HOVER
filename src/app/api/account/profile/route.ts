@@ -58,16 +58,38 @@ function isPlaceholderGravatar(url: string) {
 }
 
 function resolveDisplayName(customer: any, sessionName?: string | null) {
-  const full = `${customer?.first_name || ""}${customer?.last_name ? ` ${customer.last_name}` : ""}`.trim();
-  if (full) return full;
+  const email = String(customer?.email || "").trim().toLowerCase();
+  const emailLocal = email.split("@")[0] || "";
+  const username = String(customer?.username || "").trim().toLowerCase();
+  const isUsableName = (value: unknown) => {
+    const name = String(value || "").trim();
+    const normalized = name.toLowerCase();
+    return Boolean(
+      name &&
+      !name.includes("@") &&
+      normalized !== email &&
+      normalized !== emailLocal &&
+      normalized !== username,
+    );
+  };
 
+  const accountName =
+    `${customer?.first_name || ""}${customer?.last_name ? ` ${customer.last_name}` : ""}`.trim();
+  const billingName =
+    `${customer?.billing?.first_name || ""}${customer?.billing?.last_name ? ` ${customer.billing.last_name}` : ""}`.trim();
   const meta: any[] = Array.isArray(customer?.meta_data) ? customer.meta_data : [];
-  const fromOAuthMeta = meta.find((m) => m.key === "oauth_display_name")?.value;
-  if (fromOAuthMeta) return String(fromOAuthMeta).trim();
+  const oauthName = meta.find((m) => m.key === "oauth_display_name")?.value;
 
-  const fromSession = String(sessionName || "").trim();
-  if (fromSession) return fromSession;
-  return customer?.email?.split("@")[0] || "會員";
+  const candidates = [
+    accountName,
+    billingName,
+    oauthName,
+    customer?.display_name,
+    customer?.name,
+    sessionName,
+  ];
+  const match = candidates.find(isUsableName);
+  return match ? String(match).trim() : "";
 }
 
 function normalizeAuthProvider(raw: unknown): string | null {
@@ -452,7 +474,10 @@ export async function GET() {
       }
       : {
         email: normalizedEmail,
-        display_name: resolveDisplayName(null, session?.user?.name) || normalizedEmail.split("@")[0],
+        display_name: resolveDisplayName(
+          { email: normalizedEmail },
+          session?.user?.name,
+        ),
         avatar_url: session?.user?.image || null,
       };
 

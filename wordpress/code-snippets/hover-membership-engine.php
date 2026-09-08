@@ -74,6 +74,75 @@ add_action('added_user_meta', 'hme_on_birthday_meta_saved', 20, 4);
 
 add_filter('woocommerce_coupon_is_valid', 'hme_validate_master_coupon', 20, 3);
 
+/**
+ * 一次性轉換舊優惠券：
+ * - 固定母券不設全域到期日；每位會員由 claimed_at 個別計算 30 天。
+ * - 舊 HOVER100-{會員ID}／HOVER-WELCOME-* 改為建立日起 30 天。
+ */
+add_action('admin_init', 'hme_migrate_legacy_coupon_expiry_to_30_days');
+
+function hme_migrate_legacy_coupon_expiry_to_30_days(): void
+{
+    $migration_key = 'hme_coupon_expiry_migration_30d_v2';
+    if (get_option($migration_key)) {
+        return;
+    }
+    if (!class_exists('WC_Coupon')) {
+        return;
+    }
+
+    $coupon_ids = get_posts([
+        'post_type'      => 'shop_coupon',
+        'post_status'    => 'any',
+        'posts_per_page' => -1,
+        'fields'         => 'ids',
+        'orderby'        => 'ID',
+        'order'          => 'ASC',
+    ]);
+
+    $updated = 0;
+    foreach ($coupon_ids as $coupon_id) {
+        $coupon = new WC_Coupon((int) $coupon_id);
+        $code = strtoupper(trim((string) $coupon->get_code()));
+        if ($code === '') {
+            continue;
+        }
+
+        // 母券供所有會員共用，不能設定單一固定到期日。
+        if (in_array($code, hme_master_coupon_codes(), true)) {
+            if ($coupon->get_date_expires()) {
+                $coupon->set_date_expires(null);
+                $coupon->save();
+                $updated++;
+            }
+            continue;
+        }
+
+        // 舊版入會禮原本建立為 90 天，改回「發放／建立日起 30 天」。
+        if (
+            !preg_match('/^HOVER100-\d+$/', $code) &&
+            !str_starts_with($code, 'HOVER-WELCOME-')
+        ) {
+            continue;
+        }
+
+        $created = $coupon->get_date_created();
+        if (!$created) {
+            continue;
+        }
+        $expires = clone $created;
+        $expires->modify('+' . HME_WELCOME_DAYS . ' days');
+        $coupon->set_date_expires($expires);
+        $coupon->save();
+        $updated++;
+    }
+
+    update_option($migration_key, [
+        'completed_at' => current_time('mysql'),
+        'updated'      => $updated,
+    ], false);
+}
+
 add_filter('cron_schedules', function ($schedules) {
     if (!isset($schedules['monthly'])) {
         $schedules['monthly'] = [

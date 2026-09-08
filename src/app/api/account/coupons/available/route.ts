@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { headers } from "next/headers";
 import {
   couponKindFromCode,
+  HOVER_MEMBERSHIP_META,
   MEMBERSHIP_RULES,
 } from "@/lib/membership";
 import {
@@ -13,6 +14,10 @@ import {
   masterGiftValidityDays,
   resolveMasterCouponStatus,
 } from "@/lib/masterCoupons";
+import {
+  birthdayClaimYearKey,
+  birthdayUsedYearKey,
+} from "@/lib/phoneGiftGuard";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -123,6 +128,23 @@ function metaValue(meta: any[], key: string): string {
   return row?.value != null ? String(row.value) : "";
 }
 
+function couponCreatedAt(coupon: any): string {
+  const raw = String(
+    coupon?.date_created_gmt || coupon?.date_created || "",
+  ).trim();
+  if (!raw) return "";
+  const timestamp = Date.parse(raw);
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : "";
+}
+
+function isLegacyGiftCode(code: string): boolean {
+  return (
+    /^HOVER100-\d+$/i.test(code) ||
+    /^HOVER-WELCOME-/i.test(code) ||
+    /^HOVER-BDAY-/i.test(code)
+  );
+}
+
 function buildVirtualMasterCoupon(
   wcCoupon: any,
   code: string,
@@ -174,6 +196,64 @@ export async function GET() {
     const month = now.getMonth() + 1;
     const exclusiveActive = Boolean(membership?.exclusiveActive);
 
+    // 舊制曾建立 HOVER100-{會員ID}／HOVER-BDAY-{月份}-{會員ID}，
+    // 且入會禮效期為 90 天。以舊券建立時間補齊新制 meta，
+    // 之後前台統一顯示固定母券與「發放日起 30 天」效期。
+    const legacyCodes = [
+      `HOVER100-${customerId}`,
+      `UFFRD-${customerId}`,
+      ...Array.from({ length: 12 }, (_, i) =>
+        `HOVER-BDAY-${i + 1}-${customerId}`,
+      ),
+    ];
+    const legacyResults = await Promise.all(
+      legacyCodes.map((code) => fetchCouponByCode(code, authHeader)),
+    );
+    const migrationUpdates: Array<{ key: string; value: string }> = [];
+    const addMigration = (key: string, value: string) => {
+      if (!value || metaValue(meta, key)) return;
+      meta.push({ key, value });
+      migrationUpdates.push({ key, value });
+    };
+
+    const legacyWelcome = legacyResults[0];
+    if (legacyWelcome && belongsToEmail(legacyWelcome, customerEmail)) {
+      const claimedAt =
+        metaValue(meta, "hover_welcome_claimed_at") ||
+        couponCreatedAt(legacyWelcome);
+      addMigration(HOVER_MEMBERSHIP_META.welcomeClaimed, "1");
+      addMigration("hover_welcome_claimed_at", claimedAt);
+      if (isUsed(legacyWelcome)) {
+        addMigration("hover_welcome_used", "1");
+      }
+    }
+
+    const legacyBirthday = legacyResults[month + 1];
+    if (legacyBirthday && belongsToEmail(legacyBirthday, customerEmail)) {
+      const claimedAt =
+        metaValue(meta, `hover_birthday_claim_at_${year}_${month}`) ||
+        couponCreatedAt(legacyBirthday);
+      addMigration(`hover_birthday_claim_${year}_${month}`, "1");
+      addMigration(birthdayClaimYearKey(year), "1");
+      addMigration(`hover_birthday_claim_at_${year}_${month}`, claimedAt);
+      if (isUsed(legacyBirthday)) {
+        addMigration(`hover_birthday_used_${year}_${month}`, "1");
+        addMigration(birthdayUsedYearKey(year), "1");
+      }
+    }
+
+    if (migrationUpdates.length) {
+      await fetch(`${BASE}/wp-json/wc/v3/customers/${customerId}`, {
+        method: "PUT",
+        headers: {
+          ...authHeader,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ meta_data: migrationUpdates }),
+        cache: "no-store",
+      });
+    }
+
     const masterCodes = [
       MASTER_COUPONS.welcome,
       exclusiveActive
@@ -221,18 +301,6 @@ export async function GET() {
       );
     }
 
-    // 舊版每人專屬券（HOVER100-123、HOVER-BDAY-…）仍顯示
-    const legacyCodes = [
-      `HOVER100-${customerId}`,
-      `UFFRD-${customerId}`,
-      ...Array.from({ length: 12 }, (_, i) =>
-        `HOVER-BDAY-${i + 1}-${customerId}`,
-      ),
-    ];
-    const legacyResults = await Promise.all(
-      legacyCodes.map((code) => fetchCouponByCode(code, authHeader)),
-    );
-
     const couponsRes = await fetch(
       `${BASE}/wp-json/wc/v3/coupons?per_page=100&orderby=date&order=desc`,
       { headers: authHeader, cache: "no-store" },
@@ -243,6 +311,7 @@ export async function GET() {
       if (!c) continue;
       const key = String(c.code || "").toUpperCase();
       if (!key || byCode.has(key) || isMasterCouponCode(key)) continue;
+      if (isLegacyGiftCode(key)) continue;
       if (!belongsToEmail(c, customerEmail)) continue;
       byCode.set(key, mapCoupon(c));
     }

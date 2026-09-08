@@ -134,7 +134,7 @@ export default function RegisterPage() {
               type="button"
               className="pb-3 text-[15px] font-bold text-black border-b-2 border-black -mb-px"
             >
-              加入會員
+              註冊會員
             </button>
           </div>
 
@@ -201,7 +201,7 @@ export default function RegisterPage() {
             />
             <div>
               <AuthField
-                label="西元生日"
+                label="生日（選填）"
                 type="date"
                 name="birthday"
                 value={birthday}
@@ -210,7 +210,7 @@ export default function RegisterPage() {
                 autoComplete="bday"
               />
               <p className="mt-1.5 text-[12px] leading-[1.6] text-[#888]">
-                選填。可之後至會員中心補填；設定完成後不可自行修改。
+                可於之後至會員中心補填；設定完成後不可自行修改。
               </p>
             </div>
 
@@ -220,15 +220,15 @@ export default function RegisterPage() {
             />
 
             <p className="text-[12px] leading-[1.7] text-[#c90000]">
-              註冊完成時，您代表您同意使用者{" "}
+              完成註冊即表示您同意 HOVER 的「
               <Link href="/terms" className="underline hover:opacity-70">
-                條款
+                服務條款
               </Link>
-              {" "}與{" "}
+              」與「
               <Link href="/privacy" className="underline hover:opacity-70">
-                隱私政策
+                隱私權保護
               </Link>
-              。
+              」。
             </p>
 
             <button
@@ -241,14 +241,13 @@ export default function RegisterPage() {
           </form>
 
           <p className="mt-8 text-center text-[13px] text-[#666]">
-            已有帳號？{" "}
+            已有會員帳號？{" "}
             <Link
               href={`/login?next=${encodeURIComponent(next)}`}
               className="font-semibold text-[#2a514d] underline underline-offset-2"
             >
               前往登入
             </Link>
-            （含 Google／LINE／Facebook）
           </p>
         </div>
       </div>

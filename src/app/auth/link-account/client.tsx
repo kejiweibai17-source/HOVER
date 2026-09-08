@@ -167,7 +167,7 @@ function LinkAccountContent() {
           href={registerHref}
           className="mt-5 inline-flex w-full items-center justify-center border border-[#2a514d] py-3.5 text-[14px] font-semibold tracking-[0.06em] text-[#2a514d]"
         >
-          前往加入會員
+          前往註冊會員
         </Link>
       </section>
 

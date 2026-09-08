@@ -545,7 +545,7 @@ function hop_output_document(WC_Order $order, string $doc): void
         <div class="doc-footer">
             <div class="notice-txt">
                 如商品有任何問題，請保留完整包裝，<br>
-                並於收到商品7日內聯繫官方客服 Line ID : @ HOVER。
+                並於收到商品7日內聯繫官方客服 Line ID : @hover.tw。
             </div>
             <?php echo hop_print_logo_html(); ?>
         </div>
