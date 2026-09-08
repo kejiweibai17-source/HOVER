@@ -122,7 +122,8 @@ function getItemVariantText(item) {
   const metas = Array.isArray(item?.meta_data) ? item.meta_data : [];
   const sizeKeys = /尺寸|size|pa_size|pa_尺寸/i;
   const colorKeys = /顏色|color|colour|pa_color|pa_顏色|pa_colour/i;
-  const skipKeys = /^(variant|_reduced_stock|數量|qty|quantity)$/i;
+  const skipKeys =
+    /^(variant|_reduced_stock|數量|qty|quantity|_hover_promotion_type|_hover_promotion_name|_hover_promotion_id)$/i;
 
   let size = "";
   let color = "";
@@ -170,6 +171,14 @@ function getItemVariantText(item) {
     unique.push(p);
   }
   return unique.join(" / ");
+}
+
+function getItemPromotionLabel(item) {
+  const metas = Array.isArray(item?.meta_data) ? item.meta_data : [];
+  const type = metas.find(
+    (meta) => String(meta?.key || "") === "_hover_promotion_type",
+  );
+  return String(type?.value || "").trim();
 }
 
 /** 商品名若已含尺寸／顏色，剝掉以免與第二行重複 */
@@ -914,6 +923,7 @@ function OrderDetail({
           {(order.line_items || []).map((item, index) => {
             const variant = getItemVariantText(item);
             const displayName = getItemDisplayName(item);
+            const promotionLabel = getItemPromotionLabel(item);
             const qty = Number(item.quantity) || 1;
             const variantLine = [
               variant ? variant.replace(/\s*\/\s*/g, " / ") : null,
@@ -945,6 +955,11 @@ function OrderDetail({
                 <div className="min-w-0 flex-1">
                   <div className="flex items-start justify-between gap-3">
                     <p className="min-w-0 text-[14px] font-medium leading-snug text-black">
+                      {promotionLabel ? (
+                        <span className="mr-2 text-[11px] font-normal text-[#2a514d]">
+                          {promotionLabel}
+                        </span>
+                      ) : null}
                       {displayName}
                     </p>
                     <p className="shrink-0 text-[14px] font-medium text-black">
@@ -1114,6 +1129,7 @@ function OrderDetail({
           {(order.line_items || []).map((item, index) => {
             const variant = getItemVariantText(item);
             const displayName = getItemDisplayName(item);
+            const promotionLabel = getItemPromotionLabel(item);
             const qty = Number(item.quantity) || 1;
             const unit =
               Number(item.price || 0) ||
@@ -1143,6 +1159,11 @@ function OrderDetail({
                   </div>
                   <div className="min-w-0">
                     <p className="text-[14px] font-medium text-black">
+                      {promotionLabel ? (
+                        <span className="mr-2 text-[11px] font-normal text-[#2a514d]">
+                          {promotionLabel}
+                        </span>
+                      ) : null}
                       {displayName}
                     </p>
                     {variant ? (

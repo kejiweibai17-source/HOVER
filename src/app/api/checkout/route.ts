@@ -18,6 +18,11 @@ import { checkCartStock } from "@/lib/validateCartStock";
 import { fetchShippingSettings, shippingFeeFor } from "@/lib/shippingDefaults";
 import { generateCheckMacValue, getEcpayDate } from "@/lib/ecpay";
 import {
+  evaluatePromotions,
+  promotionLinePrice,
+  type EvaluatedPromotion,
+} from "@/lib/promotions";
+import {
   invoiceMetaEntries,
   validateInvoicePreference,
   type InvoicePreference,
@@ -60,13 +65,24 @@ interface RequestBody {
   coupon?: { code: string; amount: number } | string | null;
   memberDiscount?: number;
   invoice?: InvoicePreference | null;
+  promotions?: Array<{ id: string; qty?: number }>;
 }
 
-async function productIsOnSale(
+type PromotionOrderLine = {
+  promotion: EvaluatedPromotion;
+  qty: number;
+  price: number;
+  wcProductId: number;
+  wcVariationId?: number;
+  title: string;
+  name?: string;
+};
+
+async function fetchProductPricing(
   auth: string,
   productId: number,
   variationId?: number,
-): Promise<boolean> {
+): Promise<{ price: number; onSale: boolean } | null> {
   try {
     const root = BASE.replace(/\/$/, "");
     const url =
@@ -77,11 +93,13 @@ async function productIsOnSale(
       headers: { Authorization: auth },
       cache: "no-store",
     });
-    if (!res.ok) return false;
+    if (!res.ok) return null;
     const product = await res.json();
-    return Boolean(product.on_sale);
+    const price = Number(product?.price);
+    if (!Number.isFinite(price) || price < 0) return null;
+    return { price, onSale: Boolean(product?.on_sale) };
   } catch {
-    return false;
+    return null;
   }
 }
 
@@ -251,7 +269,7 @@ function generateLinePaySignature(uri: string, requestBody: string, nonce: strin
 export async function POST(req: Request) {
   try {
     const auth = basicAuth();
-    if (!MERCHANT_ID || !HASH_KEY || !HASH_IV) {
+    if (!MERCHANT_ID || !HASH_KEY || !HASH_IV || !auth || !BASE) {
       return NextResponse.json({ ok: false, message: "Server Config Error" }, { status: 500 });
     }
 
@@ -277,33 +295,134 @@ export async function POST(req: Request) {
     // ============================================================================
     let calculatedSubtotal = 0;
     let regularSubtotal = 0;
+    const resolvedBaseLines: Array<{
+      item: CartItem;
+      unit: number;
+      qty: number;
+      line: number;
+    }> = [];
     for (const item of items) {
       // 確保至少有傳入 ID
       if (!item.wcProductId && !item.id) {
         return NextResponse.json({ ok: false, message: "商品資料異常" }, { status: 400 });
       }
-      const unit = toTwdInt(item.price);
+      const claimedUnit = toTwdInt(item.price);
       const qty = Math.max(1, Math.round(Number(item.qty) || 0));
-      if (!Number.isFinite(unit) || unit < 0 || !Number.isFinite(qty)) {
+      if (!Number.isFinite(claimedUnit) || claimedUnit < 0 || !Number.isFinite(qty)) {
         return NextResponse.json({ ok: false, message: "商品金額異常" }, { status: 400 });
       }
-      const lineTotal = unit * qty;
-      calculatedSubtotal += lineTotal;
       const productId = Number(item.wcProductId || item.id);
       const variationId = Number(item.wcVariationId) || 0;
-      if (typeof item.onSale === "boolean") {
-        if (!item.onSale) regularSubtotal += lineTotal;
-      } else if (auth && productId) {
-        const onSale = await productIsOnSale(auth, productId, variationId || undefined);
-        if (!onSale) regularSubtotal += lineTotal;
-      } else {
-        regularSubtotal += lineTotal;
+      const current = await fetchProductPricing(
+        auth,
+        productId,
+        variationId || undefined,
+      );
+      if (!current) {
+        return NextResponse.json(
+          { ok: false, message: "無法取得最新商品價格，請稍後再試。" },
+          { status: 503 },
+        );
+      }
+      if (Math.abs(current.price - claimedUnit) > 1) {
+        return NextResponse.json(
+          { ok: false, message: "商品價格已更新，請重新整理購物車。" },
+          { status: 409 },
+        );
+      }
+      const unit = current.price;
+      const lineTotal = unit * qty;
+      calculatedSubtotal += lineTotal;
+      if (!current.onSale) regularSubtotal += lineTotal;
+      resolvedBaseLines.push({ item, unit, qty, line: lineTotal });
+    }
+
+    const requestedPromotions = Array.isArray(body.promotions)
+      ? body.promotions.slice(0, 20)
+      : [];
+    const promotionLines: PromotionOrderLine[] = [];
+    if (requestedPromotions.length > 0) {
+      if (!auth || !BASE) {
+        return NextResponse.json(
+          { ok: false, message: "促銷活動暫時無法驗證" },
+          { status: 503 },
+        );
+      }
+      const duplicateIds = new Set<string>();
+      for (const selected of requestedPromotions) {
+        const id = String(selected?.id || "").trim();
+        if (!id || duplicateIds.has(id)) {
+          return NextResponse.json(
+            { ok: false, message: "促銷活動資料異常，請重新整理頁面。" },
+            { status: 400 },
+          );
+        }
+        duplicateIds.add(id);
+      }
+      const evaluated = await evaluatePromotions(items, auth, {
+        cache: "no-store",
+      });
+      const selectedRules = requestedPromotions.map((selected) => ({
+        selected,
+        promotion: evaluated.find(
+          (promotion) => promotion.id === String(selected.id),
+        ),
+      }));
+      if (
+        selectedRules.some(
+          ({ promotion }) => !promotion || !promotion.eligible,
+        )
+      ) {
+        return NextResponse.json(
+          { ok: false, message: "購物車已不符合活動條件，請重新選擇優惠。" },
+          { status: 409 },
+        );
+      }
+      if (
+        selectedRules.length > 1 &&
+        selectedRules.some(({ promotion }) => !promotion?.stackable)
+      ) {
+        return NextResponse.json(
+          { ok: false, message: "此活動不可與其他滿額贈或加價購同時使用。" },
+          { status: 409 },
+        );
+      }
+      for (const { selected, promotion } of selectedRules) {
+        if (!promotion) continue;
+        const requestedQty = Math.max(
+          1,
+          Math.round(Number(selected.qty) || 1),
+        );
+        const qty =
+          promotion.type === "gift"
+            ? promotion.rewardQty
+            : Math.min(requestedQty, promotion.limitQty);
+        if (
+          (promotion.type === "gift" && requestedQty !== promotion.rewardQty) ||
+          (promotion.type === "addon" && requestedQty > promotion.limitQty)
+        ) {
+          return NextResponse.json(
+            { ok: false, message: "活動商品數量不正確，請重新整理頁面。" },
+            { status: 409 },
+          );
+        }
+        promotionLines.push({
+          promotion,
+          qty,
+          price: promotionLinePrice(promotion),
+          wcProductId: promotion.product.productId,
+          wcVariationId: promotion.product.variationId || undefined,
+          title: promotion.product.name,
+        });
       }
     }
 
-    // 庫存對齊 WooCommerce（禁止無庫存下單 / 數量上限）
+    // 基本商品與活動商品合併驗證，避免同一 SKU 分開計算而超賣。
     if (auth && BASE && items?.length) {
-      const stockCheck = await checkCartStock(BASE, auth, items);
+      const stockCheck = await checkCartStock(BASE, auth, [
+        ...items,
+        ...promotionLines,
+      ]);
       if (!stockCheck.ok) {
         return NextResponse.json(
           { ok: false, message: stockCheck.message || "庫存不足" },
@@ -387,7 +506,12 @@ export async function POST(req: Request) {
     }
 
     const totalDiscount = serverMemberDiscount + serverCouponDiscount;
-    const discountedSubtotal = Math.max(0, calculatedSubtotal - totalDiscount);
+    const promotionTotal = promotionLines.reduce(
+      (sum, line) => sum + line.price * line.qty,
+      0,
+    );
+    const discountedSubtotal =
+      Math.max(0, calculatedSubtotal - totalDiscount) + promotionTotal;
 
     const shippingSettings = await fetchShippingSettings({ cache: "no-store" });
     const realShippingCost = shippingFeeFor(
@@ -427,7 +551,7 @@ export async function POST(req: Request) {
     }
 
     const cleanItemName = (
-      items
+      [...(items || []), ...promotionLines]
         ?.map((it) =>
           String(it.title || it.name || "")
             .replace(/[#&<>'"%\\]/g, "")
@@ -486,6 +610,17 @@ export async function POST(req: Request) {
         }
 
         if (validatedCouponCode) meta_data.push({ key: "_used_coupon_code", value: validatedCouponCode });
+        if (promotionLines.length) {
+          meta_data.push({
+            key: "_hover_promotions",
+            value: promotionLines.map((line) => ({
+              id: line.promotion.id,
+              type: line.promotion.type,
+              name: line.promotion.name,
+              qty: line.qty,
+            })),
+          });
+        }
 
         const fee_lines: { name: string; total: string }[] = [];
         if (serverMemberDiscount > 0) {
@@ -525,21 +660,47 @@ export async function POST(req: Request) {
           },
           shipping_lines: [{ method_id: methodId, method_title: shippingTitle, total: String(realShippingCost) }],
           fee_lines,
-          line_items: items.map((it) => {
-            const unit = toTwdInt(it.price);
-            const qty = Math.max(1, Math.round(Number(it.qty) || 0));
-            const line = unit * qty;
-            return {
-              product_id: Number(it.wcProductId || it.id),
-              ...(it.wcVariationId
-                ? { variation_id: Number(it.wcVariationId) }
-                : {}),
-              quantity: qty,
-              // 鎖定站內購物車單價，與綠界／發票金額一致
-              subtotal: String(line),
-              total: String(line),
-            };
-          }),
+          line_items: [
+            ...resolvedBaseLines.map(({ item: it, qty, line }) => {
+              return {
+                product_id: Number(it.wcProductId || it.id),
+                ...(it.wcVariationId
+                  ? { variation_id: Number(it.wcVariationId) }
+                  : {}),
+                quantity: qty,
+                // 鎖定站內購物車單價，與綠界／發票金額一致
+                subtotal: String(line),
+                total: String(line),
+              };
+            }),
+            ...promotionLines.map((line) => {
+              const total = line.price * line.qty;
+              return {
+                product_id: line.wcProductId,
+                ...(line.wcVariationId
+                  ? { variation_id: line.wcVariationId }
+                  : {}),
+                quantity: line.qty,
+                subtotal: String(total),
+                total: String(total),
+                meta_data: [
+                  {
+                    key: "_hover_promotion_type",
+                    value:
+                      line.promotion.type === "gift" ? "滿額贈" : "加價購",
+                  },
+                  {
+                    key: "_hover_promotion_name",
+                    value: line.promotion.name,
+                  },
+                  {
+                    key: "_hover_promotion_id",
+                    value: line.promotion.id,
+                  },
+                ],
+              };
+            }),
+          ],
           meta_data,
         };
 

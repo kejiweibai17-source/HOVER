@@ -446,11 +446,14 @@ function calcPricing(
   shipMethod = "711",
   couponDiscount = 0,
   tierDiscountRate = 1,
+  promotionTotal = 0,
 ) {
-  const subtotal = items.reduce(
+  const baseSubtotal = items.reduce(
     (s, it) => s + (Number(it.price) || 0) * (Number(it.qty) || 0),
     0,
   );
+  const safePromotionTotal = Math.max(0, Number(promotionTotal) || 0);
+  const subtotal = baseSubtotal + safePromotionTotal;
   let memberDiscountAmount = 0;
   const regularSubtotal = items.reduce((s, it) => {
     if (it.onSale) return s;
@@ -459,12 +462,13 @@ function calcPricing(
   if (tierDiscountRate < 1 && regularSubtotal > 0)
     memberDiscountAmount = Math.round(regularSubtotal * (1 - tierDiscountRate));
 
-  const subtotalAfterMember = Math.max(0, subtotal - memberDiscountAmount);
+  const subtotalAfterMember = Math.max(0, baseSubtotal - memberDiscountAmount);
   const safeCouponDiscount = Math.min(
     Math.max(Number(couponDiscount) || 0, 0),
     subtotalAfterMember,
   );
-  const finalSubtotal = Math.max(0, subtotalAfterMember - safeCouponDiscount);
+  const finalSubtotal =
+    Math.max(0, subtotalAfterMember - safeCouponDiscount) + safePromotionTotal;
   const freeShipThreshold = shippingSettings.freeShipThreshold || 2000;
   const shipping = shippingFeeFor(finalSubtotal, shipMethod, {
     ...shippingSettings,
@@ -475,6 +479,8 @@ function calcPricing(
 
   return {
     subtotal,
+    baseSubtotal,
+    promotionTotal: safePromotionTotal,
     memberDiscountAmount,
     couponDiscount: safeCouponDiscount,
     discountedSubtotal: finalSubtotal,
@@ -494,13 +500,16 @@ function buildCheckoutPricing(
   shippingSettings = DEFAULT_SHIPPING,
 ) {
   const subtotal = pricing.subtotal;
+  const baseSubtotal = pricing.baseSubtotal ?? subtotal;
+  const promotionTotal = Math.max(0, Number(pricing.promotionTotal) || 0);
   const memberDiscount = pricing.memberDiscountAmount || 0;
-  const subtotalAfterMember = Math.max(0, subtotal - memberDiscount);
+  const subtotalAfterMember = Math.max(0, baseSubtotal - memberDiscount);
   const safeCoupon = Math.min(
     Math.max(Number(couponDiscount) || 0, 0),
     subtotalAfterMember,
   );
-  const finalSubtotal = Math.max(0, subtotalAfterMember - safeCoupon);
+  const finalSubtotal =
+    Math.max(0, subtotalAfterMember - safeCoupon) + promotionTotal;
   const freeShipThreshold =
     shippingSettings.freeShipThreshold || pricing.freeShipThreshold || 2000;
   const shipping = shippingFeeFor(finalSubtotal, shipMethod, {
@@ -510,6 +519,8 @@ function buildCheckoutPricing(
 
   return {
     subtotal,
+    baseSubtotal,
+    promotionTotal,
     memberDiscountAmount: memberDiscount,
     couponDiscount: safeCoupon,
     activityDiscount: memberDiscount + safeCoupon,
@@ -860,6 +871,136 @@ function CheckoutProductThumb({ item }) {
   );
 }
 
+function PromotionOffers({
+  promotions = [],
+  selectedPromotions = [],
+  onToggle,
+  onQuantity,
+}) {
+  if (!promotions.length) return null;
+  const selectedIds = new Set(selectedPromotions.map((item) => item.id));
+
+  return (
+    <section className="mt-8 border-t border-[#e8e8e8] pt-6">
+      <h2 className="mb-4 text-[15px] font-semibold text-black">
+        滿額贈・加價購
+      </h2>
+      <div className="space-y-3">
+        {promotions.map((promotion) => {
+          const selected = selectedIds.has(promotion.id);
+          const selectedPromotion = selectedPromotions.find(
+            (item) => item.id === promotion.id,
+          );
+          const disabled = !promotion.eligible;
+          return (
+            <div
+              key={promotion.id}
+              className={`flex items-center gap-3 border p-3 ${
+                selected ? "border-[#2a514d] bg-[#f4f8f7]" : "border-[#ddd]"
+              }`}
+            >
+              <div className="h-16 w-12 shrink-0 overflow-hidden bg-[#f3f3f1]">
+                {promotion.product?.image ? (
+                  <img
+                    src={promotion.product.image}
+                    alt=""
+                    className="h-full w-full object-cover"
+                  />
+                ) : null}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[12px] text-[#2a514d]">
+                  {promotion.type === "gift" ? "滿額贈" : "加價購"}・滿{" "}
+                  {currency(promotion.threshold)}
+                </p>
+                <p className="mt-0.5 text-[13px] font-medium text-black">
+                  {promotion.name}
+                </p>
+                <p className="mt-0.5 truncate text-[12px] text-[#666]">
+                  {promotion.product?.name}
+                  {promotion.type === "gift"
+                    ? `／贈送 ${promotion.rewardQty} 件`
+                    : `／加購價 ${currency(promotion.purchasePrice)}`}
+                </p>
+                {!promotion.inStock ? (
+                  <p className="mt-1 text-[11px] text-[#c90000]">目前已售完</p>
+                ) : promotion.remaining > 0 ? (
+                  <p className="mt-1 text-[11px] text-[#888]">
+                    再消費 {currency(promotion.remaining)} 即可選擇
+                  </p>
+                ) : null}
+              </div>
+              <div className="shrink-0">
+                <button
+                  type="button"
+                  disabled={disabled}
+                  onClick={() => onToggle?.(promotion)}
+                  className={`px-3 py-2 text-[12px] transition-colors ${
+                    selected
+                      ? "bg-black text-white"
+                      : disabled
+                        ? "cursor-not-allowed bg-[#eee] text-[#aaa]"
+                        : "bg-[#2a514d] text-white hover:bg-[#1e3d3a]"
+                  }`}
+                >
+                  {selected
+                    ? "移除"
+                    : promotion.type === "gift"
+                      ? "領取"
+                      : "加購"}
+                </button>
+                {selected &&
+                promotion.type === "addon" &&
+                promotion.limitQty > 1 ? (
+                  <div className="mt-2 flex items-center justify-between border border-[#ccc]">
+                    <button
+                      type="button"
+                      className="h-7 w-7"
+                      onClick={() =>
+                        onQuantity?.(
+                          promotion.id,
+                          Math.max(
+                            1,
+                            Number(selectedPromotion?.selectedQty || 1) - 1,
+                          ),
+                        )
+                      }
+                    >
+                      −
+                    </button>
+                    <span className="text-[12px]">
+                      {selectedPromotion?.selectedQty || 1}
+                    </span>
+                    <button
+                      type="button"
+                      className="h-7 w-7"
+                      disabled={
+                        Number(selectedPromotion?.selectedQty || 1) >=
+                        promotion.limitQty
+                      }
+                      onClick={() =>
+                        onQuantity?.(
+                          promotion.id,
+                          Math.min(
+                            promotion.limitQty,
+                            Number(selectedPromotion?.selectedQty || 1) + 1,
+                          ),
+                        )
+                      }
+                    >
+                      ＋
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
 // ✅ Cart Step 1 — 對齊設計稿（商品列＋金額摘要）
 function CartStep({
   items,
@@ -870,6 +1011,10 @@ function CartStep({
   membership,
   shipMethod,
   shippingSettings,
+  promotions,
+  selectedPromotions,
+  onTogglePromotion,
+  onPromotionQuantity,
 }) {
   const orderSummary = useMemo(
     () =>
@@ -993,6 +1138,13 @@ function CartStep({
         })}
       </div>
 
+      <PromotionOffers
+        promotions={promotions}
+        selectedPromotions={selectedPromotions}
+        onToggle={onTogglePromotion}
+        onQuantity={onPromotionQuantity}
+      />
+
       <div className="mt-8">
         <OrderSummaryRows
           summary={orderSummary}
@@ -1034,6 +1186,7 @@ function CartStep({
 // ✅ Cart Step 2 (Checkout)
 function CheckoutStep({
   items,
+  selectedPromotions = [],
   pricing,
   contact,
   setContact,
@@ -1287,6 +1440,13 @@ function CheckoutStep({
         price: it.price,
         title: it.name || it.title,
         onSale: Boolean(it.onSale),
+      })),
+      promotions: selectedPromotions.map((promotion) => ({
+        id: promotion.id,
+        qty:
+          promotion.type === "gift"
+            ? promotion.rewardQty
+            : promotion.selectedQty || 1,
       })),
       contact: { email: contact.email.trim() },
       addr: {
@@ -1689,6 +1849,34 @@ function CheckoutStep({
                   </div>
                 );
               })}
+              {selectedPromotions.map((promotion) => {
+                const qty =
+                  promotion.type === "gift"
+                    ? promotion.rewardQty
+                    : promotion.selectedQty || 1;
+                const lineTotal =
+                  promotion.type === "addon"
+                    ? promotion.purchasePrice * qty
+                    : 0;
+                return (
+                  <div
+                    key={`promotion-${promotion.id}`}
+                    className="text-[13px] text-black"
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="min-w-0 flex-1 leading-snug">
+                        <span className="mr-2 text-[11px] text-[#2a514d]">
+                          {promotion.type === "gift" ? "贈品" : "加價購"}
+                        </span>
+                        {promotion.product?.name} × {qty}
+                      </span>
+                      <span className="shrink-0 whitespace-nowrap font-semibold">
+                        {currency(lineTotal)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
             <div className="mt-8 flex items-end justify-between gap-4 border-t border-[#e8e8e8] pt-6">
@@ -1884,6 +2072,33 @@ function CartContent() {
   const [payMethod, setPayMethod] = useState("atm");
   const [membership, setMembership] = useState(null);
   const [discountRate, setDiscountRate] = useState(1);
+  const [promotions, setPromotions] = useState([]);
+  const [selectedPromotionChoices, setSelectedPromotionChoices] = useState([]);
+  const selectedPromotions = useMemo(
+    () =>
+      selectedPromotionChoices
+        .map((choice) => {
+          const promotion = promotions.find((row) => row.id === choice.id);
+          return promotion?.eligible
+            ? { ...promotion, selectedQty: choice.qty || 1 }
+            : null;
+        })
+        .filter(Boolean),
+    [promotions, selectedPromotionChoices],
+  );
+  const promotionTotal = useMemo(
+    () =>
+      selectedPromotions.reduce(
+        (sum, promotion) =>
+          sum +
+          (promotion.type === "addon"
+            ? Number(promotion.purchasePrice || 0) *
+              Number(promotion.selectedQty || 1)
+            : 0),
+        0,
+      ),
+    [selectedPromotions],
+  );
   /** 下單成功後禁止把舊表單再寫回 sessionStorage（否則跳轉綠界前 effect 會還原草稿） */
   const skipCheckoutPersist = useRef(false);
 
@@ -1933,6 +2148,11 @@ function CartContent() {
       const sItems = sessionStorage.getItem("checkout_items");
       if (sItems) {
         _items = JSON.parse(sItems);
+      }
+      const sPromotions = sessionStorage.getItem("checkout_promotions");
+      if (sPromotions) {
+        const parsed = JSON.parse(sPromotions);
+        if (Array.isArray(parsed)) setSelectedPromotionChoices(parsed);
       }
     } catch (e) {}
 
@@ -2071,6 +2291,56 @@ function CartContent() {
       .join("|"),
   ]);
 
+  useEffect(() => {
+    if (!itemsLoaded || !items.length) {
+      setPromotions([]);
+      return;
+    }
+    let cancelled = false;
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await fetch("/api/promotions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            items: items.map((item) => ({
+              wcProductId: item.wcProductId || item.id,
+              wcVariationId: item.wcVariationId,
+              price: item.price,
+              qty: item.qty,
+            })),
+          }),
+        });
+        const data = await response.json();
+        if (cancelled || !response.ok) return;
+        const next = Array.isArray(data?.promotions) ? data.promotions : [];
+        setPromotions(next);
+        setSelectedPromotionChoices((current) =>
+          current.filter((choice) =>
+            next.some(
+              (promotion) =>
+                promotion.id === choice.id && promotion.eligible,
+            ),
+          ),
+        );
+      } catch (error) {
+        if (!cancelled) console.error("promotion sync failed", error);
+      }
+    }, 200);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [
+    itemsLoaded,
+    items
+      .map(
+        (item) =>
+          `${item.wcProductId || item.id}:${item.wcVariationId || 0}:${item.qty}:${item.price}`,
+      )
+      .join("|"),
+  ]);
+
   // 🚨 【護城河 3】：任何輸入狀態改變，立刻同步至 SessionStorage
   useEffect(() => {
     if (!itemsLoaded || skipCheckoutPersist.current) return;
@@ -2080,12 +2350,81 @@ function CartContent() {
     sessionStorage.setItem("checkout_payMethod", payMethod);
     sessionStorage.setItem("checkout_step", step.toString());
     sessionStorage.setItem("checkout_items", JSON.stringify(items));
-  }, [contact, addr, shipMethod, payMethod, step, items, itemsLoaded]);
+    sessionStorage.setItem(
+      "checkout_promotions",
+      JSON.stringify(selectedPromotionChoices),
+    );
+  }, [
+    contact,
+    addr,
+    shipMethod,
+    payMethod,
+    step,
+    items,
+    selectedPromotionChoices,
+    itemsLoaded,
+  ]);
 
   useEffect(() => {
     if (!itemsLoaded) return;
-    setPricing(calcPricing(items, shippingSettings, shipMethod, 0, discountRate));
-  }, [items, itemsLoaded, discountRate, shipMethod, shippingSettings]);
+    setPricing(
+      calcPricing(
+        items,
+        shippingSettings,
+        shipMethod,
+        0,
+        discountRate,
+        promotionTotal,
+      ),
+    );
+  }, [
+    items,
+    itemsLoaded,
+    discountRate,
+    shipMethod,
+    shippingSettings,
+    promotionTotal,
+  ]);
+
+  const togglePromotion = useCallback((promotion) => {
+    if (!promotion?.eligible) return;
+    setSelectedPromotionChoices((current) => {
+      if (current.some((choice) => choice.id === promotion.id)) {
+        return current.filter((choice) => choice.id !== promotion.id);
+      }
+      const next = {
+        id: promotion.id,
+        qty: promotion.type === "gift" ? promotion.rewardQty : 1,
+      };
+      if (
+        !promotion.stackable ||
+        current.some((choice) => {
+          const selected = promotions.find((row) => row.id === choice.id);
+          return selected && !selected.stackable;
+        })
+      ) {
+        return [next];
+      }
+      return [...current, next];
+    });
+  }, [promotions]);
+
+  const updatePromotionQuantity = useCallback(
+    (id, qty) => {
+      const promotion = promotions.find((row) => row.id === id);
+      if (!promotion || promotion.type !== "addon") return;
+      const safeQty = Math.max(
+        1,
+        Math.min(promotion.limitQty, Math.round(Number(qty) || 1)),
+      );
+      setSelectedPromotionChoices((current) =>
+        current.map((choice) =>
+          choice.id === id ? { ...choice, qty: safeQty } : choice,
+        ),
+      );
+    },
+    [promotions],
+  );
 
   // ✅ 修正數量增減與移除，先更新 Local State，再更新 Store
   const updateQty = (id, newQty) => {
@@ -2113,6 +2452,7 @@ function CartContent() {
     setAddr(emptyAddr);
     setShipMethod("711");
     setPayMethod("atm");
+    setSelectedPromotionChoices([]);
     clearCheckoutSession();
     if (typeof storeClearCart === "function") storeClearCart();
   }, [emptyAddr, storeClearCart]);
@@ -2151,6 +2491,10 @@ function CartContent() {
                 pricing={pricing}
                 shipMethod={shipMethod}
                 shippingSettings={shippingSettings}
+                promotions={promotions}
+                selectedPromotions={selectedPromotions}
+                onTogglePromotion={togglePromotion}
+                onPromotionQuantity={updatePromotionQuantity}
                 onUpdateQty={updateQty}
                 onRemove={removeItem}
                 onNext={() => {
@@ -2169,6 +2513,7 @@ function CartContent() {
             >
               <CheckoutStep
                 items={items}
+                selectedPromotions={selectedPromotions}
                 pricing={pricing}
                 contact={contact}
                 setContact={setContact}

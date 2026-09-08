@@ -6,6 +6,7 @@ export const CHECKOUT_SESSION_KEYS = [
   "checkout_payMethod",
   "checkout_step",
   "checkout_items",
+  "checkout_promotions",
   "cart_items",
 ] as const;
 
