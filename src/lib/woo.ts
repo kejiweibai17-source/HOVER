@@ -410,12 +410,31 @@ export async function fetchProductBySlug(slug: string) {
       slug
     )}&status=publish`
   );
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) return null;
-  const arr = (await res.json()) as any[];
-  if (!Array.isArray(arr) || arr.length === 0) return null;
-  const product = mapWoo(arr[0]) as WooProduct;
-  return attachVariableProductData(product, arr[0]);
+
+  // Bluehost 偶爾會短暫 DNS/連線失敗；重試一次且不要讓商品頁直接 500。
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) return null;
+      const arr = (await res.json()) as any[];
+      if (!Array.isArray(arr) || arr.length === 0) return null;
+      const product = mapWoo(arr[0]) as WooProduct;
+      try {
+        return await attachVariableProductData(product, arr[0]);
+      } catch (error) {
+        console.error("[woo] 商品變體讀取失敗，改顯示基本資料：", error);
+        return product;
+      }
+    } catch (error) {
+      if (attempt === 1) {
+        console.error(`[woo] 商品讀取失敗 (${slug})：`, error);
+        return null;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 350));
+    }
+  }
+
+  return null;
 }
 
 // 4. 抓取所有 Slugs (用於 generateStaticParams)

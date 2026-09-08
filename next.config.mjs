@@ -2,6 +2,9 @@
 const nextConfig = {
   // experimental: { ... }, // 如果有其他實驗性功能可以加在這裡
 
+  // 避免本機 next dev 與 Vercel／next build 共用 .next 後產生路由、CSS 快取衝突。
+  distDir: process.env.NODE_ENV === 'development' ? '.next-dev' : '.next',
+
   // X-Robots-Tag 改由 src/middleware.ts 控制（避免 headers 規則互相覆蓋）
 
   images: {
