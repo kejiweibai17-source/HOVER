@@ -305,61 +305,50 @@ export default function LoginClient() {
             </button>
           </form>
 
-          {/* Social login */}
+          {/* Social login — 圖四樣式：直向邊框按鈕 */}
           <div className="mt-8">
-            <p className="mb-4 text-[13px] text-[#555]">或使用以下方式登入</p>
-            <div className="flex items-center justify-start gap-4">
-              <button
-                type="button"
-                onClick={handleGoogle}
-                disabled={isAnyLoading}
-                aria-label="Google 登入"
-                className="flex h-[60px] w-[60px] shrink-0 items-center justify-center overflow-hidden bg-white transition-opacity hover:opacity-80 disabled:opacity-50"
-              >
-                <Image
-                  src="/images/social/google.png"
-                  alt=""
-                  width={60}
-                  height={60}
-                  className="h-[60px] w-[60px] object-contain"
-                />
-              </button>
-
-              <button
-                type="button"
-                onClick={handleLineLogin}
-                disabled={isAnyLoading}
-                aria-label="LINE 登入"
-                className="flex h-[60px] w-[60px] shrink-0 items-center justify-center overflow-hidden bg-white transition-opacity hover:opacity-80 disabled:opacity-50"
-              >
-                <Image
-                  src="/images/social/line.png"
-                  alt=""
-                  width={60}
-                  height={60}
-                  className="h-[60px] w-[60px] object-contain"
-                />
-              </button>
-
-              <button
-                type="button"
-                onClick={handleFacebook}
-                disabled={isAnyLoading}
-                aria-label="Facebook 登入"
-                className="flex h-[60px] w-[60px] shrink-0 items-center justify-center overflow-hidden bg-white transition-opacity hover:opacity-80 disabled:opacity-50"
-              >
-                <Image
-                  src="/images/social/facebook.webp"
-                  alt=""
-                  width={60}
-                  height={60}
-                  className="h-[60px] w-[60px] object-contain"
-                />
-              </button>
+            <p className="mb-4 text-[14px] font-medium text-black">快速登入</p>
+            <div className="flex flex-col gap-3">
+              {[
+                {
+                  key: "google",
+                  onClick: handleGoogle,
+                  src: "/images/social/google.png",
+                  label: "GOOGLE 登入",
+                },
+                {
+                  key: "line",
+                  onClick: handleLineLogin,
+                  src: "/images/social/line.jpg",
+                  label: "LINE 登入",
+                },
+                {
+                  key: "facebook",
+                  onClick: handleFacebook,
+                  src: "/images/social/facebook.jpg",
+                  label: "FACEBOOK 登入",
+                },
+              ].map((item) => (
+                <button
+                  key={item.key}
+                  type="button"
+                  onClick={item.onClick}
+                  disabled={isAnyLoading}
+                  className="flex h-[48px] w-full items-center justify-center border border-[#333] bg-white text-[13px] font-semibold tracking-[0.06em] text-black transition-colors hover:bg-[#f7f7f7] disabled:opacity-50"
+                >
+                  <span className="grid w-[168px] grid-cols-[22px_1fr] items-center gap-x-3">
+                    <Image
+                      src={item.src}
+                      alt=""
+                      width={22}
+                      height={22}
+                      className="h-[22px] w-[22px] object-contain"
+                    />
+                    <span className="text-left">{item.label}</span>
+                  </span>
+                </button>
+              ))}
             </div>
-            <p className="mt-4 text-[12px] leading-[1.6] text-[#888]">
-              第三方登入僅供已註冊會員綁定使用。
-            </p>
           </div>
         </div>
       </div>
