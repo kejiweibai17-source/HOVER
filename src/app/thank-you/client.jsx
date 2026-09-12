@@ -33,6 +33,8 @@ function formatAtmExpireDate(raw) {
 }
 
 function ThankYouBanner({ page }) {
+  if (page?.showBanner === false) return null;
+
   const useCustom = thankYouPageHasCustomImage(page);
   const alt = page?.imageDesktop?.alt || "HOVER";
 
@@ -254,9 +256,12 @@ function ThankYouContent({ page }) {
         )}
       </div>
 
-      <div className="border-t border-[#ddd]" />
-
-      <ThankYouBanner page={page} />
+      {page?.showBanner !== false ? (
+        <>
+          <div className="border-t border-[#ddd]" />
+          <ThankYouBanner page={page} />
+        </>
+      ) : null}
     </div>
   );
 }

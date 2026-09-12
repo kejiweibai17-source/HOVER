@@ -8,6 +8,7 @@
  * 2. 店到店／交貨便代碼 → `_hel_CVSPaymentNo` + `_hel_CVSValidationNo`（後台側欄顯示）
  * 3. 後台側欄操作：取消訂單／標記已出貨／已到店／已取貨／退貨（同步前台按鈕）
  * 4. 鑑賞期 `_hover_arrived_at`：僅在消費者成功取件／宅配簽收（picked）寫入
+ * 5. 貨態進入 arrived（已送達門市）→ 寄出已到貨通知（需啟用 hover-order-email-templates.php）
  *
  * Code Snippets → Everywhere → 啟用（更新本檔即可；勿另開 hover-order-actions）
  */
@@ -284,7 +285,23 @@ function hel_set_phase(
         $order->update_meta_data('_hover_arrived_at', $at);
     }
 
+    // 到店時間：給到貨通知信顯示取貨期限（≠ 鑑賞期起算）
+    if ($phase === 'arrived' && !(string) $order->get_meta('_hover_store_arrived_at')) {
+        $at = hel_parse_status_date($status_date);
+        if ($at === '') {
+            $at = wp_date('Y-m-d H:i:s');
+        }
+        $order->update_meta_data('_hover_store_arrived_at', $at);
+    }
+
     $order->save();
+
+    // 綠界回傳「已送達門市」才寄；同一訂單只寄一次（失敗可於下次貨態回呼重試）
+    if ($phase === 'arrived' && (string) $order->get_meta('_hover_arrived_notice_sent') !== '1') {
+        if (function_exists('hoet_send_arrived_notice')) {
+            hoet_send_arrived_notice($order);
+        }
+    }
 
     if ($prev === $phase) {
         return;
@@ -710,6 +727,9 @@ add_action('admin_post_hel_sim_phase', function () {
         $order->delete_meta_data('_hel_RtnCode');
         $order->delete_meta_data('_hel_RtnMsg');
         $order->delete_meta_data('_hover_arrived_at');
+        $order->delete_meta_data('_hover_store_arrived_at');
+        $order->delete_meta_data('_hover_arrived_notice_sent');
+        $order->delete_meta_data('_hover_arrived_notice_sent_at');
         $order->delete_meta_data('_hover_return_status');
         $order->save();
         // 標記已出貨會把 WC 改成 completed；前台 completed＝已出貨，故測試清除時一併回到處理中

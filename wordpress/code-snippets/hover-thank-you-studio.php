@@ -57,6 +57,7 @@ add_action('rest_api_init', function () {
 function htps_defaults(): array
 {
     return [
+        'showBanner' => true,
         'enabled' => true,
         'version' => '1',
         'imageDesktop' => [
@@ -88,6 +89,7 @@ function htps_normalize(array $data): array
     $mobile  = htps_normalize_image($data['imageMobile'] ?? [], $d['imageMobile']);
 
     return [
+        'showBanner'   => !isset($data['showBanner']) || !empty($data['showBanner']),
         'enabled'      => !isset($data['enabled']) || !empty($data['enabled']),
         'version'      => sanitize_text_field((string) ($data['version'] ?? $d['version'])) ?: $d['version'],
         'imageDesktop' => $desktop,
@@ -159,11 +161,11 @@ function htps_render_page(): void
             <div class="htps-topbar">
                 <div>
                     <h1>HOVER 感謝頁</h1>
-                    <p class="description">訂單完成頁（/thank-you）底部 Banner。可分別上傳桌機／手機圖；未上傳時前台沿用預設圖。儲存後約 1 分鐘內同步至網站。</p>
+                    <p class="description">訂單完成頁（/thank-you）底部圖片可開關。關閉後前台不顯示這張圖。儲存後約 1 分鐘內同步至網站。</p>
                 </div>
                 <div class="htps-topbar-actions">
-                    <span class="htps-status <?php echo !empty($s['enabled']) && $has_desktop ? 'is-live' : ''; ?>">
-                        <?php echo !empty($s['enabled']) && $has_desktop ? '已上傳桌機圖' : '尚未上傳桌機圖'; ?>
+                    <span class="htps-status <?php echo !empty($s['showBanner']) ? 'is-live' : ''; ?>">
+                        <?php echo !empty($s['showBanner']) ? '底部圖片顯示中' : '底部圖片已關閉'; ?>
                     </span>
                     <button type="submit" form="htps-form" class="button button-primary button-hero">儲存設定</button>
                 </div>
@@ -190,9 +192,14 @@ function htps_render_page(): void
                     <div class="htps-card-head"><h2>底部 Banner 圖片</h2></div>
                     <div class="htps-card-body htps-stack">
                         <label class="htps-switch">
+                            <input type="checkbox" data-field="showBanner" <?php checked(!empty($s['showBanner'])); ?>>
+                            <span class="htps-switch-ui"></span>
+                            <span class="htps-switch-label">顯示購買完成頁底部圖片</span>
+                        </label>
+                        <label class="htps-switch">
                             <input type="checkbox" data-field="enabled" <?php checked(!empty($s['enabled'])); ?>>
                             <span class="htps-switch-ui"></span>
-                            <span class="htps-switch-label">啟用後台上傳圖片（關閉則前台沿用預設圖）</span>
+                            <span class="htps-switch-label">使用後台上傳圖片（關閉則沿用網站預設圖）</span>
                         </label>
 
                         <div class="htps-grid-2">

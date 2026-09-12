@@ -6,6 +6,8 @@ export type ThankYouPageImage = {
 };
 
 export type ThankYouPageSettings = {
+  /** 顯示購買完成頁底部圖片；關閉則整段不出現 */
+  showBanner: boolean;
   enabled: boolean;
   version: string;
   imageDesktop: ThankYouPageImage;
@@ -15,6 +17,7 @@ export type ThankYouPageSettings = {
 export const FALLBACK_THANK_YOU_IMAGE = "/images/hover/pdp-main-1.jpg";
 
 export const DEFAULT_THANK_YOU_PAGE: ThankYouPageSettings = {
+  showBanner: true,
   enabled: true,
   version: "1",
   imageDesktop: { url: "", alt: "HOVER" },
@@ -46,6 +49,7 @@ export function normalizeThankYouPage(raw: unknown): ThankYouPageSettings {
     mobile = { ...mobile, url: desktop.url, alt: mobile.alt || desktop.alt };
   }
   return {
+    showBanner: o.showBanner !== false && o.show_banner !== false,
     enabled: o.enabled !== false,
     version: String(o.version || d.version),
     imageDesktop: desktop,

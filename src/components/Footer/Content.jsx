@@ -176,7 +176,7 @@ const Section2 = () => {
             <div className="flex justify-center gap-6 sm:gap-8">
               {/* 🌟 補上真實的連結 href */}
               <SocialIcon
-                href="https://lin.ee/uKRvV64" // ✅ 新增的 LINE 連結
+                href="https://line.me/R/ti/p/@330kefmm" // HOVER 官方 LINE
                 icon={Icons.Line}
                 label="LINE"
               />

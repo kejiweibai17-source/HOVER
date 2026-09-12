@@ -15,7 +15,7 @@ const SITE_URL = (
   "https://hoverofficial.com"
 ).replace(/\/$/, "");
 
-const LINE_URL = "https://lin.ee/uKRvV64";
+const LINE_URL = "https://line.me/R/ti/p/@330kefmm";
 const GREEN = "#2a514d";
 
 function createTransport() {

@@ -465,7 +465,7 @@ function hme_send_birthday_gift_mail(
 
     $amount_label = number_format($amount);
     $site = 'https://hoverofficial.com';
-    $line = 'https://lin.ee/uKRvV64';
+    $line = 'https://line.me/R/ti/p/@330kefmm';
     $green = '#2a514d';
     $exclusive = ($amount >= HME_BIRTHDAY_EXCLUSIVE) || (strpos($tier, '臻享') !== false);
     $gift_title = $exclusive ? '臻享會員生日禮' : '品牌好友生日禮';

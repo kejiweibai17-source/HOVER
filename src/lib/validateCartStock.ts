@@ -18,6 +18,7 @@ export type StockLineInput = {
 export type StockCheckResult = {
   productId: number;
   variationId: number | null;
+  name: string;
   stock: ProductStock;
   maxQty: number | null;
   requestedQty: number;
@@ -105,6 +106,7 @@ export async function checkCartStock(
     results.push({
       productId: group.productId,
       variationId: group.variationId,
+      name: group.name,
       stock,
       maxQty,
       requestedQty: group.qty,

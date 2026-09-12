@@ -27,6 +27,7 @@ import {
   validateInvoicePreference,
   type InvoicePreference,
 } from "@/lib/ecpay-invoice";
+import { getMemberSession } from "@/lib/memberSession";
 
 export const runtime = "nodejs";
 
@@ -273,8 +274,16 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, message: "Server Config Error" }, { status: 500 });
     }
 
+    const member = await getMemberSession();
+    if (!member) {
+      return NextResponse.json(
+        { ok: false, message: "請先登入會員再結帳。" },
+        { status: 401 },
+      );
+    }
     const session = await getServerSession(authOptions);
-    let loggedInCustomerId = (session as any)?.customerId || 0;
+    let loggedInCustomerId = member.customerId || (session as any)?.customerId || 0;
+    const memberEmail = member.email || String(session?.user?.email || "").trim();
 
     const body: RequestBody = await req.json();
     const { items, contact, addr, total, shipMethod, payMethod, memberDiscount } = body;
@@ -419,15 +428,47 @@ export async function POST(req: Request) {
 
     // 基本商品與活動商品合併驗證，避免同一 SKU 分開計算而超賣。
     if (auth && BASE && items?.length) {
-      const stockCheck = await checkCartStock(BASE, auth, [
-        ...items,
-        ...promotionLines,
-      ]);
-      if (!stockCheck.ok) {
+      const paidStock = await checkCartStock(BASE, auth, items);
+      if (!paidStock.ok) {
         return NextResponse.json(
-          { ok: false, message: stockCheck.message || "庫存不足" },
+          { ok: false, message: paidStock.message || "庫存不足" },
           { status: 409 },
         );
+      }
+      if (promotionLines.length) {
+        const stockCheck = await checkCartStock(BASE, auth, [
+          ...items,
+          ...promotionLines,
+        ]);
+        if (!stockCheck.ok) {
+          const failed = stockCheck.results.find((row) => !row.ok);
+          const paid = failed
+            ? paidStock.results.find(
+                (row) =>
+                  row.productId === failed.productId &&
+                  (row.variationId || 0) === (failed.variationId || 0),
+              )
+            : undefined;
+          const paidQty = paid?.requestedQty || 0;
+          const maxQty = failed?.maxQty;
+          const name = failed?.name || "商品";
+          const blockedByPromo =
+            failed &&
+            maxQty != null &&
+            paidQty <= maxQty &&
+            failed.requestedQty > maxQty;
+          return NextResponse.json(
+            {
+              ok: false,
+              message: blockedByPromo
+                ? paidQty > 0
+                  ? `「${name}」目前庫存 ${maxQty}，購物車已有 ${paidQty} 件，無法再當贈品／加價購。請取消該優惠後再結帳。`
+                  : `贈品／加價購「${name}」庫存不足（目前庫存 ${maxQty}）。請取消該優惠後再結帳。`
+                : stockCheck.message || "庫存不足",
+            },
+            { status: 409 },
+          );
+        }
       }
     }
 
@@ -486,7 +527,7 @@ export async function POST(req: Request) {
       const validated = await validateCouponOnServer(
         auth,
         coupon.code,
-        contact?.email || session?.user?.email || "",
+        memberEmail || contact?.email || "",
         subtotalAfterMember,
         serverMemberDiscount > 0,
         hasSaleItems,
@@ -537,9 +578,9 @@ export async function POST(req: Request) {
     }
     const safePhone = (addr.phone || "").replace(/\s+/g, "");
 
-    if (!loggedInCustomerId && contact?.email && auth && BASE) {
+    if (!loggedInCustomerId && memberEmail && auth && BASE) {
       try {
-        const cRes = await fetch(`${BASE.replace(/\/$/, "")}/wp-json/wc/v3/customers?email=${encodeURIComponent(contact.email.trim())}&role=all`, {
+        const cRes = await fetch(`${BASE.replace(/\/$/, "")}/wp-json/wc/v3/customers?email=${encodeURIComponent(memberEmail)}&role=all`, {
           headers: { Authorization: auth },
           cache: "no-store"
         });
@@ -651,7 +692,7 @@ export async function POST(req: Request) {
           billing: {
             first_name: safeFirstName, last_name: safeLastName,
             address_1: finalAddress, city: "Taipei", country: "TW",
-            email: contact.email, phone: safePhone,
+            email: memberEmail || contact.email, phone: safePhone,
           },
           shipping: {
             first_name: safeFirstName, last_name: safeLastName,
@@ -734,7 +775,7 @@ export async function POST(req: Request) {
             await bumpCouponUsage(
               auth,
               validatedCouponCode,
-              contact?.email || session?.user?.email || "",
+              memberEmail || contact?.email || "",
             );
             if (loggedInCustomerId) {
               await markMasterCouponUsed(
@@ -869,7 +910,7 @@ export async function POST(req: Request) {
         ChoosePayment: choosePayment,
         EncryptType: "1",
         CustomField1: String(orderId),
-        CustomField2: String(contact.email || "").slice(0, 50),
+        CustomField2: String(memberEmail || contact.email || "").slice(0, 50),
         CustomField3: finalGatewayAmount,
       };
 

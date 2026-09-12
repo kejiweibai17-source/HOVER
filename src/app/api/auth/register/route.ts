@@ -374,7 +374,7 @@ export async function POST(req: Request) {
 
           <p style="font-size: 14px; color: #666;">若您在驗證過程中遇到任何問題，歡迎透過 LINE 官方客服與我們聯繫：</p>
           <div style="margin-top: 15px;">
-            <a href="https://lin.ee/uKRvV64" target="_blank"
+            <a href="https://line.me/R/ti/p/@330kefmm" target="_blank"
                style="display: inline-block; padding: 10px 20px; background-color: #00B900; color: #ffffff; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 14px;">
               聯繫 LINE 客服
             </a>

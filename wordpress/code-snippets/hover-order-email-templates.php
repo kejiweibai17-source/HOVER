@@ -10,6 +10,7 @@
  * 5. customer_processing_order  → 付款完成
  * 6. customer_cancelled_order   → 訂單取消
  * 7. customer_completed_order   → 出貨通知
+ * 8. 綠界貨態 arrived           → 已到貨／請取貨（由 hover-ecpay-logistics.php 觸發）
  *
  * 使用方式：
  * 1. Code Snippets → 貼上本檔 → Everywhere → 啟用
@@ -29,10 +30,42 @@ define('HOVER_ORDER_EMAIL_TEMPLATES_LOADED', true);
 const HOET_SITE_URL = 'https://hoverofficial.com';
 /** 會員訂單頁 */
 const HOET_ACCOUNT_ORDERS_URL = 'https://hoverofficial.com/account?tab=orders';
-/** 官方 LINE */
-const HOET_LINE_URL = 'https://lin.ee/uKRvV64';
+/** 官方 LINE（HOVER） */
+const HOET_LINE_URL = 'https://line.me/R/ti/p/@330kefmm';
 /** 品牌綠 */
 const HOET_GREEN = '#2a514d';
+/** 信件標誌寬度 */
+const HOET_LOGO_WIDTH = 180;
+
+/** 讀取 WooCommerce／網站標誌 */
+function hoet_logo_url(): string
+{
+    $woo = trim((string) get_option('woocommerce_email_header_image', ''));
+    if ($woo !== '') {
+        return esc_url_raw($woo);
+    }
+    if (function_exists('has_custom_logo') && has_custom_logo()) {
+        $logo_id = (int) get_theme_mod('custom_logo');
+        $src = $logo_id ? wp_get_attachment_image_url($logo_id, 'full') : '';
+        if (is_string($src) && $src !== '') {
+            return esc_url_raw($src);
+        }
+    }
+    return HOET_SITE_URL . '/images/logo-04.png';
+}
+
+/** 頁首標誌（水平置中） */
+function hoet_header_html(): string
+{
+    $url = hoet_logo_url();
+    $width = HOET_LOGO_WIDTH;
+    return '
+    <div style="margin:0 0 28px;text-align:center;width:100%;">
+      <a href="' . esc_url(HOET_SITE_URL) . '" style="display:inline-block;text-decoration:none;border:0;">
+        <img src="' . esc_url($url) . '" alt="HOVER" width="' . (int) $width . '" style="display:block;margin:0 auto;width:' . (int) $width . 'px;max-width:70%;height:auto;border:0;outline:none;" />
+      </a>
+    </div>';
+}
 
 function hoet_email_ids(): array
 {
@@ -402,6 +435,50 @@ function hoet_logistics_info(WC_Order $order): string
     return $parts ? implode('　', $parts) : '出貨後將依物流通知提供查詢資訊';
 }
 
+/**
+ * 信件商品名稱：變體單改用父商品名，避免「T 恤 M_黑」再重複顯示尺寸／顏色。
+ */
+function hoet_item_title(WC_Order_Item_Product $item): string
+{
+    $name = trim((string) $item->get_name());
+    $product = $item->get_product();
+    if ($product && $product->is_type('variation')) {
+        $parent = wc_get_product($product->get_parent_id());
+        if ($parent) {
+            $title = trim((string) $parent->get_name());
+            if ($title !== '') {
+                return $title;
+            }
+        }
+    }
+
+    $opts = hoet_item_options($item);
+    if ($name === '' || $opts === '') {
+        return $name;
+    }
+
+    $parts = array_values(array_filter(array_map('trim', preg_split('/[｜|,，_\-\/]+/u', $opts) ?: [])));
+    if (!$parts) {
+        return $name;
+    }
+
+    $patterns = [
+        implode('_', $parts),
+        implode(' ', $parts),
+        implode(', ', $parts),
+        implode('，', $parts),
+        implode('｜', $parts),
+    ];
+    foreach ($patterns as $suffix) {
+        $stripped = preg_replace('/\s*[-–—]?\s*' . preg_quote($suffix, '/') . '\s*$/u', '', $name);
+        if (is_string($stripped) && $stripped !== '' && $stripped !== $name) {
+            return trim($stripped);
+        }
+    }
+
+    return $name;
+}
+
 function hoet_item_options(WC_Order_Item_Product $item): string
 {
     $bits = [];
@@ -486,7 +563,7 @@ function hoet_products_html(WC_Order $order, bool $simple = false): string
         if (!$item instanceof WC_Order_Item_Product) {
             continue;
         }
-        $name = $item->get_name();
+        $name = hoet_item_title($item);
         $qty = (int) $item->get_quantity();
         $line = (float) $item->get_total();
         $unit = $qty > 0 ? $line / $qty : $line;
@@ -503,6 +580,7 @@ function hoet_products_html(WC_Order $order, bool $simple = false): string
               <td style="padding:12px 0;border-bottom:1px solid #eee;vertical-align:top;width:80px;">' . $img_html . '</td>
               <td style="padding:12px 0 12px 12px;border-bottom:1px solid #eee;vertical-align:top;font-size:14px;line-height:1.6;color:#111;">
                 <div style="font-weight:600;">' . hoet_esc($name) . '</div>
+                ' . ($opts !== '' ? '<div style="margin-top:4px;color:#555;">' . hoet_esc($opts) . '</div>' : '') . '
                 <div style="margin-top:4px;color:#555;">×' . $qty . '　' . hoet_esc(hoet_money($line)) . '</div>
               </td>
             </tr>';
@@ -591,7 +669,7 @@ function hoet_shell(string $inner): string
     <tr><td align="center">
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#ffffff;padding:32px 28px;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;color:#111;">
         <tr><td>
-          <div style="font-size:28px;letter-spacing:0.2em;font-weight:700;margin-bottom:28px;">HOVER</div>
+          ' . hoet_header_html() . '
           ' . $inner . '
           ' . hoet_footer_html() . '
         </td></tr>
@@ -796,4 +874,101 @@ function hoet_tpl_shipped(WC_Order $order): string
       ' . hoet_link_btn('查看訂單', HOET_ACCOUNT_ORDERS_URL) . '
     ';
     return hoet_shell($inner);
+}
+
+/* -------------------------------------------------------------------------- */
+/* 8｜已到貨通知（綠界貨態 arrived）                                            */
+/* -------------------------------------------------------------------------- */
+
+/** 到店時間（綠界 UpdateStatusDate；無則空） */
+function hoet_store_arrived_date(WC_Order $order): string
+{
+    $raw = trim((string) $order->get_meta('_hover_store_arrived_at', true));
+    if ($raw === '') {
+        return '';
+    }
+    $ts = strtotime(str_replace('/', '-', $raw));
+    return $ts ? wp_date('Y/m/d H:i', $ts) : $raw;
+}
+
+/** 超商取貨參考期限：到店日 + 7 日 */
+function hoet_pickup_deadline(WC_Order $order): string
+{
+    $raw = trim((string) $order->get_meta('_hover_store_arrived_at', true));
+    $ts = $raw !== '' ? strtotime(str_replace('/', '-', $raw)) : 0;
+    if (!$ts) {
+        return '送達門市後 7 日內';
+    }
+    return wp_date('Y/m/d', $ts + 7 * DAY_IN_SECONDS) . ' 前';
+}
+
+function hoet_tpl_arrived(WC_Order $order): string
+{
+    $name = hoet_customer_name($order);
+    $arrived = hoet_store_arrived_date($order);
+    $extra = [];
+    if ($arrived !== '') {
+        $extra[] = ['到店時間', $arrived];
+    }
+    if (hoet_is_cvs($order)) {
+        $extra[] = ['取貨期限', hoet_pickup_deadline($order)];
+    }
+
+    $lead = hoet_is_cvs($order)
+        ? '您的商品已送達指定門市，請於期限內完成取貨。'
+        : '您的商品已送達，請留意配送／取貨通知。';
+
+    $hint = hoet_is_cvs($order)
+        ? '請攜帶取貨代碼於期限內至門市取貨。逾期未取，貨件將依物流規定退回。'
+        : '若為宅配，請依物流通知完成收件。';
+
+    $inner = '
+      <p style="margin:0 0 12px;font-size:15px;line-height:1.8;">親愛的' . hoet_esc($name) . '，</p>
+      <p style="margin:0 0 8px;font-size:14px;line-height:1.8;color:#333;">' . hoet_esc($lead) . '</p>
+      ' . hoet_order_info_block($order, $extra) . '
+      ' . hoet_products_block($order, true) . '
+      ' . hoet_shipping_block($order, true) . '
+      <p style="margin:20px 0 0;font-size:13px;line-height:1.8;color:#555;">' . hoet_esc($hint) . '</p>
+      ' . hoet_link_btn('查看訂單', HOET_ACCOUNT_ORDERS_URL) . '
+    ';
+    return hoet_shell($inner);
+}
+
+/**
+ * 綠界貨態進入 arrived 時寄出（同一訂單只寄一次）
+ */
+function hoet_send_arrived_notice(WC_Order $order): bool
+{
+    if ((string) $order->get_meta('_hover_arrived_notice_sent') === '1') {
+        return false;
+    }
+
+    $to = sanitize_email((string) $order->get_billing_email());
+    if ($to === '' || !is_email($to)) {
+        $order->add_order_note('HOVER：到貨通知未寄出（無有效信箱）');
+        $order->save();
+        return false;
+    }
+
+    if (!function_exists('WC') || !WC()->mailer()) {
+        return false;
+    }
+
+    $subject = '商品已到貨｜請盡速取貨';
+    $html = hoet_tpl_arrived($order);
+    $headers = ['Content-Type: text/html; charset=UTF-8'];
+
+    $sent = WC()->mailer()->send($to, $subject, $html, $headers);
+    if (!$sent) {
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('[HOVER] arrived notice failed for order ' . $order->get_id());
+        }
+        return false;
+    }
+
+    $order->update_meta_data('_hover_arrived_notice_sent', '1');
+    $order->update_meta_data('_hover_arrived_notice_sent_at', wp_date('Y-m-d H:i:s'));
+    $order->add_order_note('HOVER：已寄出到貨通知信（' . $to . '）');
+    $order->save();
+    return true;
 }

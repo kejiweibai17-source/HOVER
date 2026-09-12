@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import { useCartStore } from "@/lib/cartStore";
+import { useAuthStore } from "@/lib/authStore";
 import { clearCheckoutSession } from "@/lib/checkoutSession";
 import { DEFAULT_SHIPPING, shippingFeeFor } from "@/lib/shippingDefaults";
 import { useShippingSettings } from "@/lib/useShippingSettings";
@@ -871,9 +872,32 @@ function CheckoutProductThumb({ item }) {
   );
 }
 
+function promotionStockBlock(promotion, items = []) {
+  const product = promotion?.product;
+  if (!product || !promotion.inStock || !product.manageStock) return "";
+  if (product.stockQuantity == null) return "";
+  const stockQty = Number(product.stockQuantity);
+  if (!Number.isFinite(stockQty)) return "";
+  const need =
+    promotion.type === "gift" ? Number(promotion.rewardQty) || 1 : 1;
+  const reserved = items.reduce((sum, item) => {
+    const sameProduct =
+      Number(item.wcProductId || item.id) === Number(product.productId);
+    const sameVariation =
+      Number(item.wcVariationId || 0) === Number(product.variationId || 0);
+    return sameProduct && sameVariation ? sum + (Number(item.qty) || 0) : sum;
+  }, 0);
+  if (reserved + need <= stockQty) return "";
+  if (reserved > 0) {
+    return `購物車已有 ${reserved} 件，庫存只剩 ${stockQty}，無法再當贈品／加價購`;
+  }
+  return `庫存只剩 ${stockQty}，無法再加 ${need} 件`;
+}
+
 function PromotionOffers({
   promotions = [],
   selectedPromotions = [],
+  cartItems = [],
   onToggle,
   onQuantity,
 }) {
@@ -891,7 +915,8 @@ function PromotionOffers({
           const selectedPromotion = selectedPromotions.find(
             (item) => item.id === promotion.id,
           );
-          const disabled = !promotion.eligible;
+          const stockBlock = promotionStockBlock(promotion, cartItems);
+          const disabled = !promotion.eligible || (!selected && Boolean(stockBlock));
           return (
             <div
               key={promotion.id}
@@ -924,6 +949,8 @@ function PromotionOffers({
                 </p>
                 {!promotion.inStock ? (
                   <p className="mt-1 text-[11px] text-[#c90000]">目前已售完</p>
+                ) : stockBlock ? (
+                  <p className="mt-1 text-[11px] text-[#c90000]">{stockBlock}</p>
                 ) : promotion.remaining > 0 ? (
                   <p className="mt-1 text-[11px] text-[#888]">
                     再消費 {currency(promotion.remaining)} 即可選擇
@@ -1087,9 +1114,14 @@ function CartStep({
                         .join(" / ") || "—"}
                     </p>
                   </div>
-                  <p className="shrink-0 text-[14px] font-medium text-black">
-                    {currency(lineTotal)}
-                  </p>
+                  <button
+                    type="button"
+                    aria-label="移除"
+                    onClick={() => onRemove(it.id || it.wcProductId)}
+                    className="shrink-0 text-[#bbb] transition-colors hover:text-black"
+                  >
+                    <X className="h-[14px] w-[14px]" strokeWidth={1.5} />
+                  </button>
                 </div>
                 <div className="mt-3 flex items-center justify-between">
                   <div className="flex h-8 w-[100px] items-center border border-black bg-white">
@@ -1120,14 +1152,9 @@ function CartStep({
                       <Plus className="h-3 w-3" />
                     </button>
                   </div>
-                  <button
-                    type="button"
-                    aria-label="移除"
-                    onClick={() => onRemove(it.id || it.wcProductId)}
-                    className="text-[#bbb] transition-colors hover:text-black"
-                  >
-                    <X className="h-[14px] w-[14px]" strokeWidth={1.5} />
-                  </button>
+                  <p className="shrink-0 text-[14px] font-medium text-black">
+                    {currency(lineTotal)}
+                  </p>
                 </div>
                 {it.maxQty != null && it.qty >= it.maxQty && (
                   <p className="mt-1 text-[11px] text-[#c90000]">已達庫存上限</p>
@@ -1141,6 +1168,7 @@ function CartStep({
       <PromotionOffers
         promotions={promotions}
         selectedPromotions={selectedPromotions}
+        cartItems={items}
         onToggle={onTogglePromotion}
         onQuantity={onPromotionQuantity}
       />
@@ -1197,6 +1225,7 @@ function CheckoutStep({
   payMethod,
   setPayMethod,
   onPrev,
+  onRequireLogin,
   onClearCart,
   membership,
   isLoggedIn,
@@ -1419,6 +1448,7 @@ function CheckoutStep({
   };
 
   const submit = async () => {
+    if (onRequireLogin && !(await onRequireLogin())) return;
     if (!validate()) {
       window.scrollTo({ top: 0, behavior: "smooth" });
       return;
@@ -1495,6 +1525,11 @@ function CheckoutStep({
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
+        if (res.status === 401 && onRequireLogin) {
+          await onRequireLogin();
+          setIsSubmitting(false);
+          return;
+        }
         alert(data.message || "建立訂單失敗");
         setIsSubmitting(false);
         return;
@@ -2031,6 +2066,8 @@ function CheckoutStep({
 // ✅ Main Cart Content
 function CartContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const checkAuth = useAuthStore((state) => state.checkAuth);
   const storeItems = useCartStore((state) => state.items);
   const storeUpdateQty = useCartStore((state) => state.updateQty);
   const storeRemoveItem = useCartStore((state) => state.removeItem);
@@ -2219,12 +2256,23 @@ function CartContent() {
               1;
             setDiscountRate(data.membership.exclusiveActive ? rate : 1);
           }
+        } else if (_step >= 2) {
+          setStep(1);
+          sessionStorage.setItem("checkout_step", "1");
         }
       } catch (e) {}
     };
     fetchProfile();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const requireLogin = useCallback(async () => {
+    const loggedIn = await checkAuth({ force: true });
+    setIsLoggedIn(loggedIn);
+    if (loggedIn) return true;
+    router.push(`/login?next=${encodeURIComponent("/cart")}`);
+    return false;
+  }, [checkAuth, router]);
 
   // 🚨 當全域的 Zustand 真的有更新時（例如打開另一個分頁加了商品），才同步覆蓋本地
   useEffect(() => {
@@ -2497,7 +2545,8 @@ function CartContent() {
                 onPromotionQuantity={updatePromotionQuantity}
                 onUpdateQty={updateQty}
                 onRemove={removeItem}
-                onNext={() => {
+                onNext={async () => {
+                  if (!(await requireLogin())) return;
                   sessionStorage.setItem("checkout_step", "2");
                   setStep(2);
                 }}
@@ -2523,6 +2572,7 @@ function CartContent() {
                 setShipMethod={setShipMethod}
                 payMethod={payMethod}
                 setPayMethod={setPayMethod}
+                onRequireLogin={requireLogin}
                 onPrev={() => {
                   sessionStorage.setItem("checkout_step", "1");
                   setStep(1);
