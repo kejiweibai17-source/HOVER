@@ -340,7 +340,7 @@ export default function HoverHeader({
           >
             <div aria-hidden className="hidden md:block" />
 
-            <nav className="hidden flex-wrap items-center justify-center gap-x-7 gap-y-2 md:flex lg:gap-x-9 xl:gap-x-10">
+            <nav className="hidden flex-wrap items-center justify-center gap-x-6 gap-y-2 md:flex lg:gap-x-7 xl:gap-x-8">
               <Link
                 href="/products"
                 className="text-[15px] xl:text-[16px] font-bold tracking-[0.12em] text-black transition-opacity hover:opacity-50"

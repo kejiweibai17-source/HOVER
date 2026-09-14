@@ -26,7 +26,7 @@ export default function ProductCard({
         />
       </ProductImageFrame>
 
-      <div className="mt-2 min-w-0 space-y-1 px-0.5 text-left md:mt-3">
+      <div className="mt-1.5 flex min-w-0 flex-col gap-1.5 px-0.5 text-left md:mt-2">
         <Link
           href={href}
           className="block break-words text-[12px] font-semibold leading-snug text-black line-clamp-2 hover:opacity-60 md:text-[13px]"
@@ -35,7 +35,7 @@ export default function ProductCard({
         </Link>
 
         {colors.length > 0 && (
-          <div className="flex items-center gap-1.5 pt-0.5">
+          <div className="flex items-center gap-1.5">
             {colors.map((color) => (
               <span
                 key={color.label}
@@ -49,7 +49,7 @@ export default function ProductCard({
           </div>
         )}
 
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5 pt-0.5">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
           {price && (
             <span
               className={`text-[12px] font-bold text-[#222] md:text-[13px] ${

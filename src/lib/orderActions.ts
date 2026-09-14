@@ -241,7 +241,8 @@ function lineCsGreeting(intent: LineCsIntent): string {
 export function buildContactCsUrl(order?: OrderLike | null): string {
   if (!order) return HOVER_LINE_OA;
   const text = buildOrderLineMessage(order, "contact");
-  return `https://line.me/R/oaMessage/${HOVER_LINE_OA_ID}/?text=${encodeURIComponent(text)}`;
+  // LINE oaMessage：? 後整段即預填訊息，不可加 text=（否則訊息會出現「text=」）
+  return `https://line.me/R/oaMessage/${HOVER_LINE_OA_ID}/?${encodeURIComponent(text)}`;
 }
 
 function formatReturnNt(value: string | number | null | undefined): string {
@@ -354,7 +355,7 @@ export function buildReturnLineMessage(order: OrderLike): string {
 /** 申請退貨：LINE OA 預填連結（含訂單編號／商品摘要） */
 export function buildReturnLineUrl(order: OrderLike): string {
   const text = buildOrderLineMessage(order, "return");
-  return `https://line.me/R/oaMessage/${HOVER_LINE_OA_ID}/?text=${encodeURIComponent(text)}`;
+  return `https://line.me/R/oaMessage/${HOVER_LINE_OA_ID}/?${encodeURIComponent(text)}`;
 }
 
 /**

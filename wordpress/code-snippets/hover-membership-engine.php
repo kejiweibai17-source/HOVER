@@ -527,9 +527,9 @@ function hme_send_birthday_gift_mail(
 <tr><td style="padding:6px 0;font-size:14px;color:#333;">使用期限</td><td style="padding:6px 0;font-size:14px;text-align:right;">' . esc_html($expires) . '</td></tr>
 </table>
 <p style="margin:24px 0 0;"><a href="' . esc_url($site) . '" style="color:' . $green . ';font-weight:700;text-decoration:underline;font-size:14px;">探索 HOVER</a></p>
-<div style="margin-top:36px;padding-top:20px;border-top:1px solid #ddd;font-size:12px;line-height:1.8;color:#777;">
-<p style="margin:0;">此為系統自動發送信件，請勿直接回覆。</p>
-<p style="margin:8px 0 0;">HOVER 官方網站｜<a href="' . esc_url($site) . '" style="color:' . $green . ';text-decoration:underline;">hoverofficial.com</a><br />客服聯繫｜<a href="' . esc_url($line) . '" style="color:' . $green . ';text-decoration:underline;">HOVER 官方 LINE</a></p>
+<div style="margin-top:36px;padding-top:20px;border-top:1px solid #ddd;font-size:12px;line-height:1.8;color:#777;text-align:center;">
+<p style="margin:0;text-align:center;">此為系統自動發送信件，請勿直接回覆。</p>
+<p style="margin:8px 0 0;text-align:center;">HOVER 官方網站｜<a href="' . esc_url($site) . '" style="color:' . $green . ';text-decoration:underline;">hoverofficial.com</a><br />客服聯繫｜<a href="' . esc_url($line) . '" style="color:' . $green . ';text-decoration:underline;">HOVER 官方 LINE</a></p>
 </div>
 </td></tr></table>
 </td></tr></table></body></html>';

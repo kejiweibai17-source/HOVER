@@ -118,11 +118,11 @@ function ProductCard({ product }) {
         </Link>
       </ProductImageFrame>
 
-      {/* Info：左右與圖片內緣切齊 */}
+      {/* Info：名稱／色票／價錢等距緊湊；無色票不佔空行 */}
       <div
-        className={`mt-2 flex min-w-0 flex-col gap-1 text-left md:mt-3 ${HOME_CARD_TEXT_INSET}`}
+        className={`mt-1.5 flex min-w-0 flex-col gap-1.5 text-left md:mt-2 ${HOME_CARD_TEXT_INSET}`}
       >
-        <div className="flex min-h-[2.75rem] min-w-0 items-start justify-between gap-2">
+        <div className="flex min-w-0 items-start justify-between gap-2">
           <Link
             href={product.href}
             className="min-w-0 flex-1 break-words text-[14px] font-semibold leading-snug text-black line-clamp-2 hover:opacity-60 md:text-[15px]"
@@ -134,7 +134,7 @@ function ProductCard({ product }) {
             aria-label={isSaved ? "取消收藏" : "加入收藏"}
             onClick={handleWishlist}
             disabled={wishlistPending}
-            className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center transition-opacity hover:opacity-60 ${
+            className={`-mr-1 -mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center transition-opacity hover:opacity-60 ${
               isSaved ? "opacity-100" : "opacity-80"
             }`}
           >
@@ -142,17 +142,17 @@ function ProductCard({ product }) {
           </button>
         </div>
 
-        <div className="flex min-h-3 min-w-0 items-center gap-1.5">
-          {product.colorHex ? (
+        {product.colorHex ? (
+          <div className="flex min-w-0 items-center gap-1.5">
             <span
               className="inline-block h-3 w-3 shrink-0 rounded-full border border-[#ccc]"
               style={{ background: product.colorHex }}
               aria-hidden
             />
-          ) : null}
-        </div>
+          </div>
+        ) : null}
 
-        <div className="flex min-h-5 min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
           <span
             className={`text-[14px] font-bold text-[#222] md:text-[15px] ${
               product.soldOut ? "line-through" : ""

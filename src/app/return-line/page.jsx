@@ -25,7 +25,7 @@ function ReturnLineRedirect() {
     if (!params.n && !params.i) {
       return HOVER_LINE_OA;
     }
-    return `https://line.me/R/oaMessage/${HOVER_LINE_OA_ID}/?text=${encodeURIComponent(text)}`;
+    return `https://line.me/R/oaMessage/${HOVER_LINE_OA_ID}/?${encodeURIComponent(text)}`;
   }, [searchParams]);
 
   const isContact = searchParams.get("m") === "contact";

@@ -652,9 +652,9 @@ function hoet_link_btn(string $label, string $url): string
 function hoet_footer_html(): string
 {
     return '
-    <div style="margin-top:36px;padding-top:20px;border-top:1px solid #ddd;font-size:12px;line-height:1.8;color:#777;">
-      <p style="margin:0;">此為系統自動發送信件，請勿直接回覆。</p>
-      <p style="margin:8px 0 0;">
+    <div style="margin-top:36px;padding-top:20px;border-top:1px solid #ddd;font-size:12px;line-height:1.8;color:#777;text-align:center;">
+      <p style="margin:0;text-align:center;">此為系統自動發送信件，請勿直接回覆。</p>
+      <p style="margin:8px 0 0;text-align:center;">
         HOVER 官方網站｜<a href="' . esc_url(HOET_SITE_URL) . '" style="color:' . HOET_GREEN . ';text-decoration:underline;">hoverofficial.com</a><br />
         客服聯繫｜<a href="' . esc_url(HOET_LINE_URL) . '" style="color:' . HOET_GREEN . ';text-decoration:underline;">HOVER 官方 LINE</a>
       </p>

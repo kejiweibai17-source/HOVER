@@ -490,8 +490,8 @@ const ProductCard = memo(function ProductCard({
       </ProductImageFrame>
 
       {/* Info */}
-      <div className="mt-2 min-w-0 space-y-1 px-0.5 text-left md:mt-3">
-        <div className="mb-0 flex min-h-9 min-w-0 items-center justify-between gap-2">
+      <div className="mt-1.5 flex min-w-0 flex-col gap-1.5 px-0.5 text-left md:mt-2">
+        <div className="flex min-w-0 items-start justify-between gap-2">
           <p className="flex min-w-0 flex-1 items-center break-words text-[14px] font-semibold leading-snug text-black line-clamp-2 md:text-[15px]">
             {product.name}
           </p>
@@ -499,7 +499,7 @@ const ProductCard = memo(function ProductCard({
         </div>
 
         {product.colors && product.colors.length > 0 && (
-          <div className="flex items-center gap-1.5 pt-0.5">
+          <div className="flex items-center gap-1.5">
             {product.colors.map((c, i) => (
               <span
                 key={i}
@@ -510,7 +510,7 @@ const ProductCard = memo(function ProductCard({
           </div>
         )}
 
-        <p className="pt-0.5 text-[14px] font-bold text-[#222] md:text-[15px]">
+        <p className="text-[14px] font-bold text-[#222] md:text-[15px]">
           {formatProductPrice(product.price)}
         </p>
       </div>
