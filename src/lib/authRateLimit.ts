@@ -110,6 +110,11 @@ export function clientIp(req: Request): string {
   return ip || "unknown";
 }
 
+/** 登入／註冊次數鎖定已關閉（正式站與本機皆不套用） */
+function isRateLimitDisabled(_req?: Request): boolean {
+  return true;
+}
+
 export type RateLimitResult =
   | { ok: true; remaining: number }
   | { ok: false; retryAfterSec: number; message: string };
@@ -119,6 +124,10 @@ export function checkAuthRateLimit(opts: {
   action: "login" | "register" | "social_bind";
   identifier?: string;
 }): RateLimitResult {
+  if (isRateLimitDisabled(opts.req)) {
+    return { ok: true, remaining: MAX_ATTEMPTS };
+  }
+
   const ip = clientIp(opts.req);
   const idRaw = String(opts.identifier || "").trim().toLowerCase();
   const id = idRaw.includes("@")
@@ -170,6 +179,10 @@ export function recordAuthFailure(opts: {
   action: "login" | "register" | "social_bind";
   identifier?: string;
 }): { cookieValue: string | null; locked: boolean; retryAfterSec: number } {
+  if (isRateLimitDisabled(opts.req)) {
+    return { cookieValue: null, locked: false, retryAfterSec: 0 };
+  }
+
   const ip = clientIp(opts.req);
   const idRaw = String(opts.identifier || "").trim().toLowerCase();
   const id = idRaw.includes("@")
