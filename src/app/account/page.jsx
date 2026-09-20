@@ -1360,6 +1360,7 @@ function AccountPageContent() {
   const [profileEditing, setProfileEditing] = useState(false);
   const [passwordEditing, setPasswordEditing] = useState(false);
   const [authProvider, setAuthProvider] = useState(null);
+  const [bindSuccessMessage, setBindSuccessMessage] = useState("");
 
   const loadProfile = useCallback(async () => {
     setLoading(true);
@@ -1528,6 +1529,14 @@ function AccountPageContent() {
 
   useEffect(() => {
     const tab = searchParams.get("tab");
+    const bound = searchParams.get("bound");
+    if (bound === "1") {
+      setBindSuccessMessage("綁定成功！");
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("bound");
+      const qs = params.toString();
+      router.replace(qs ? `/account?${qs}` : "/account", { scroll: false });
+    }
     if (tab === "admin") {
       router.replace("/account", { scroll: false });
       setActiveTab("profile");
@@ -1541,6 +1550,12 @@ function AccountPageContent() {
       setActiveTab("profile");
     }
   }, [searchParams, router]);
+
+  useEffect(() => {
+    if (!bindSuccessMessage) return;
+    const timer = window.setTimeout(() => setBindSuccessMessage(""), 4000);
+    return () => window.clearTimeout(timer);
+  }, [bindSuccessMessage]);
 
   useEffect(() => {
     if (loggedIn) {
@@ -1942,6 +1957,15 @@ function AccountPageContent() {
         <h1 className="mb-6 text-center text-[26px] font-semibold tracking-wide sm:mb-8 sm:text-[30px]">
           我的會員中心
         </h1>
+
+        {bindSuccessMessage ? (
+          <p
+            role="status"
+            className="mb-6 text-center text-[15px] font-semibold text-[#2a514d] sm:mb-8"
+          >
+            {bindSuccessMessage}
+          </p>
+        ) : null}
 
         {/* Tab bar + logout */}
         <div className="mb-6 flex items-end justify-between gap-4 border-b border-[#ccc] sm:mb-8 sm:gap-10 md:gap-14">

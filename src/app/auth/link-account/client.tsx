@@ -21,6 +21,17 @@ function normalizeProvider(value: unknown): SocialProvider | null {
   return null;
 }
 
+/** 綁定成功後帶到會員頁顯示提示 */
+function withBoundSuccessFlag(path: string) {
+  try {
+    const url = new URL(String(path || "/account"), "http://local.invalid");
+    url.searchParams.set("bound", "1");
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return "/account?bound=1";
+  }
+}
+
 const PROVIDER_LABEL: Record<SocialProvider, string> = {
   google: "Google",
   line: "LINE",
@@ -108,7 +119,7 @@ function LinkAccountContent() {
         setError(String(data?.message || "綁定失敗"));
         return;
       }
-      router.replace(String(data.next || next || "/account"));
+      router.replace(withBoundSuccessFlag(data.next || next || "/account"));
     } catch {
       setError("綁定失敗，請稍後再試");
     } finally {
