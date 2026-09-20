@@ -3,8 +3,8 @@ import LinkAccountClient from "./client";
 export const dynamic = "force-dynamic";
 
 export const metadata = {
-  title: "完成社群登入｜HOVER",
-  description: "綁定既有會員或建立新帳號",
+  title: "第三方帳號綁定｜HOVER",
+  description: "驗證 HOVER 會員並綁定 Google／LINE／Facebook",
 };
 
 export default function LinkAccountPage() {

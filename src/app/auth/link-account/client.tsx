@@ -1,19 +1,45 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Link } from "next-view-transitions";
 import { AuthField } from "@/components/hover/AuthField";
 import { TurnstileWidget } from "@/components/hover/TurnstileWidget";
+
+type SocialProvider = "google" | "line" | "facebook";
+
+const PROVIDER_ICON: Record<SocialProvider, { src: string; alt: string }> = {
+  google: { src: "/images/social/google.png", alt: "Google" },
+  line: { src: "/images/social/line.jpg", alt: "LINE" },
+  facebook: { src: "/images/social/facebook.jpg", alt: "Facebook" },
+};
+
+function normalizeProvider(value: unknown): SocialProvider | null {
+  const p = String(value || "").toLowerCase();
+  if (p === "google" || p === "line" || p === "facebook") return p;
+  return null;
+}
+
+const PROVIDER_LABEL: Record<SocialProvider, string> = {
+  google: "Google",
+  line: "LINE",
+  facebook: "Facebook",
+};
 
 function LinkAccountContent() {
   const router = useRouter();
   const search = useSearchParams();
   const next = search.get("next") || "/account";
   const registerHref = `/register?next=${encodeURIComponent(next)}`;
+  const demoProvider = normalizeProvider(search.get("demo"));
+  const isDemo = Boolean(demoProvider);
 
-  const [providerLabel, setProviderLabel] = useState("第三方");
-  const [ready, setReady] = useState(false);
+  const [provider, setProvider] = useState<SocialProvider | null>(demoProvider);
+  const [providerLabel, setProviderLabel] = useState(
+    demoProvider ? PROVIDER_LABEL[demoProvider] : "第三方",
+  );
+  const [ready, setReady] = useState(isDemo);
   const [missing, setMissing] = useState(false);
 
   const [phone, setPhone] = useState("");
@@ -23,6 +49,14 @@ function LinkAccountContent() {
   const [bindLoading, setBindLoading] = useState(false);
 
   useEffect(() => {
+    if (isDemo && demoProvider) {
+      setProvider(demoProvider);
+      setProviderLabel(PROVIDER_LABEL[demoProvider]);
+      setMissing(false);
+      setReady(true);
+      return;
+    }
+
     let cancelled = false;
     (async () => {
       try {
@@ -37,6 +71,8 @@ function LinkAccountContent() {
           setReady(true);
           return;
         }
+        const normalized = normalizeProvider(data.provider);
+        setProvider(normalized);
         setProviderLabel(String(data.providerLabel || "第三方"));
         setReady(true);
       } catch {
@@ -49,11 +85,15 @@ function LinkAccountContent() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [demoProvider, isDemo]);
 
   async function handleBind(e: React.FormEvent) {
     e.preventDefault();
     if (bindLoading) return;
+    if (isDemo) {
+      setError("這是預覽頁，不會真的綁定。請改用實際社群登入流程。");
+      return;
+    }
     setError("");
     setBindLoading(true);
     try {
@@ -101,27 +141,65 @@ function LinkAccountContent() {
     );
   }
 
+  const icon = provider ? PROVIDER_ICON[provider] : null;
+
   return (
     <div className="mx-auto max-w-md px-6 py-12 md:py-16">
-      <h1 className="text-center text-[22px] font-bold text-black">
-        綁定 {providerLabel}
-      </h1>
-      <p className="mt-3 text-center text-[13px] leading-relaxed text-[#666]">
-        第一次使用社群登入時，請用註冊時的手機號碼與密碼驗證，綁定到既有會員帳號。
-        綁定後即可直接使用 {providerLabel} 登入。
+      <p className="text-center text-[13px] font-semibold tracking-[0.18em] text-[#2a514d]">
+        HOVER
       </p>
+      <h1 className="mt-2 text-center text-[22px] font-bold text-black">
+        第三方帳號綁定
+      </h1>
+
+      {isDemo ? (
+        <div className="mt-4 flex justify-center gap-3 text-[12px] text-[#888]">
+          {(["google", "line", "facebook"] as SocialProvider[]).map((p) => (
+            <Link
+              key={p}
+              href={`/auth/link-account?demo=${p}`}
+              className={
+                provider === p
+                  ? "font-semibold text-[#2a514d] underline underline-offset-2"
+                  : "underline underline-offset-2 hover:text-black"
+              }
+            >
+              {PROVIDER_LABEL[p]}
+            </Link>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="mt-10 text-center">
+        {icon ? (
+          <Image
+            src={icon.src}
+            alt={icon.alt}
+            width={48}
+            height={48}
+            className="mx-auto h-12 w-12 object-contain"
+            priority
+          />
+        ) : null}
+        <h2 className="mt-5 text-[18px] font-bold text-black">
+          綁定 {providerLabel}
+        </h2>
+        <p className="mt-3 text-[13px] leading-relaxed text-[#666]">
+          首次使用 {providerLabel} 登入，請先驗證您的 HOVER 會員帳號。
+        </p>
+      </div>
 
       {error ? (
         <p className="mt-6 text-center text-[13px] text-[#c90000]">{error}</p>
       ) : null}
 
-      <section className="mt-8 border border-[#ddd] bg-white px-5 py-6">
-        <h2 className="text-[15px] font-semibold text-black">
-          已是 HOVER 會員？驗證並綁定
-        </h2>
+      <section className="mt-8 border-t border-[#ddd] pt-6">
+        <h3 className="text-center text-[15px] font-semibold text-[#2a514d]">
+          驗證 HOVER 會員帳號
+        </h3>
         <form onSubmit={handleBind} className="mt-5 space-y-4">
           <AuthField
-            label="註冊時的手機號碼"
+            label="註冊手機號碼"
             type="tel"
             name="phone"
             value={phone}
@@ -157,11 +235,12 @@ function LinkAccountContent() {
         </form>
       </section>
 
-      <section className="mt-6 border border-[#ddd] bg-white px-5 py-6 text-center">
-        <h2 className="text-[15px] font-semibold text-black">尚未加入 HOVER？</h2>
+      <section className="mt-8 border-t border-[#ddd] pt-6 text-center">
+        <h3 className="text-[15px] font-semibold text-[#2a514d]">
+          尚未加入 HOVER ?
+        </h3>
         <p className="mt-2 text-[12px] leading-relaxed text-[#888]">
-          不會另外建立第三方會員。請先完成基本會員註冊，再回來綁定{" "}
-          {providerLabel}。
+          請先完成會員註冊，再回來綁定 {providerLabel}。
         </p>
         <Link
           href={registerHref}
