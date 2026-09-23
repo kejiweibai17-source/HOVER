@@ -19,6 +19,9 @@ import { fetchShippingSettings, shippingFeeFor } from "@/lib/shippingDefaults";
 import { generateCheckMacValue, getEcpayDate } from "@/lib/ecpay";
 import {
   evaluatePromotions,
+  findPromotionVariant,
+  isPoolVariantInStock,
+  pickRandomGiftVariation,
   promotionLinePrice,
   type EvaluatedPromotion,
 } from "@/lib/promotions";
@@ -66,7 +69,12 @@ interface RequestBody {
   coupon?: { code: string; amount: number } | string | null;
   memberDiscount?: number;
   invoice?: InvoicePreference | null;
-  promotions?: Array<{ id: string; qty?: number }>;
+  promotions?: Array<{
+    id: string;
+    qty?: number;
+    productId?: number;
+    variationId?: number;
+  }>;
 }
 
 type PromotionOrderLine = {
@@ -77,6 +85,7 @@ type PromotionOrderLine = {
   wcVariationId?: number;
   title: string;
   name?: string;
+  sku?: string;
 };
 
 async function fetchProductPricing(
@@ -415,13 +424,63 @@ export async function POST(req: Request) {
             { status: 409 },
           );
         }
+
+        let wcProductId = promotion.product.productId;
+        let wcVariationId = promotion.product.variationId || undefined;
+        let title = promotion.product.name;
+        let sku = String(promotion.product.sku || "");
+
+        if (promotion.type === "gift" && promotion.randomColor) {
+          const picked = pickRandomGiftVariation(
+            promotion,
+            [...items, ...promotionLines],
+            qty,
+          );
+          if (!picked?.productId) {
+            return NextResponse.json(
+              {
+                ok: false,
+                message: `「${promotion.product.name}」已贈完，請取消該優惠後再結帳。`,
+              },
+              { status: 409 },
+            );
+          }
+          wcProductId = picked.productId;
+          wcVariationId = picked.variationId || undefined;
+          title = promotion.product.name;
+          sku = String(picked.sku || "");
+        } else if (promotion.type === "addon") {
+          const chosen = findPromotionVariant(
+            promotion,
+            Number(selected.productId) || undefined,
+            Number(selected.variationId) || undefined,
+          );
+          if (
+            !chosen?.productId ||
+            !isPoolVariantInStock(chosen, [...items, ...promotionLines], qty)
+          ) {
+            return NextResponse.json(
+              {
+                ok: false,
+                message: `「${promotion.name}」所選規格庫存不足或已售完，請重新選擇。`,
+              },
+              { status: 409 },
+            );
+          }
+          wcProductId = chosen.productId;
+          wcVariationId = chosen.variationId || undefined;
+          title = chosen.name;
+          sku = String(chosen.sku || "");
+        }
+
         promotionLines.push({
           promotion,
           qty,
           price: promotionLinePrice(promotion),
-          wcProductId: promotion.product.productId,
-          wcVariationId: promotion.product.variationId || undefined,
-          title: promotion.product.name,
+          wcProductId,
+          wcVariationId,
+          title,
+          sku,
         });
       }
     }
@@ -716,6 +775,56 @@ export async function POST(req: Request) {
             }),
             ...promotionLines.map((line) => {
               const total = line.price * line.qty;
+              const isGift = line.promotion.type === "gift";
+              const typeLabel = isGift ? "滿額贈" : "加價購";
+              const sku = String(line.sku || line.promotion.product?.sku || "").trim();
+              const meta: Array<{ key: string; value: string }> = [
+                {
+                  key: "_hover_promotion_type",
+                  value: typeLabel,
+                },
+                {
+                  key: "_hover_promotion_kind",
+                  value: line.promotion.type,
+                },
+                {
+                  key: "_hover_promotion_name",
+                  value: line.promotion.name,
+                },
+                {
+                  key: "_hover_promotion_id",
+                  value: line.promotion.id,
+                },
+                {
+                  key: "_hover_unit_price",
+                  value: String(line.price),
+                },
+                {
+                  key: "活動類型",
+                  value: typeLabel,
+                },
+                {
+                  key: "成交單價",
+                  value: isGift ? "NT$0" : `NT$${line.price}`,
+                },
+              ];
+              if (sku) {
+                meta.push({ key: "_hover_fulfillment_sku", value: sku });
+                meta.push({ key: "出貨 SKU", value: sku });
+              }
+              if (line.promotion.randomColor) {
+                meta.push({ key: "_hover_random_color", value: "yes" });
+                meta.push({
+                  key: "_hover_display_name",
+                  value: line.promotion.product.name,
+                });
+                meta.push({
+                  key: "出貨備註",
+                  value: sku
+                    ? `顏色隨機出貨（請依出貨 SKU ${sku} 出貨）`
+                    : "顏色隨機出貨（請依本列實際規格出貨）",
+                });
+              }
               return {
                 product_id: line.wcProductId,
                 ...(line.wcVariationId
@@ -724,21 +833,7 @@ export async function POST(req: Request) {
                 quantity: line.qty,
                 subtotal: String(total),
                 total: String(total),
-                meta_data: [
-                  {
-                    key: "_hover_promotion_type",
-                    value:
-                      line.promotion.type === "gift" ? "滿額贈" : "加價購",
-                  },
-                  {
-                    key: "_hover_promotion_name",
-                    value: line.promotion.name,
-                  },
-                  {
-                    key: "_hover_promotion_id",
-                    value: line.promotion.id,
-                  },
-                ],
+                meta_data: meta,
               };
             }),
           ],

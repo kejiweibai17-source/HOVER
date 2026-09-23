@@ -35,6 +35,12 @@ import {
   normalizeMobileCarrier,
 } from "@/lib/invoicePreference";
 import { formatProductPrice } from "@/lib/utils";
+import {
+  findPromotionVariant,
+  isPoolVariantInStock,
+  promotionChoicePool,
+  promotionStockBlockMessage,
+} from "@/lib/promotions";
 
 // ✅ 內建輕量版：台灣縣市與鄉鎮區字典
 const TW_CITIES = {
@@ -872,26 +878,391 @@ function CheckoutProductThumb({ item }) {
   );
 }
 
-function promotionStockBlock(promotion, items = []) {
-  const product = promotion?.product;
-  if (!product || !promotion.inStock || !product.manageStock) return "";
-  if (product.stockQuantity == null) return "";
-  const stockQty = Number(product.stockQuantity);
-  if (!Number.isFinite(stockQty)) return "";
-  const need =
-    promotion.type === "gift" ? Number(promotion.rewardQty) || 1 : 1;
-  const reserved = items.reduce((sum, item) => {
-    const sameProduct =
-      Number(item.wcProductId || item.id) === Number(product.productId);
-    const sameVariation =
-      Number(item.wcVariationId || 0) === Number(product.variationId || 0);
-    return sameProduct && sameVariation ? sum + (Number(item.qty) || 0) : sum;
-  }, 0);
-  if (reserved + need <= stockQty) return "";
-  if (reserved > 0) {
-    return `購物車已有 ${reserved} 件，庫存只剩 ${stockQty}，無法再當贈品／加價購`;
+function poolOptionKey(variant) {
+  return `${Number(variant?.productId) || 0}:${Number(variant?.variationId) || 0}`;
+}
+
+function parsePoolOptionKey(key) {
+  const [productId, variationId] = String(key || "0:0")
+    .split(":")
+    .map((part) => Number(part) || 0);
+  return { productId, variationId };
+}
+
+function colorSwatchHex(label = "") {
+  const key = String(label).trim().toLowerCase();
+  const map = {
+    黑: "#1a1a1a",
+    黑色: "#1a1a1a",
+    白: "#ffffff",
+    白色: "#ffffff",
+    灰: "#9ca3af",
+    灰色: "#9ca3af",
+    米: "#e8dfd0",
+    米白: "#e8dfd0",
+    棕: "#8b5e3c",
+    棕色: "#8b5e3c",
+    藍: "#1e3a5f",
+    藍色: "#1e3a5f",
+    深藍: "#0f2744",
+    藏青: "#1a2744",
+    綠: "#2a514d",
+    綠色: "#2a514d",
+    紅: "#b91c1c",
+    紅色: "#b91c1c",
+    粉: "#f9a8d4",
+    粉色: "#f9a8d4",
+    卡其: "#c3b091",
+    杏: "#e8d5b7",
+    駝: "#c19a6b",
+  };
+  for (const [name, hex] of Object.entries(map)) {
+    if (key.includes(name.toLowerCase()) || String(label).includes(name)) {
+      return hex;
+    }
   }
-  return `庫存只剩 ${stockQty}，無法再加 ${need} 件`;
+  return "#d4d4d4";
+}
+
+const COLOR_WORD_RE = /色|黑|白|灰|米|棕|藍|綠|紅|粉|卡其|杏|駝|Navy|navy|Brown|brown/;
+
+function looksLikeColorLabel(label) {
+  const text = String(label || "").trim();
+  if (!text) return false;
+  return COLOR_WORD_RE.test(text);
+}
+
+function variantColorLabel(variant) {
+  if (variant?.colorLabel) return variant.colorLabel;
+  const name = String(variant?.name || "");
+  const match = name.match(/[-–—]\s*(.+)$/);
+  if (!match) return name || "規格";
+  const parts = match[1]
+    .split(/[,，／\/|｜]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  return parts[parts.length - 1] || name || "規格";
+}
+
+/** 只取尺寸（如 F），絕不回傳固定顏色。 */
+function variantSizeLabel(variant) {
+  const fromApi = String(variant?.sizeLabel || "").trim();
+  if (fromApi) {
+    const parts = fromApi
+      .split(/[,，／\/|｜]/)
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .filter((part) => !looksLikeColorLabel(part));
+    if (parts.length) return parts[0];
+  }
+  const name = String(variant?.name || "");
+  const match = name.match(/[-–—]\s*(.+)$/);
+  if (!match) return "";
+  const parts = match[1]
+    .split(/[,，／\/|｜]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length >= 2) {
+    const sizeParts = parts.slice(0, -1).filter((part) => !looksLikeColorLabel(part));
+    return sizeParts[0] || "";
+  }
+  if (parts.length === 1 && !looksLikeColorLabel(parts[0])) {
+    return parts[0];
+  }
+  return "";
+}
+
+function isRandomColorGift(promotion) {
+  if (promotion?.type !== "gift") return false;
+  if (promotion.randomColor) return true;
+  // 活動名稱常已標「顏色隨機出貨」，即使 API 旗標漏傳也走隨機副標
+  return /顏色隨機/.test(String(promotion?.name || ""));
+}
+
+function giftDetailLine(promotion) {
+  const qty = Number(promotion.rewardQty) || 1;
+  if (isRandomColorGift(promotion)) {
+    const pool = promotionChoicePool(promotion);
+    const size =
+      variantSizeLabel(pool[0]) ||
+      variantSizeLabel(promotion.product) ||
+      "";
+    return size
+      ? `${size}｜顏色隨機出貨｜贈送 ${qty} 件`
+      : `顏色隨機出貨｜贈送 ${qty} 件`;
+  }
+  return `${promotion.product?.name || "贈品"}／贈送 ${qty} 件`;
+}
+
+function PromotionOfferCard({
+  promotion,
+  selected,
+  selectedPromotion,
+  cartItems = [],
+  onToggle,
+  onQuantity,
+  onSelectVariant,
+}) {
+  const pool = promotionChoicePool(promotion);
+  const [draftKey, setDraftKey] = React.useState(() => {
+    const initial =
+      findPromotionVariant(
+        promotion,
+        selectedPromotion?.productId,
+        selectedPromotion?.variationId,
+      ) ||
+      pool.find((item) => isPoolVariantInStock(item, cartItems)) ||
+      pool[0] ||
+      promotion.product;
+    return poolOptionKey(initial);
+  });
+
+  React.useEffect(() => {
+    if (!selectedPromotion) return;
+    setDraftKey(
+      poolOptionKey(
+        findPromotionVariant(
+          promotion,
+          selectedPromotion.productId,
+          selectedPromotion.variationId,
+        ) || promotion.product,
+      ),
+    );
+  }, [
+    selectedPromotion?.productId,
+    selectedPromotion?.variationId,
+    promotion,
+    selectedPromotion,
+  ]);
+
+  const draft = parsePoolOptionKey(draftKey);
+  const matchedVariant = findPromotionVariant(
+    promotion,
+    draft.productId,
+    draft.variationId,
+  );
+  const selectedInPool =
+    matchedVariant &&
+    pool.some(
+      (item) =>
+        Number(item.productId) === Number(matchedVariant.productId) &&
+        Number(item.variationId || 0) ===
+          Number(matchedVariant.variationId || 0),
+    );
+  const selectedVariant =
+    (selectedInPool ? matchedVariant : null) ||
+    pool.find((item) => isPoolVariantInStock(item, cartItems)) ||
+    pool[0] ||
+    promotion.product;
+  const stockBlock = promotionStockBlockMessage(
+    promotion,
+    cartItems,
+    selectedVariant,
+  );
+  const giftOutOfStock =
+    promotion.type === "gift" &&
+    (!promotion.inStock || Boolean(stockBlock));
+  const addonOutOfStock =
+    promotion.type === "addon" &&
+    (!promotion.inStock ||
+      !pool.some((item) => isPoolVariantInStock(item, cartItems)));
+  const disabled =
+    !selected &&
+    (!promotion.eligible ||
+      Boolean(stockBlock) ||
+      giftOutOfStock ||
+      addonOutOfStock ||
+      (promotion.type === "addon" &&
+        selectedVariant &&
+        !isPoolVariantInStock(selectedVariant, cartItems)));
+  let actionLabel = "加購";
+  if (selected) {
+    actionLabel = "移除";
+  } else if (promotion.type === "gift") {
+    actionLabel = giftOutOfStock ? "已贈完" : "領取";
+  } else if (addonOutOfStock) {
+    actionLabel = "已售完";
+  }
+
+  const regularPrice = Number(selectedVariant?.regularPrice) || 0;
+  const showAddonChoice =
+    promotion.type === "addon" && pool.length > 1 && !addonOutOfStock;
+  const thumb =
+    promotion.type === "gift"
+      ? promotion.product?.image || pool[0]?.image
+      : selectedVariant?.image || promotion.product?.image;
+
+  const colorSwatches = showAddonChoice ? (
+    <div className="flex flex-wrap items-center justify-center gap-3">
+      {pool.map((variant) => {
+        const available = isPoolVariantInStock(variant, cartItems);
+        const active =
+          poolOptionKey(variant) === poolOptionKey(selectedVariant);
+        const label = variantColorLabel(variant);
+        const displayLabel =
+          /色$/.test(label) || label.length > 2 ? label : `${label}色`;
+        const hex = colorSwatchHex(label);
+        const isLight = ["#ffffff", "#e8dfd0", "#e8d5b7", "#f9a8d4"].includes(
+          hex,
+        );
+        return (
+          <button
+            key={poolOptionKey(variant)}
+            type="button"
+            disabled={!available}
+            onClick={() => {
+              setDraftKey(poolOptionKey(variant));
+              onSelectVariant?.(
+                promotion,
+                variant.productId,
+                variant.variationId,
+              );
+            }}
+            className={`flex flex-col items-center gap-1 ${
+              available ? "" : "cursor-not-allowed opacity-40"
+            }`}
+            title={available ? displayLabel : `${displayLabel}（已售完）`}
+          >
+            <span
+              className={`h-7 w-7 rounded-full border ${
+                active
+                  ? "border-[#2a514d] ring-1 ring-[#2a514d] ring-offset-1"
+                  : "border-[#ccc]"
+              }`}
+              style={{ backgroundColor: hex }}
+            >
+              {isLight ? (
+                <span className="block h-full w-full rounded-full border border-[#e5e5e5]" />
+              ) : null}
+            </span>
+            <span
+              className={`text-[11px] ${
+                active ? "text-[#2a514d]" : "text-[#666]"
+              }`}
+            >
+              {displayLabel}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  ) : null;
+
+  return (
+    <div
+      className={`flex items-center gap-3 border p-3 ${
+        selected ? "border-[#2a514d] bg-[#f4f8f7]" : "border-[#ddd]"
+      }`}
+    >
+      <div className="h-16 w-12 shrink-0 overflow-hidden bg-[#f3f3f1]">
+        {thumb ? (
+          <img src={thumb} alt="" className="h-full w-full object-cover" />
+        ) : null}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[13px] font-medium leading-snug text-black">
+          {promotion.name}
+        </p>
+        {promotion.type === "gift" ? (
+          <p className="mt-1 truncate text-[12px] text-[#666]">
+            {giftDetailLine(promotion)}
+          </p>
+        ) : (
+          <>
+            <p className="mt-1 text-[12px]">
+              <span className="font-medium text-[#c90000]">
+                加購價 {currency(promotion.purchasePrice)}
+              </span>
+              {regularPrice > promotion.purchasePrice ? (
+                <span className="ml-1 text-[#999]">
+                  （原價{" "}
+                  <span className="line-through">
+                    {currency(regularPrice)}
+                  </span>
+                  ）
+                </span>
+              ) : null}
+            </p>
+            {!showAddonChoice ? (
+              <p className="mt-1 truncate text-[12px] text-[#666]">
+                {selectedVariant?.name || promotion.product?.name}
+              </p>
+            ) : null}
+          </>
+        )}
+        {giftOutOfStock || addonOutOfStock ? null : stockBlock ? (
+          <p className="mt-1 text-[11px] text-[#c90000]">{stockBlock}</p>
+        ) : promotion.remaining > 0 && promotion.inStock ? (
+          <p className="mt-1 text-[11px] text-[#888]">
+            再消費 {currency(promotion.remaining)} 即可選擇
+          </p>
+        ) : null}
+      </div>
+      {colorSwatches ? (
+        <div className="shrink-0 px-1">{colorSwatches}</div>
+      ) : null}
+      <div className="shrink-0 self-center">
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() =>
+            onToggle?.(promotion, {
+              productId: selectedVariant?.productId,
+              variationId: selectedVariant?.variationId,
+            })
+          }
+          className={`min-w-[56px] px-3 py-2 text-[12px] transition-colors ${
+            selected
+              ? "bg-black text-white"
+              : disabled
+                ? "cursor-not-allowed bg-[#d0d0d0] text-white"
+                : "bg-[#2a514d] text-white hover:bg-[#1e3d3a]"
+          }`}
+        >
+          {actionLabel}
+        </button>
+        {selected &&
+        promotion.type === "addon" &&
+        promotion.limitQty > 1 ? (
+          <div className="mt-2 flex items-center justify-between border border-[#ccc]">
+            <button
+              type="button"
+              className="h-7 w-7"
+              onClick={() =>
+                onQuantity?.(
+                  promotion.id,
+                  Math.max(1, Number(selectedPromotion?.selectedQty || 1) - 1),
+                )
+              }
+            >
+              −
+            </button>
+            <span className="text-[12px]">
+              {selectedPromotion?.selectedQty || 1}
+            </span>
+            <button
+              type="button"
+              className="h-7 w-7"
+              disabled={
+                Number(selectedPromotion?.selectedQty || 1) >= promotion.limitQty
+              }
+              onClick={() =>
+                onQuantity?.(
+                  promotion.id,
+                  Math.min(
+                    promotion.limitQty,
+                    Number(selectedPromotion?.selectedQty || 1) + 1,
+                  ),
+                )
+              }
+            >
+              ＋
+            </button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
 }
 
 function PromotionOffers({
@@ -900,131 +1271,44 @@ function PromotionOffers({
   cartItems = [],
   onToggle,
   onQuantity,
+  onSelectVariant,
 }) {
-  if (!promotions.length) return null;
+  const giftPromotions = promotions.filter((item) => item.type === "gift");
+  const addonPromotions = promotions.filter((item) => item.type === "addon");
+  if (!giftPromotions.length && !addonPromotions.length) return null;
+
   const selectedIds = new Set(selectedPromotions.map((item) => item.id));
+  const sections = [
+    { key: "gift", title: "滿額贈", items: giftPromotions },
+    { key: "addon", title: "加價購", items: addonPromotions },
+  ].filter((section) => section.items.length > 0);
 
   return (
-    <section className="mt-8 border-t border-[#e8e8e8] pt-6">
-      <h2 className="mb-4 text-[15px] font-semibold text-black">
-        滿額贈・加價購
-      </h2>
-      <div className="space-y-3">
-        {promotions.map((promotion) => {
-          const selected = selectedIds.has(promotion.id);
-          const selectedPromotion = selectedPromotions.find(
-            (item) => item.id === promotion.id,
-          );
-          const stockBlock = promotionStockBlock(promotion, cartItems);
-          const disabled = !promotion.eligible || (!selected && Boolean(stockBlock));
-          return (
-            <div
-              key={promotion.id}
-              className={`flex items-center gap-3 border p-3 ${
-                selected ? "border-[#2a514d] bg-[#f4f8f7]" : "border-[#ddd]"
-              }`}
-            >
-              <div className="h-16 w-12 shrink-0 overflow-hidden bg-[#f3f3f1]">
-                {promotion.product?.image ? (
-                  <img
-                    src={promotion.product.image}
-                    alt=""
-                    className="h-full w-full object-cover"
-                  />
-                ) : null}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="text-[12px] text-[#2a514d]">
-                  {promotion.type === "gift" ? "滿額贈" : "加價購"}・滿{" "}
-                  {currency(promotion.threshold)}
-                </p>
-                <p className="mt-0.5 text-[13px] font-medium text-black">
-                  {promotion.name}
-                </p>
-                <p className="mt-0.5 truncate text-[12px] text-[#666]">
-                  {promotion.product?.name}
-                  {promotion.type === "gift"
-                    ? `／贈送 ${promotion.rewardQty} 件`
-                    : `／加購價 ${currency(promotion.purchasePrice)}`}
-                </p>
-                {!promotion.inStock ? (
-                  <p className="mt-1 text-[11px] text-[#c90000]">目前已售完</p>
-                ) : stockBlock ? (
-                  <p className="mt-1 text-[11px] text-[#c90000]">{stockBlock}</p>
-                ) : promotion.remaining > 0 ? (
-                  <p className="mt-1 text-[11px] text-[#888]">
-                    再消費 {currency(promotion.remaining)} 即可選擇
-                  </p>
-                ) : null}
-              </div>
-              <div className="shrink-0">
-                <button
-                  type="button"
-                  disabled={disabled}
-                  onClick={() => onToggle?.(promotion)}
-                  className={`px-3 py-2 text-[12px] transition-colors ${
-                    selected
-                      ? "bg-black text-white"
-                      : disabled
-                        ? "cursor-not-allowed bg-[#eee] text-[#aaa]"
-                        : "bg-[#2a514d] text-white hover:bg-[#1e3d3a]"
-                  }`}
-                >
-                  {selected
-                    ? "移除"
-                    : promotion.type === "gift"
-                      ? "領取"
-                      : "加購"}
-                </button>
-                {selected &&
-                promotion.type === "addon" &&
-                promotion.limitQty > 1 ? (
-                  <div className="mt-2 flex items-center justify-between border border-[#ccc]">
-                    <button
-                      type="button"
-                      className="h-7 w-7"
-                      onClick={() =>
-                        onQuantity?.(
-                          promotion.id,
-                          Math.max(
-                            1,
-                            Number(selectedPromotion?.selectedQty || 1) - 1,
-                          ),
-                        )
-                      }
-                    >
-                      −
-                    </button>
-                    <span className="text-[12px]">
-                      {selectedPromotion?.selectedQty || 1}
-                    </span>
-                    <button
-                      type="button"
-                      className="h-7 w-7"
-                      disabled={
-                        Number(selectedPromotion?.selectedQty || 1) >=
-                        promotion.limitQty
-                      }
-                      onClick={() =>
-                        onQuantity?.(
-                          promotion.id,
-                          Math.min(
-                            promotion.limitQty,
-                            Number(selectedPromotion?.selectedQty || 1) + 1,
-                          ),
-                        )
-                      }
-                    >
-                      ＋
-                    </button>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </section>
+    <div className="mt-8 space-y-8 border-t border-[#e8e8e8] pt-6">
+      {sections.map((section) => (
+        <section key={section.key}>
+          <h2 className="mb-4 text-[15px] font-semibold text-black">
+            {section.title}
+          </h2>
+          <div className="space-y-3">
+            {section.items.map((promotion) => (
+              <PromotionOfferCard
+                key={promotion.id}
+                promotion={promotion}
+                selected={selectedIds.has(promotion.id)}
+                selectedPromotion={selectedPromotions.find(
+                  (item) => item.id === promotion.id,
+                )}
+                cartItems={cartItems}
+                onToggle={onToggle}
+                onQuantity={onQuantity}
+                onSelectVariant={onSelectVariant}
+              />
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
   );
 }
 
@@ -1042,6 +1326,7 @@ function CartStep({
   selectedPromotions,
   onTogglePromotion,
   onPromotionQuantity,
+  onSelectPromotionVariant,
 }) {
   const orderSummary = useMemo(
     () =>
@@ -1171,6 +1456,7 @@ function CartStep({
         cartItems={items}
         onToggle={onTogglePromotion}
         onQuantity={onPromotionQuantity}
+        onSelectVariant={onSelectPromotionVariant}
       />
 
       <div className="mt-8">
@@ -1477,6 +1763,8 @@ function CheckoutStep({
           promotion.type === "gift"
             ? promotion.rewardQty
             : promotion.selectedQty || 1,
+        productId: promotion.selectedProductId || undefined,
+        variationId: promotion.selectedVariationId || undefined,
       })),
       contact: { email: contact.email.trim() },
       addr: {
@@ -1893,6 +2181,12 @@ function CheckoutStep({
                   promotion.type === "addon"
                     ? promotion.purchasePrice * qty
                     : 0;
+                const chosen =
+                  findPromotionVariant(
+                    promotion,
+                    promotion.selectedProductId,
+                    promotion.selectedVariationId,
+                  ) || promotion.product;
                 return (
                   <div
                     key={`promotion-${promotion.id}`}
@@ -1903,10 +2197,33 @@ function CheckoutStep({
                         <span className="mr-2 text-[11px] text-[#2a514d]">
                           {promotion.type === "gift" ? "贈品" : "加價購"}
                         </span>
-                        {promotion.product?.name} × {qty}
+                        {promotion.type === "gift" ? (
+                          <>
+                            {isRandomColorGift(promotion) ? (
+                              <span>{giftDetailLine(promotion)}</span>
+                            ) : (
+                              <>
+                                {promotion.product?.name}
+                                <span className="mt-1 block text-[12px] text-[#666]">
+                                  贈送 {qty} 件
+                                </span>
+                              </>
+                            )}
+                          </>
+                        ) : (
+                          <>
+                            {chosen?.name || promotion.product?.name}
+                            <span className="mt-1 block text-[12px] text-[#666]">
+                              數量 {qty}｜加購價{" "}
+                              {currency(promotion.purchasePrice)}
+                            </span>
+                          </>
+                        )}
                       </span>
                       <span className="shrink-0 whitespace-nowrap font-semibold">
-                        {currency(lineTotal)}
+                        {promotion.type === "gift"
+                          ? currency(0)
+                          : currency(lineTotal)}
                       </span>
                     </div>
                   </div>
@@ -2116,9 +2433,23 @@ function CartContent() {
       selectedPromotionChoices
         .map((choice) => {
           const promotion = promotions.find((row) => row.id === choice.id);
-          return promotion?.eligible
-            ? { ...promotion, selectedQty: choice.qty || 1 }
-            : null;
+          if (!promotion?.eligible) return null;
+          const chosen = findPromotionVariant(
+            promotion,
+            choice.productId,
+            choice.variationId,
+          );
+          return {
+            ...promotion,
+            selectedQty: choice.qty || 1,
+            selectedProductId:
+              choice.productId || chosen?.productId || promotion.product?.productId,
+            selectedVariationId:
+              choice.variationId ||
+              chosen?.variationId ||
+              promotion.product?.variationId ||
+              0,
+          };
         })
         .filter(Boolean),
     [promotions, selectedPromotionChoices],
@@ -2434,15 +2765,23 @@ function CartContent() {
     promotionTotal,
   ]);
 
-  const togglePromotion = useCallback((promotion) => {
+  const togglePromotion = useCallback((promotion, variantChoice = {}) => {
     if (!promotion?.eligible) return;
     setSelectedPromotionChoices((current) => {
       if (current.some((choice) => choice.id === promotion.id)) {
         return current.filter((choice) => choice.id !== promotion.id);
       }
+      const chosen =
+        findPromotionVariant(
+          promotion,
+          variantChoice.productId,
+          variantChoice.variationId,
+        ) || promotion.product;
       const next = {
         id: promotion.id,
         qty: promotion.type === "gift" ? promotion.rewardQty : 1,
+        productId: chosen?.productId || 0,
+        variationId: chosen?.variationId || 0,
       };
       if (
         !promotion.stackable ||
@@ -2472,6 +2811,30 @@ function CartContent() {
       );
     },
     [promotions],
+  );
+
+  const selectPromotionVariant = useCallback(
+    (promotion, productId, variationId) => {
+      if (!promotion || promotion.type !== "addon") return;
+      const chosen = findPromotionVariant(promotion, productId, variationId);
+      if (!chosen) return;
+      setSelectedPromotionChoices((current) => {
+        const exists = current.some((choice) => choice.id === promotion.id);
+        if (!exists) {
+          return current;
+        }
+        return current.map((choice) =>
+          choice.id === promotion.id
+            ? {
+                ...choice,
+                productId: chosen.productId,
+                variationId: chosen.variationId || 0,
+              }
+            : choice,
+        );
+      });
+    },
+    [],
   );
 
   // ✅ 修正數量增減與移除，先更新 Local State，再更新 Store
@@ -2543,6 +2906,7 @@ function CartContent() {
                 selectedPromotions={selectedPromotions}
                 onTogglePromotion={togglePromotion}
                 onPromotionQuantity={updatePromotionQuantity}
+                onSelectPromotionVariant={selectPromotionVariant}
                 onUpdateQty={updateQty}
                 onRemove={removeItem}
                 onNext={async () => {

@@ -160,6 +160,21 @@ function hop_get_items(WC_Order $order): array
         // 若名稱仍帶「 - 規格」後綴，去掉（Woo 常見寫法）
         $name = trim((string) preg_replace('/\s+[–—-]\s+.+$/u', '', $name));
 
+        $promo_type = trim((string) $item->get_meta('_hover_promotion_type', true));
+        $promo_kind = trim((string) $item->get_meta('_hover_promotion_kind', true));
+        $is_gift = ($promo_type === '滿額贈' || $promo_kind === 'gift');
+        $is_addon = ($promo_type === '加價購' || $promo_kind === 'addon');
+        $is_random = in_array(
+            strtolower(trim((string) $item->get_meta('_hover_random_color', true))),
+            ['yes', '1', 'true'],
+            true
+        );
+        if ($is_gift) {
+            $name = '[滿額贈]' . ($is_random ? '[顏色隨機出貨]' : '') . ' ' . $name;
+        } elseif ($is_addon) {
+            $name = '[加價購] ' . $name;
+        }
+
         $specs = [];
         if ($product instanceof WC_Product && $product->is_type('variation')) {
             foreach ($product->get_attributes() as $taxonomy => $value) {
@@ -183,6 +198,14 @@ function hop_get_items(WC_Order $order): array
                     $specs[] = $val;
                 }
             }
+        }
+
+        if ($is_random) {
+            $sku = trim((string) $item->get_meta('_hover_fulfillment_sku', true));
+            if ($sku === '' && $product instanceof WC_Product) {
+                $sku = trim((string) $product->get_sku());
+            }
+            $specs[] = $sku !== '' ? '顏色隨機出貨／SKU ' . $sku : '顏色隨機出貨';
         }
 
         $rows[] = [

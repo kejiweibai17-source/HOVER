@@ -4,12 +4,15 @@ export type PromotionProduct = {
   productId: number;
   variationId: number;
   name: string;
+  sku: string;
   image: string;
   regularPrice: number;
   stockStatus: string;
   manageStock: boolean;
   stockQuantity: number | null;
   backorders: string;
+  colorLabel: string;
+  sizeLabel: string;
 };
 
 export type PromotionRule = {
@@ -26,8 +29,11 @@ export type PromotionRule = {
   limitQty: number;
   stackable: boolean;
   stockBehavior: "hide" | "disable";
+  randomColor: boolean;
+  rewardIds: number[];
   inStock: boolean;
   product: PromotionProduct;
+  pool: PromotionProduct[];
 };
 
 export type PromotionCartItem = {
@@ -54,17 +60,67 @@ const intList = (value: unknown): number[] =>
     ? Array.from(new Set(value.map((item) => asInt(item)).filter(Boolean)))
     : [];
 
+function normalizeProduct(raw: unknown): PromotionProduct | null {
+  if (!raw || typeof raw !== "object") return null;
+  const product = raw as Record<string, any>;
+  const productId = asInt(product.productId);
+  if (!productId) return null;
+  return {
+    productId,
+    variationId: asInt(product.variationId),
+    name: String(product.name || "活動商品"),
+    sku: String(product.sku || ""),
+    image: String(product.image || ""),
+    regularPrice: asInt(product.regularPrice),
+    stockStatus: String(product.stockStatus || ""),
+    manageStock: Boolean(product.manageStock),
+    stockQuantity:
+      product.stockQuantity === null || product.stockQuantity === undefined
+        ? null
+        : asInt(product.stockQuantity),
+    backorders: String(product.backorders || "no"),
+    colorLabel: String(product.colorLabel || "").trim(),
+    sizeLabel: String(product.sizeLabel || "").trim(),
+  };
+}
+
+function poolItemInStock(product: PromotionProduct): boolean {
+  return (
+    product.stockStatus !== "outofstock" &&
+    (!product.manageStock ||
+      product.stockQuantity === null ||
+      product.stockQuantity > 0 ||
+      product.backorders !== "no")
+  );
+}
+
 function normalizeRule(raw: unknown): PromotionRule | null {
   if (!raw || typeof raw !== "object") return null;
   const row = raw as Record<string, any>;
-  const product = row.product as Record<string, any> | undefined;
+  const product = normalizeProduct(row.product);
   const id = String(row.id || "").trim();
-  const productId = asInt(product?.productId);
-  if (!id || !productId) return null;
+  if (!id || !product) return null;
+
+  const type: PromotionType = row.type === "addon" ? "addon" : "gift";
+  const randomColor = type === "gift" && Boolean(row.randomColor);
+  const pool = (Array.isArray(row.pool) ? row.pool : [])
+    .map(normalizeProduct)
+    .filter(Boolean) as PromotionProduct[];
+  const rewardIds = intList(row.rewardIds);
+  const effectivePool =
+    randomColor || type === "addon"
+      ? pool.length
+        ? pool
+        : [product]
+      : [];
+  const inStock =
+    effectivePool.length > 0
+      ? effectivePool.some(poolItemInStock) || Boolean(row.inStock)
+      : Boolean(row.inStock);
 
   return {
     id,
-    type: row.type === "addon" ? "addon" : "gift",
+    type,
     name: String(row.name || "").trim() || "HOVER 優惠活動",
     threshold: asInt(row.threshold),
     includeProductIds: intList(row.includeProductIds),
@@ -76,21 +132,11 @@ function normalizeRule(raw: unknown): PromotionRule | null {
     limitQty: Math.max(1, asInt(row.limitQty, 1)),
     stackable: Boolean(row.stackable),
     stockBehavior: row.stockBehavior === "hide" ? "hide" : "disable",
-    inStock: Boolean(row.inStock),
-    product: {
-      productId,
-      variationId: asInt(product?.variationId),
-      name: String(product?.name || "活動商品"),
-      image: String(product?.image || ""),
-      regularPrice: asInt(product?.regularPrice),
-      stockStatus: String(product?.stockStatus || ""),
-      manageStock: Boolean(product?.manageStock),
-      stockQuantity:
-        product?.stockQuantity === null || product?.stockQuantity === undefined
-          ? null
-          : asInt(product.stockQuantity),
-      backorders: String(product?.backorders || "no"),
-    },
+    randomColor,
+    rewardIds: randomColor || type === "addon" ? rewardIds : [],
+    inStock,
+    product,
+    pool: effectivePool,
   };
 }
 
@@ -228,4 +274,196 @@ export async function evaluatePromotions(
 
 export function promotionLinePrice(promotion: PromotionRule): number {
   return promotion.type === "addon" ? promotion.purchasePrice : 0;
+}
+
+export function promotionPool(promotion: PromotionRule): PromotionProduct[] {
+  if (promotion.pool?.length) return promotion.pool;
+  return promotion.product ? [promotion.product] : [];
+}
+
+/** HOVER SKU 系列：HV26-C01-001-WH-F → HV26-C01-001 */
+function promotionSkuSeries(sku: string): string {
+  const parts = String(sku || "")
+    .trim()
+    .toUpperCase()
+    .split(/[-_]/)
+    .filter(Boolean);
+  if (parts.length >= 4) return parts.slice(0, -2).join("-");
+  if (parts.length >= 3) return parts.slice(0, -1).join("-");
+  return parts.join("-");
+}
+
+/** 取商品家族鍵，避免加價購規格池混入不同商品。 */
+export function promotionProductFamilyKey(
+  product?: PromotionProduct | null,
+): string {
+  if (!product) return "";
+  // 優先 SKU 系列（HOVER 每色各自為可變商品，parent/productId 不同）
+  const series = promotionSkuSeries(product.sku || "");
+  if (series) return `sku:${series}`;
+
+  const name = String(product.name || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+  // 「經典緹花中筒襪 - F, 白」或變體名僅「F, 白」時退回完整名
+  const match = name.match(/^(.*?)[\s]*[-–—|:｜].+$/);
+  if (match?.[1]?.trim() && match[1].trim().length > 1) {
+    return `name:${match[1].trim()}`;
+  }
+  // 變體顯示名常是「F, 白」— 無法當家族；改用較短共通前綴不可靠，留給 sku
+  if (name && !/^[a-z0-9]\s*[,，]/.test(name) && name.length > 2) {
+    // 去掉尾端顏色詞後比對
+    const stripped = name
+      .replace(
+        /[\s]*[-–—|:｜,][\s]*(?:色|黑|白|灰|米|棕|藍|綠|紅|粉|卡其|杏|駝).*$/,
+        "",
+      )
+      .trim();
+    if (stripped && stripped !== name) return `name:${stripped}`;
+    return `name:${name}`;
+  }
+  if (product.productId) return `id:${product.productId}`;
+  return "";
+}
+
+/** 加價購僅保留與第一個規格同家族的選項。 */
+export function promotionChoicePool(
+  promotion: PromotionRule,
+): PromotionProduct[] {
+  const pool = promotionPool(promotion);
+  if (promotion.type !== "addon" || pool.length <= 1) return pool;
+  const family = promotionProductFamilyKey(pool[0]);
+  const filtered = pool.filter(
+    (item) => promotionProductFamilyKey(item) === family,
+  );
+  return filtered.length ? filtered : pool;
+}
+
+export function isPoolVariantInStock(
+  variant: PromotionProduct,
+  cartItems: PromotionCartItem[] = [],
+  needQty = 1,
+): boolean {
+  const need = Math.max(1, Math.round(Number(needQty) || 1));
+  const reserved = reservedQtyForSku(
+    cartItems,
+    variant.productId,
+    variant.variationId,
+  );
+  const free = poolVariantAvailableQty(variant, reserved);
+  return free === null || free >= need;
+}
+
+export function findPromotionVariant(
+  promotion: PromotionRule,
+  productId?: number,
+  variationId?: number,
+): PromotionProduct | null {
+  const pool = promotionPool(promotion);
+  const pid = asInt(productId);
+  const vid = asInt(variationId);
+  if (pid || vid) {
+    const matched = pool.find(
+      (item) =>
+        asInt(item.productId) === pid && asInt(item.variationId) === vid,
+    );
+    if (matched) return matched;
+  }
+  return pool.find((item) => poolItemInStock(item)) || pool[0] || null;
+}
+
+function reservedQtyForSku(
+  items: PromotionCartItem[],
+  productId: number,
+  variationId: number,
+): number {
+  return items.reduce((sum, item) => {
+    const sameProduct =
+      asInt(item.wcProductId || item.id) === productId;
+    const sameVariation =
+      asInt(item.wcVariationId) === asInt(variationId);
+    return sameProduct && sameVariation
+      ? sum + Math.max(0, Math.round(Number(item.qty) || 0))
+      : sum;
+  }, 0);
+}
+
+function poolVariantAvailableQty(
+  variant: PromotionProduct,
+  reserved: number,
+): number | null {
+  if (!poolItemInStock(variant)) return 0;
+  if (
+    !variant.manageStock ||
+    variant.stockQuantity === null ||
+    variant.backorders !== "no"
+  ) {
+    return null; // unlimited
+  }
+  return Math.max(0, Number(variant.stockQuantity) - reserved);
+}
+
+/** 隨機出貨：從仍有庫存的規格池挑選一個變體。 */
+export function pickRandomGiftVariation(
+  promotion: PromotionRule,
+  cartItems: PromotionCartItem[] = [],
+  needQty = 1,
+): PromotionProduct | null {
+  const need = Math.max(1, Math.round(Number(needQty) || 1));
+  const pool = promotionPool(promotion);
+
+  const available = pool.filter((variant) =>
+    isPoolVariantInStock(variant, cartItems, need),
+  );
+
+  if (!available.length) return null;
+  return available[Math.floor(Math.random() * available.length)] || null;
+}
+
+/** 前台庫存阻擋訊息；空字串代表目前可領／可加購。 */
+export function promotionStockBlockMessage(
+  promotion: PromotionRule,
+  items: PromotionCartItem[] = [],
+  selectedVariant?: PromotionProduct | null,
+): string {
+  if (!promotion.inStock) return "";
+  const need =
+    promotion.type === "gift" ? Number(promotion.rewardQty) || 1 : 1;
+
+  if (promotion.randomColor && promotion.pool.length) {
+    const canFulfill = promotion.pool.some((variant) =>
+      isPoolVariantInStock(variant, items, need),
+    );
+    if (canFulfill) return "";
+    return "隨機贈品規格庫存不足，無法再領取";
+  }
+
+  if (promotion.type === "addon" && promotion.pool.length) {
+    const target =
+      selectedVariant ||
+      promotion.pool.find((variant) =>
+        isPoolVariantInStock(variant, items, need),
+      );
+    if (!target) return "加價購規格目前皆無庫存";
+    if (!isPoolVariantInStock(target, items, need)) {
+      return "所選規格庫存不足，請改選其他規格";
+    }
+    return "";
+  }
+
+  const product = selectedVariant || promotion.product;
+  if (!product.manageStock || product.stockQuantity == null) return "";
+  const stockQty = Number(product.stockQuantity);
+  if (!Number.isFinite(stockQty)) return "";
+  const reserved = reservedQtyForSku(
+    items,
+    product.productId,
+    product.variationId,
+  );
+  if (reserved + need <= stockQty) return "";
+  if (reserved > 0) {
+    return `購物車已有 ${reserved} 件，庫存只剩 ${stockQty}，無法再當贈品／加價購`;
+  }
+  return `庫存只剩 ${stockQty}，無法再加 ${need} 件`;
 }
