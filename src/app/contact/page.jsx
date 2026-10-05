@@ -10,19 +10,16 @@ const getSiteUrl = () => {
 const SITE_URL = getSiteUrl();
 
 export const metadata = {
-  title: "聯絡我們｜HOVER 威爾特",
+  title: "聯絡我們｜HOVER｜只為經典而生",
   description:
     "有任何商品、訂單或會員相關問題，歡迎透過 HOVER 聯絡我們表單與客服信箱取得協助。",
   keywords: ["HOVER", "聯絡我們", "客服", "服飾品牌"],
-  icons: {
-    icon: "/favicon.ico",
-  },
   openGraph: {
     type: "website",
     locale: "zh_TW",
     url: `${SITE_URL}/contact`,
     siteName: "HOVER 威爾特",
-    title: "聯絡我們｜HOVER 威爾特",
+    title: "聯絡我們｜HOVER｜只為經典而生",
     description:
       "有任何商品、訂單或會員相關問題，歡迎透過 HOVER 聯絡我們表單與客服信箱取得協助。",
     images: [

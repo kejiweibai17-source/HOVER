@@ -181,10 +181,12 @@ function hoet_esc($s): string
     return esc_html((string) $s);
 }
 
+/** 與官網一致：NT.5,239／-NT.252 */
 function hoet_money($amount): string
 {
-    $n = (float) $amount;
-    return 'NT$' . number_format($n, 0, '.', ',');
+    $n = (int) round((float) $amount);
+    $body = 'NT.' . number_format(abs($n), 0, '.', ',');
+    return $n < 0 ? '-' . $body : $body;
 }
 
 function hoet_customer_name(WC_Order $order): string
@@ -452,7 +454,13 @@ function hoet_item_title(WC_Order_Item_Product $item): string
         }
     }
 
-    $opts = hoet_item_options($item);
+    $display = trim((string) $item->get_meta('_hover_display_name', true));
+    if ($display !== '') {
+        $stripped = preg_replace('/\s+[-–—]\s+[^-–—]+$/u', '', $display);
+        return is_string($stripped) && trim($stripped) !== '' ? trim($stripped) : $display;
+    }
+
+    $opts = hoet_item_options($item, false);
     if ($name === '' || $opts === '') {
         return $name;
     }
@@ -479,14 +487,70 @@ function hoet_item_title(WC_Order_Item_Product $item): string
     return $name;
 }
 
-function hoet_item_options(WC_Order_Item_Product $item): string
+/** gift｜addon｜空字串（一般商品） */
+function hoet_item_promo_kind(WC_Order_Item_Product $item): string
 {
+    $type = trim((string) $item->get_meta('_hover_promotion_type', true));
+    if ($type === '滿額贈' || $type === 'gift') {
+        return 'gift';
+    }
+    if ($type === '加價購' || $type === 'addon') {
+        return 'addon';
+    }
+    $kind = trim((string) $item->get_meta('_hover_promotion_kind', true));
+    if ($kind === 'gift' || $kind === 'addon') {
+        return $kind;
+    }
+    return '';
+}
+
+function hoet_item_promo_is_random(WC_Order_Item_Product $item): bool
+{
+    $flag = strtolower(trim((string) $item->get_meta('_hover_random_color', true)));
+    return in_array($flag, ['yes', '1', 'true'], true);
+}
+
+/** 信件用：滿額贈／加價購醒目標籤 */
+function hoet_item_promo_badge(WC_Order_Item_Product $item): string
+{
+    $kind = hoet_item_promo_kind($item);
+    if ($kind === 'gift') {
+        $label = hoet_item_promo_is_random($item)
+            ? '滿額贈｜顏色隨機出貨'
+            : '滿額贈';
+    } elseif ($kind === 'addon') {
+        $label = '加價購';
+    } else {
+        return '';
+    }
+    return '<div style="margin:0 0 6px;"><span style="display:inline-block;padding:3px 8px;background:' . HOET_GREEN . ';color:#ffffff;font-size:11px;font-weight:700;letter-spacing:0.06em;line-height:1.4;">' . hoet_esc($label) . '</span></div>';
+}
+
+/**
+ * 規格文字（尺寸｜顏色）。後台作業欄位一律不顯示；
+ * 隨機色贈品以「顏色隨機出貨」取代實際分配顏色（$mask_random_color=false 僅供內部比對品名）。
+ */
+function hoet_item_options(WC_Order_Item_Product $item, bool $mask_random_color = true): string
+{
+    $hide_labels = [
+        '活動類型' => true,
+        '成交單價' => true,
+        '出貨 SKU' => true,
+        '出貨SKU'  => true,
+        '出貨備註' => true,
+        '出貨代碼' => true,
+        'SKU'      => true,
+        '貨號'     => true,
+    ];
     $bits = [];
     $meta = $item->get_formatted_meta_data('_', true);
     foreach ($meta as $m) {
         $label = wp_strip_all_tags((string) $m->display_key);
         $value = wp_strip_all_tags((string) $m->display_value);
         if ($label === '' || $value === '') {
+            continue;
+        }
+        if (isset($hide_labels[$label])) {
             continue;
         }
         if (preg_match('/尺寸|size/i', $label)) {
@@ -500,6 +564,9 @@ function hoet_item_options(WC_Order_Item_Product $item): string
     $size = $bits['size'] ?? '';
     $color = $bits['color'] ?? '';
     unset($bits['size'], $bits['color']);
+    if ($mask_random_color && hoet_item_promo_kind($item) === 'gift' && hoet_item_promo_is_random($item)) {
+        $color = '顏色隨機出貨';
+    }
     if ($size !== '' || $color !== '') {
         return trim($size . ($size && $color ? '｜' : '') . $color);
     }
@@ -526,6 +593,7 @@ function hoet_item_image_url(WC_Order_Item_Product $item): string
     return is_array($src) && !empty($src[0]) ? (string) $src[0] : '';
 }
 
+/** 折扣列標籤規則需與官網會員中心訂單明細（account/page.jsx）一致 */
 function hoet_discount_rows(WC_Order $order): array
 {
     $rows = [];
@@ -534,18 +602,23 @@ function hoet_discount_rows(WC_Order $order): array
         if ($total >= 0) {
             continue;
         }
-        $rows[] = [
-            'label'  => $fee->get_name(),
-            'amount' => abs($total),
-        ];
+        $name = trim((string) $fee->get_name());
+        if ($name === '') {
+            $name = '折扣';
+        }
+        if (preg_match('/折扣碼\s+(.+)$/iu', $name, $m)) {
+            $label = '折扣（' . trim($m[1]) . '）';
+        } elseif (strpos($name, '折扣') === 0) {
+            $label = $name;
+        } else {
+            $label = '折扣（' . $name . '）';
+        }
+        $rows[] = ['label' => $label, 'amount' => abs($total)];
     }
     $discount = (float) $order->get_discount_total();
     if ($discount > 0) {
-        $codes = [];
-        foreach ($order->get_coupon_codes() as $code) {
-            $codes[] = $code;
-        }
-        $label = $codes ? ('折扣／優惠｜' . implode('、', $codes)) : '折扣／優惠';
+        $codes = array_values(array_filter(array_map('trim', $order->get_coupon_codes())));
+        $label = $codes ? ('折扣（' . implode('、', $codes) . '）') : '折扣';
         $rows[] = ['label' => $label, 'amount' => $discount];
     }
     return $rows;
@@ -554,6 +627,20 @@ function hoet_discount_rows(WC_Order $order): array
 function hoet_shipping_total(WC_Order $order): float
 {
     return (float) $order->get_shipping_total();
+}
+
+/** 原始運費（免運單也顯示原價），讀「HOVER 運費」設定 */
+function hoet_base_shipping_fee(WC_Order $order): float
+{
+    $settings = function_exists('hhss_get_settings')
+        ? hhss_get_settings()
+        : ['homeDeliveryFee' => 105, 'cvsFee' => 85];
+    $is_cvs = hoet_is_cvs($order)
+        || preg_match('/超商|cvs|711|7-?11|全家|萊爾富|ok/iu', hoet_ship_method_label($order));
+    if ($is_cvs) {
+        return (float) ($settings['cvsFee'] ?: 85);
+    }
+    return (float) ($settings['homeDeliveryFee'] ?: 105);
 }
 
 function hoet_products_html(WC_Order $order, bool $simple = false): string
@@ -569,65 +656,84 @@ function hoet_products_html(WC_Order $order, bool $simple = false): string
         $unit = $qty > 0 ? $line / $qty : $line;
         $img = hoet_item_image_url($item);
         $opts = hoet_item_options($item);
+        $badge = hoet_item_promo_badge($item);
+        $kind = hoet_item_promo_kind($item);
+
+        $price_label = '';
+        if ($kind === 'gift') {
+            $price_label = '贈品 ';
+            $unit = 0;
+            $line = 0;
+        }
 
         $img_html = $img
             ? '<img src="' . esc_url($img) . '" alt="" width="72" height="96" style="display:block;width:72px;height:96px;object-fit:cover;border:0;" />'
             : '<div style="width:72px;height:96px;background:#f0f0f0;"></div>';
 
-        if ($simple) {
-            $html .= '
-            <tr>
-              <td style="padding:12px 0;border-bottom:1px solid #eee;vertical-align:top;width:80px;">' . $img_html . '</td>
-              <td style="padding:12px 0 12px 12px;border-bottom:1px solid #eee;vertical-align:top;font-size:14px;line-height:1.6;color:#111;">
-                <div style="font-weight:600;">' . hoet_esc($name) . '</div>
-                ' . ($opts !== '' ? '<div style="margin-top:4px;color:#555;">' . hoet_esc($opts) . '</div>' : '') . '
-                <div style="margin-top:4px;color:#555;">×' . $qty . '　' . hoet_esc(hoet_money($line)) . '</div>
-              </td>
-            </tr>';
-            continue;
-        }
+        $price_html = $simple
+            ? hoet_esc($price_label . '×' . $qty . '　' . hoet_money($line))
+            : hoet_esc($price_label . '×' . $qty . '　' . hoet_money($unit));
 
         $html .= '
         <tr>
           <td style="padding:12px 0;border-bottom:1px solid #eee;vertical-align:top;width:80px;">' . $img_html . '</td>
           <td style="padding:12px 0 12px 12px;border-bottom:1px solid #eee;vertical-align:top;font-size:14px;line-height:1.6;color:#111;">
+            ' . $badge . '
             <div style="font-weight:600;">' . hoet_esc($name) . '</div>
             ' . ($opts !== '' ? '<div style="margin-top:4px;color:#555;">' . hoet_esc($opts) . '</div>' : '') . '
-            <div style="margin-top:4px;color:#555;">×' . $qty . '　' . hoet_esc(hoet_money($unit)) . '</div>
+            <div style="margin-top:4px;color:#555;">' . $price_html . '</div>
           </td>
         </tr>';
     }
     return $html;
 }
 
+/**
+ * 金額明細：商品總金額 → 折扣 → 運費 → 免運優惠 → 訂單總額
+ * 與官網 OrderSummaryRows／buildOrderDetailSummary 相同規則
+ */
 function hoet_totals_html(WC_Order $order): string
 {
     $subtotal = (float) $order->get_subtotal();
-    $shipping = hoet_shipping_total($order);
+    $charged_shipping = max(0, hoet_shipping_total($order));
     $total = (float) $order->get_total();
-    $rows = '';
 
-    $rows .= hoet_kv_row('商品總金額', hoet_money($subtotal));
+    $shipping_fee = 0.0;
+    if ($subtotal > 0) {
+        $shipping_fee = $charged_shipping > 0 ? $charged_shipping : hoet_base_shipping_fee($order);
+    }
+    $free_ship = ($subtotal > 0 && $shipping_fee > 0 && $charged_shipping <= 0) ? $shipping_fee : 0;
 
+    $rows = hoet_amount_row('商品總金額', hoet_money($subtotal));
     foreach (hoet_discount_rows($order) as $d) {
-        $label = $d['label'];
-        if (strpos($label, '折扣') !== 0 && strpos($label, '優惠') === false && strpos($label, '折扣碼') === false) {
-            $label = '折扣／優惠｜' . $label;
-        }
-        $rows .= hoet_kv_row($label, '−' . hoet_money($d['amount']));
+        $rows .= hoet_amount_row($d['label'], hoet_money(-$d['amount']), '#c90000');
+    }
+    $rows .= hoet_amount_row('運費', hoet_money($shipping_fee));
+    if ($free_ship > 0) {
+        $rows .= hoet_amount_row('免運優惠', hoet_money(-$free_ship), HOET_GREEN);
     }
 
-    if ($shipping > 0) {
-        $rows .= hoet_kv_row('運費', hoet_money($shipping));
-    } elseif (count($order->get_shipping_methods()) > 0) {
-        $rows .= hoet_kv_row('運費', hoet_money(0));
-        $rows .= hoet_kv_row('免運優惠', '免運');
-    } else {
-        $rows .= hoet_kv_row('運費', hoet_money(0));
-    }
+    return '
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
+      <tr><td align="right" style="padding-top:16px;">
+        <table role="presentation" align="right" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;max-width:360px;">
+          ' . $rows . '
+          <tr><td colspan="2" style="padding:8px 0 0;"><div style="border-top:1px solid #e8e8e8;font-size:0;line-height:0;">&nbsp;</div></td></tr>
+          <tr>
+            <td style="padding:14px 12px;background:#edf4f3;font-size:15px;font-weight:700;color:#111;">訂單總額</td>
+            <td style="padding:14px 12px;background:#edf4f3;font-size:18px;font-weight:700;color:#111;text-align:right;white-space:nowrap;">' . hoet_esc(hoet_money($total)) . '</td>
+          </tr>
+        </table>
+      </td></tr>
+    </table>';
+}
 
-    $rows .= hoet_kv_row('總金額', hoet_money($total), true);
-    return $rows;
+function hoet_amount_row(string $label, string $value, string $value_color = '#111'): string
+{
+    return '<tr>
+      <td style="padding:5px 12px;font-size:13px;color:#333;">' . hoet_esc($label) . '</td>
+      <td style="padding:5px 12px;font-size:13px;color:' . esc_attr($value_color) . ';text-align:right;white-space:nowrap;">' . hoet_esc($value) . '</td>
+    </tr>';
 }
 
 function hoet_kv_row(string $label, string $value, bool $bold = false): string
@@ -733,13 +839,10 @@ function hoet_products_block(WC_Order $order, bool $simple = false): string
     return $html;
 }
 
+/** 金額明細緊接商品資訊下方（同會員中心訂單明細，不另設標題） */
 function hoet_amount_block(WC_Order $order): string
 {
-    $html = hoet_section_title('金額明細');
-    $html .= '<table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">';
-    $html .= hoet_totals_html($order);
-    $html .= '</table>';
-    return $html;
+    return hoet_totals_html($order);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -810,20 +913,51 @@ function hoet_tpl_paid(WC_Order $order): string
     return hoet_shell($inner);
 }
 
-/** 6｜ATM 未付款訂單取消 */
+/**
+ * 是否為「ATM 逾期未付款、系統自動取消」。
+ * 標記來源：hover-atm-expire-cancel.php 寫入 _hover_atm_auto_cancelled／_hover_cancelled_by=atm_expire_cron；
+ * 會員取消寫 customer、後台取消寫 admin。
+ */
+function hoet_is_atm_expire_cancel(WC_Order $order): bool
+{
+    if ((string) $order->get_meta('_hover_atm_auto_cancelled', true) === '1') {
+        return true;
+    }
+    $by = trim((string) $order->get_meta('_hover_cancelled_by', true));
+    if ($by === 'atm_expire_cron') {
+        return true;
+    }
+    if ($by !== '' || $order->get_date_paid() || !hoet_is_atm_order($order)) {
+        return false;
+    }
+    // 無取消者標記（例如 WooCommerce 內建逾時取消）：ATM 未付款且已過繳費期限才視為逾期
+    if (function_exists('hover_atm_expire_parse_timestamp')) {
+        $ts = hover_atm_expire_parse_timestamp($order);
+    } else {
+        $raw = hoet_meta($order, ['_ExpireDate', 'ExpireDate', '_ecpay_atm_expire_date']);
+        $ts = $raw !== '' ? (int) strtotime(str_replace('/', '-', $raw)) : 0;
+    }
+    return $ts > 0 && $ts <= time();
+}
+
+/** 6｜訂單取消（會員／客服取消 vs. ATM 逾期系統取消） */
 function hoet_tpl_cancelled(WC_Order $order): string
 {
     $name = hoet_customer_name($order);
-    $reason = '超過付款期限未付款';
-    if ($order->get_date_paid()) {
-        $reason = '訂單已取消';
+
+    if (hoet_is_atm_expire_cancel($order)) {
+        $lead = '因超過付款期限仍未完成付款，您的訂單已由系統自動取消。';
+        $reason = '超過付款期限未付款';
+    } else {
+        $lead = '您的訂單已取消。';
+        $reason = '會員取消訂單';
     }
 
     $inner = '
       <p style="margin:0 0 12px;font-size:15px;line-height:1.8;">親愛的' . hoet_esc($name) . '，</p>
-      <p style="margin:0 0 8px;font-size:14px;line-height:1.8;color:#333;">因超過付款期限仍未完成付款，您的訂單已自動取消。</p>
+      <p style="margin:0 0 8px;font-size:14px;line-height:1.8;color:#333;">' . hoet_esc($lead) . '</p>
       ' . hoet_order_info_block($order, [
-          ['付款方式', 'ATM 虛擬帳號'],
+          ['付款方式', hoet_payment_label($order)],
           ['取消原因', $reason],
       ]) . '
       ' . hoet_products_block($order, true) . '
@@ -833,24 +967,6 @@ function hoet_tpl_cancelled(WC_Order $order): string
       <p style="margin:20px 0 0;font-size:14px;line-height:1.8;color:#333;">如仍有購買需求，歡迎重新下單。</p>
       ' . hoet_link_btn('重新選購', HOET_SITE_URL) . '
     ';
-
-    // 若不是 ATM／未付款情境，微調開頭句
-    if ($order->get_date_paid() || !hoet_is_atm_order($order)) {
-        $inner = '
-      <p style="margin:0 0 12px;font-size:15px;line-height:1.8;">親愛的' . hoet_esc($name) . '，</p>
-      <p style="margin:0 0 8px;font-size:14px;line-height:1.8;color:#333;">您的訂單已取消。</p>
-      ' . hoet_order_info_block($order, [
-          ['付款方式', hoet_payment_label($order)],
-          ['取消原因', '訂單已取消'],
-      ]) . '
-      ' . hoet_products_block($order, true) . '
-      <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin-top:8px;">
-        ' . hoet_kv_row('訂單總金額', hoet_money($order->get_total()), true) . '
-      </table>
-      <p style="margin:20px 0 0;font-size:14px;line-height:1.8;color:#333;">如仍有購買需求，歡迎重新下單。</p>
-      ' . hoet_link_btn('重新選購', HOET_SITE_URL) . '
-    ';
-    }
 
     return hoet_shell($inner);
 }

@@ -16,7 +16,7 @@ const getSiteUrl = () => {
 const SITE_URL = getSiteUrl();
 
 export const metadata = {
-  title: "購物袋｜HOVER 威爾特",
+  title: "購物袋｜HOVER｜只為經典而生",
   description: "查看您在 HOVER 服飾選購的商品，確認數量與金額後完成結帳。",
   keywords: ["HOVER", "服飾", "購物袋", "購物車", "結帳"],
   alternates: {
@@ -26,7 +26,7 @@ export const metadata = {
     type: "website",
     url: `${SITE_URL}/cart`,
     siteName: "HOVER 威爾特",
-    title: "購物袋｜HOVER 威爾特",
+    title: "購物袋｜HOVER｜只為經典而生",
     description:
       "查看您在 HOVER 服飾選購的商品，確認數量與金額後完成結帳。",
     images: [
@@ -40,7 +40,7 @@ export const metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "購物袋｜HOVER 威爾特",
+    title: "購物袋｜HOVER｜只為經典而生",
     description:
       "查看您在 HOVER 服飾選購的商品，確認數量與金額後完成結帳。",
     images: ["/images/hover/hero.jpg"],
@@ -51,7 +51,7 @@ export default function CartPage() {
   const jsonLd = {
     "@context": "https://schema.org",
     "@type": "WebPage",
-    name: "購物袋｜HOVER 威爾特",
+    name: "購物袋｜HOVER｜只為經典而生",
     description:
       "HOVER 官方購物袋頁面，在這裡確認商品明細、數量與小計金額，並進入結帳流程。",
     url: `${SITE_URL}/cart`,

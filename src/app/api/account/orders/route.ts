@@ -51,6 +51,37 @@ function extractMetaValue(metaData: any[], keys: string[]): string {
   return "";
 }
 
+/** 後台作業用的品項欄位，不可出現在前台訂單明細 */
+const INTERNAL_ITEM_META_KEYS =
+  /^(id|sku|貨號|出貨\s*sku|出貨備註|出貨代碼|活動類型|成交單價|活動名稱|活動編號)$/i;
+const COLOR_META_KEY = /顏色|color|colour/i;
+
+function rawMetaValue(metaData: any[], key: string): string {
+  const found = metaData.find((meta) => String(meta?.key || "") === key);
+  const val = Array.isArray(found?.value) ? found.value[0] : found?.value;
+  return String(val ?? "").trim();
+}
+
+function linePromotionKind(metaData: any[]): "gift" | "addon" | "" {
+  const kind = rawMetaValue(metaData, "_hover_promotion_kind");
+  if (kind === "gift" || kind === "addon") return kind;
+  const label =
+    rawMetaValue(metaData, "_hover_promotion_type") ||
+    rawMetaValue(metaData, "活動類型");
+  if (label === "滿額贈" || label === "gift") return "gift";
+  if (label === "加價購" || label === "addon") return "addon";
+  return "";
+}
+
+/** 變體品項改用父商品完整名稱（去掉「 - F, 黑」這類規格後綴） */
+function lineDisplayName(item: any): string {
+  const parent = String(item?.parent_name || "").trim();
+  if (parent) return parent;
+  const name = String(item?.name || "").trim();
+  if (!Number(item?.variation_id)) return name;
+  return name.replace(/\s+[-–—]\s+[^-–—]+$/, "").trim() || name;
+}
+
 // 強化搜尋邏輯
 async function fetchAllUserOrders(auth: string, customerId: number | null, email: string | null, debugInfo: any) {
   let allOrders: any[] = [];
@@ -279,33 +310,46 @@ export async function GET() {
         "_hel_UpdateStatusDate",
       ]),
       meta_data: o.meta_data || [],
-      line_items: (o.line_items || []).map((it: any) => ({
-        name: it.name,
-        quantity: it.quantity,
-        total: it.total,
-        subtotal: it.subtotal,
-        price: it.price,
-        image:
-          it.image?.src ||
-          productImages.get(Number(it.product_id || 0)) ||
-          "",
-        product_id: it.product_id || 0,
-        sku: it.sku || "",
-        variation_id: it.variation_id || 0,
-        meta_data: (it.meta_data || [])
-          .map((meta: any) => ({
-            key: String(meta.display_key || meta.key || "").trim(),
-            value: String(
-              meta.display_value ?? meta.value ?? "",
-            ).trim(),
-          }))
-          .filter(
-            (meta: { key: string; value: string }) =>
-              Boolean(meta.key && meta.value) &&
-              !meta.key.startsWith("_") &&
-              !/^(_reduced_stock|id)$/i.test(meta.key),
-          ),
-      })),
+      line_items: (o.line_items || []).map((it: any) => {
+        const rawMeta: any[] = Array.isArray(it.meta_data) ? it.meta_data : [];
+        const promotionKind = linePromotionKind(rawMeta);
+        const randomColor =
+          promotionKind === "gift" &&
+          /^(yes|1|true)$/i.test(rawMetaValue(rawMeta, "_hover_random_color"));
+        return {
+          name: lineDisplayName(it),
+          quantity: it.quantity,
+          total: it.total,
+          subtotal: it.subtotal,
+          price: it.price,
+          image:
+            it.image?.src ||
+            productImages.get(Number(it.product_id || 0)) ||
+            "",
+          product_id: it.product_id || 0,
+          variation_id: it.variation_id || 0,
+          promotion_kind: promotionKind,
+          random_color: randomColor,
+          meta_data: rawMeta
+            .map((meta: any) => ({
+              rawKey: String(meta.key || "").trim(),
+              key: String(meta.display_key || meta.key || "").trim(),
+              value: String(meta.display_value ?? meta.value ?? "").trim(),
+            }))
+            .filter(
+              (meta: { rawKey: string; key: string; value: string }) =>
+                Boolean(meta.key && meta.value) &&
+                !meta.rawKey.startsWith("_") &&
+                !meta.key.startsWith("_") &&
+                !INTERNAL_ITEM_META_KEYS.test(meta.key) &&
+                !(randomColor && COLOR_META_KEY.test(`${meta.rawKey} ${meta.key}`)),
+            )
+            .map(({ key, value }: { key: string; value: string }) => ({
+              key,
+              value,
+            })),
+        };
+      }),
     }));
 
     return NextResponse.json({ ok: true, orders, debug: debugInfo }, { headers: noCache });

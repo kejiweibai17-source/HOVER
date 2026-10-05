@@ -994,6 +994,51 @@ function giftDetailLine(promotion) {
   return `${promotion.product?.name || "贈品"}／贈送 ${qty} 件`;
 }
 
+/** 去掉 Woo 變體名稱後綴（如「經典緹花中筒襪 - F, 黑」→「經典緹花中筒襪」）。 */
+function productBaseName(name) {
+  return String(name || "")
+    .replace(/\s+[-–—]\s+[^-–—]+$/, "")
+    .trim();
+}
+
+function variantColorOnly(variant) {
+  if (variant?.colorLabel) return variant.colorLabel;
+  const match = String(variant?.name || "").match(/[-–—]\s*(.+)$/);
+  if (!match) return "";
+  const parts = match[1]
+    .split(/[,，／\/|｜]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const last = parts[parts.length - 1] || "";
+  return looksLikeColorLabel(last) ? last : "";
+}
+
+function checkoutPromotionTitle(promotion, chosen) {
+  const label = promotion.type === "gift" ? "滿額贈" : "加購價";
+  const name =
+    productBaseName(chosen?.name) ||
+    productBaseName(promotion.product?.name) ||
+    (promotion.type === "gift" ? "贈品" : "加購商品");
+  return `${label}｜${name}`;
+}
+
+function checkoutPromotionDetail(promotion, chosen, qty) {
+  if (promotion.type === "gift") {
+    if (isRandomColorGift(promotion)) return giftDetailLine(promotion);
+    const product = chosen || promotion.product;
+    return [
+      variantSizeLabel(product),
+      variantColorOnly(product),
+      `贈送 ${qty} 件`,
+    ]
+      .filter(Boolean)
+      .join("｜");
+  }
+  return [variantSizeLabel(chosen), variantColorOnly(chosen), `數量 ${qty}`]
+    .filter(Boolean)
+    .join("｜");
+}
+
 function PromotionOfferCard({
   promotion,
   selected,
@@ -1393,7 +1438,7 @@ function CartStep({
                     <p className="mt-1 text-[12px] text-[#555]">
                       {[
                         variant || null,
-                        Number(it.qty) > 1 ? `x ${it.qty}` : null,
+                        Number(it.qty) > 1 ? `${it.qty}` : null,
                       ]
                         .filter(Boolean)
                         .join(" / ") || "—"}
@@ -1492,6 +1537,13 @@ function CartStep({
         >
           前往結帳
         </button>
+
+        <a
+          href="/products"
+          className="mt-4 block text-center text-[13px] text-[#555] transition-opacity hover:opacity-70"
+        >
+          繼續購物 →
+        </a>
       </div>
     </div>
   );
@@ -1971,6 +2023,81 @@ function CheckoutStep({
             </section>
           )}
 
+          <section>
+            <h2 className="mb-3 text-[15px] font-bold text-black">
+              收件 / 配送資訊
+            </h2>
+            <div className="divide-y divide-[#f0f0f0]">
+              <CheckoutReviewRow label="收件人">
+                {displayName || "—"}
+              </CheckoutReviewRow>
+              <CheckoutReviewRow label="手機">
+                {formatCheckoutPhone(addr.phone)}
+              </CheckoutReviewRow>
+              <CheckoutReviewRow label="配送方式">
+                {checkoutShipLabel(shipMethod)}
+              </CheckoutReviewRow>
+              {shipMethod === "000" ? (
+                <CheckoutReviewRow label="地址">
+                  {homeAddressDisplay || "—"}
+                </CheckoutReviewRow>
+              ) : (
+                <CheckoutReviewRow label="門市">{storeDisplay}</CheckoutReviewRow>
+              )}
+              {shipInfoOpen ? (
+                <>
+                  <CheckoutReviewRow label="Email">
+                    {contact.email?.trim() || "—"}
+                  </CheckoutReviewRow>
+                  <CheckoutReviewRow label="付款方式">
+                    {checkoutPayLabel(payMethod)}
+                  </CheckoutReviewRow>
+                  <CheckoutReviewRow label="發票方式">
+                    {checkoutInvoiceLabel(invoiceType)}
+                  </CheckoutReviewRow>
+                  {invoiceType === "carrier" && carrierCode ? (
+                    <CheckoutReviewRow label="載具條碼">
+                      {carrierCode}
+                    </CheckoutReviewRow>
+                  ) : null}
+                  {invoiceType === "triple" ? (
+                    <>
+                      <CheckoutReviewRow label="發票抬頭">
+                        {invoiceTitle || "—"}
+                      </CheckoutReviewRow>
+                      <CheckoutReviewRow label="統一編號">
+                        {invoiceTaxId || "—"}
+                      </CheckoutReviewRow>
+                    </>
+                  ) : null}
+                  {invoiceType === "donate" && donateCode ? (
+                    <CheckoutReviewRow label="愛心碼">
+                      {donateCode}
+                    </CheckoutReviewRow>
+                  ) : null}
+                  {shipMethod !== "000" && addr.storeAddr ? (
+                    <CheckoutReviewRow label="門市地址">
+                      {addr.storeAddr}
+                    </CheckoutReviewRow>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShipInfoOpen((v) => !v)}
+              className="mt-3 flex w-full items-center justify-center gap-1 text-[13px] text-[#666] transition-colors hover:text-black"
+            >
+              {shipInfoOpen ? "收合" : "查看全部"}
+              <ChevronDown
+                className={`h-4 w-4 transition-transform ${
+                  shipInfoOpen ? "rotate-180" : ""
+                }`}
+                strokeWidth={1.5}
+              />
+            </button>
+          </section>
+
           <button
             type="button"
             onClick={onPrev}
@@ -2172,64 +2299,50 @@ function CheckoutStep({
                   </div>
                 );
               })}
-              {selectedPromotions.map((promotion) => {
-                const qty =
-                  promotion.type === "gift"
-                    ? promotion.rewardQty
-                    : promotion.selectedQty || 1;
-                const lineTotal =
-                  promotion.type === "addon"
-                    ? promotion.purchasePrice * qty
-                    : 0;
-                const chosen =
-                  findPromotionVariant(
-                    promotion,
-                    promotion.selectedProductId,
-                    promotion.selectedVariationId,
-                  ) || promotion.product;
-                return (
-                  <div
-                    key={`promotion-${promotion.id}`}
-                    className="text-[13px] text-black"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <span className="min-w-0 flex-1 leading-snug">
-                        <span className="mr-2 text-[11px] text-[#2a514d]">
-                          {promotion.type === "gift" ? "贈品" : "加價購"}
-                        </span>
-                        {promotion.type === "gift" ? (
-                          <>
-                            {isRandomColorGift(promotion) ? (
-                              <span>{giftDetailLine(promotion)}</span>
-                            ) : (
-                              <>
-                                {promotion.product?.name}
-                                <span className="mt-1 block text-[12px] text-[#666]">
-                                  贈送 {qty} 件
-                                </span>
-                              </>
-                            )}
-                          </>
-                        ) : (
-                          <>
-                            {chosen?.name || promotion.product?.name}
-                            <span className="mt-1 block text-[12px] text-[#666]">
-                              數量 {qty}｜加購價{" "}
-                              {currency(promotion.purchasePrice)}
-                            </span>
-                          </>
-                        )}
-                      </span>
-                      <span className="shrink-0 whitespace-nowrap font-semibold">
-                        {promotion.type === "gift"
-                          ? currency(0)
-                          : currency(lineTotal)}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
             </div>
+
+            {selectedPromotions.length > 0 && (
+              <div className="mt-5 space-y-4 border-t border-[#e8e8e8] pt-5">
+                {[...selectedPromotions]
+                  .sort(
+                    (a, b) =>
+                      (a.type === "addon" ? 0 : 1) -
+                      (b.type === "addon" ? 0 : 1),
+                  )
+                  .map((promotion) => {
+                    const qty =
+                      promotion.type === "gift"
+                        ? Number(promotion.rewardQty) || 1
+                        : promotion.selectedQty || 1;
+                    const lineTotal =
+                      promotion.type === "addon"
+                        ? promotion.purchasePrice * qty
+                        : 0;
+                    const chosen =
+                      findPromotionVariant(
+                        promotion,
+                        promotion.selectedProductId,
+                        promotion.selectedVariationId,
+                      ) || promotion.product;
+                    return (
+                      <div
+                        key={`promotion-${promotion.id}`}
+                        className="flex items-start justify-between gap-3 text-[13px] text-black"
+                      >
+                        <div className="min-w-0 flex-1 leading-snug">
+                          <p>{checkoutPromotionTitle(promotion, chosen)}</p>
+                          <p className="mt-1 text-[12px] text-[#666]">
+                            {checkoutPromotionDetail(promotion, chosen, qty)}
+                          </p>
+                        </div>
+                        <span className="shrink-0 whitespace-nowrap font-semibold">
+                          {currency(lineTotal)}
+                        </span>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
 
             <div className="mt-8 flex items-end justify-between gap-4 border-t border-[#e8e8e8] pt-6">
               <div className="min-w-0 flex-1">
@@ -2286,81 +2399,6 @@ function CheckoutStep({
               showTotalDivider
               totalRowClassName="flex items-center justify-between"
             />
-          </section>
-
-          <section className="mt-10">
-            <h2 className="mb-3 text-[15px] font-bold text-black">
-              收件 / 配送資訊
-            </h2>
-            <div className="divide-y divide-[#f0f0f0]">
-              <CheckoutReviewRow label="收件人">
-                {displayName || "—"}
-              </CheckoutReviewRow>
-              <CheckoutReviewRow label="手機">
-                {formatCheckoutPhone(addr.phone)}
-              </CheckoutReviewRow>
-              <CheckoutReviewRow label="配送方式">
-                {checkoutShipLabel(shipMethod)}
-              </CheckoutReviewRow>
-              {shipMethod === "000" ? (
-                <CheckoutReviewRow label="地址">
-                  {homeAddressDisplay || "—"}
-                </CheckoutReviewRow>
-              ) : (
-                <CheckoutReviewRow label="門市">{storeDisplay}</CheckoutReviewRow>
-              )}
-              {shipInfoOpen ? (
-                <>
-                  <CheckoutReviewRow label="Email">
-                    {contact.email?.trim() || "—"}
-                  </CheckoutReviewRow>
-                  <CheckoutReviewRow label="付款方式">
-                    {checkoutPayLabel(payMethod)}
-                  </CheckoutReviewRow>
-                  <CheckoutReviewRow label="發票方式">
-                    {checkoutInvoiceLabel(invoiceType)}
-                  </CheckoutReviewRow>
-                  {invoiceType === "carrier" && carrierCode ? (
-                    <CheckoutReviewRow label="載具條碼">
-                      {carrierCode}
-                    </CheckoutReviewRow>
-                  ) : null}
-                  {invoiceType === "triple" ? (
-                    <>
-                      <CheckoutReviewRow label="發票抬頭">
-                        {invoiceTitle || "—"}
-                      </CheckoutReviewRow>
-                      <CheckoutReviewRow label="統一編號">
-                        {invoiceTaxId || "—"}
-                      </CheckoutReviewRow>
-                    </>
-                  ) : null}
-                  {invoiceType === "donate" && donateCode ? (
-                    <CheckoutReviewRow label="愛心碼">
-                      {donateCode}
-                    </CheckoutReviewRow>
-                  ) : null}
-                  {shipMethod !== "000" && addr.storeAddr ? (
-                    <CheckoutReviewRow label="門市地址">
-                      {addr.storeAddr}
-                    </CheckoutReviewRow>
-                  ) : null}
-                </>
-              ) : null}
-            </div>
-            <button
-              type="button"
-              onClick={() => setShipInfoOpen((v) => !v)}
-              className="mt-3 flex w-full items-center justify-center gap-1 text-[13px] text-[#666] transition-colors hover:text-black"
-            >
-              {shipInfoOpen ? "收合" : "查看全部"}
-              <ChevronDown
-                className={`h-4 w-4 transition-transform ${
-                  shipInfoOpen ? "rotate-180" : ""
-                }`}
-                strokeWidth={1.5}
-              />
-            </button>
           </section>
         </div>
       </div>

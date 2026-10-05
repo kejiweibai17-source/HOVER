@@ -160,7 +160,11 @@ function getItemVariantText(item) {
     if (!/^\d+$/.test(raw)) extras.push(raw);
   }
 
-  const parts = [size, color, ...extras].filter(Boolean);
+  // 隨機色贈品不可透露後台實際分配的顏色
+  const randomColor = isRandomColorGiftItem(item);
+  const parts = randomColor
+    ? [size, ...extras, "顏色隨機出貨"].filter(Boolean)
+    : [size, color, ...extras].filter(Boolean);
   // 去重（保留順序）
   const seen = new Set();
   const unique = [];
@@ -170,15 +174,32 @@ function getItemVariantText(item) {
     seen.add(k);
     unique.push(p);
   }
-  return unique.join(" / ");
+  return unique.join(" | ");
+}
+
+function getItemPromotionKind(item) {
+  const kind = String(item?.promotion_kind || "");
+  return kind === "gift" || kind === "addon" ? kind : "";
+}
+
+function isRandomColorGiftItem(item) {
+  return getItemPromotionKind(item) === "gift" && Boolean(item?.random_color);
 }
 
 function getItemPromotionLabel(item) {
-  const metas = Array.isArray(item?.meta_data) ? item.meta_data : [];
-  const type = metas.find(
-    (meta) => String(meta?.key || "") === "_hover_promotion_type",
+  const kind = getItemPromotionKind(item);
+  if (kind === "gift") return "滿額贈";
+  if (kind === "addon") return "加價購";
+  return "";
+}
+
+function PromotionBadge({ label }) {
+  if (!label) return null;
+  return (
+    <span className="mb-1.5 inline-block bg-[#2a514d] px-2 py-[3px] text-[11px] font-medium leading-none tracking-[0.06em] text-white">
+      {label}
+    </span>
   );
-  return String(type?.value || "").trim();
 }
 
 /** 商品名若已含尺寸／顏色，剝掉以免與第二行重複 */
@@ -926,8 +947,10 @@ function OrderDetail({
             const promotionLabel = getItemPromotionLabel(item);
             const qty = Number(item.quantity) || 1;
             const variantLine = [
-              variant ? variant.replace(/\s*\/\s*/g, " / ") : null,
-              `× ${qty}`,
+              variant || null,
+              getItemPromotionKind(item) === "gift"
+                ? `贈送 ${qty} 件`
+                : `× ${qty}`,
             ]
               .filter(Boolean)
               .join("  ");
@@ -953,13 +976,9 @@ function OrderDetail({
                   )}
                 </div>
                 <div className="min-w-0 flex-1">
+                  <PromotionBadge label={promotionLabel} />
                   <div className="flex items-start justify-between gap-3">
                     <p className="min-w-0 text-[14px] font-medium leading-snug text-black">
-                      {promotionLabel ? (
-                        <span className="mr-2 text-[11px] font-normal text-[#2a514d]">
-                          {promotionLabel}
-                        </span>
-                      ) : null}
                       {displayName}
                     </p>
                     <p className="shrink-0 text-[14px] font-medium text-black">
@@ -1158,23 +1177,13 @@ function OrderDetail({
                     )}
                   </div>
                   <div className="min-w-0">
+                    <PromotionBadge label={promotionLabel} />
                     <p className="text-[14px] font-medium text-black">
-                      {promotionLabel ? (
-                        <span className="mr-2 text-[11px] font-normal text-[#2a514d]">
-                          {promotionLabel}
-                        </span>
-                      ) : null}
                       {displayName}
                     </p>
                     {variant ? (
-                      <p className="mt-1 text-[12px] text-[#777]">
-                        {[variant.replace(/\s*\/\s*/g, " / "), `× ${qty}`]
-                          .filter(Boolean)
-                          .join("  ")}
-                      </p>
-                    ) : (
-                      <p className="mt-1 text-[12px] text-[#777]">× {qty}</p>
-                    )}
+                      <p className="mt-1 text-[12px] text-[#777]">{variant}</p>
+                    ) : null}
                   </div>
                 </div>
                 <p className="text-center text-[14px]">{qty}</p>
