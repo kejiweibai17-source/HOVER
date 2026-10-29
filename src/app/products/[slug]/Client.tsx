@@ -8,6 +8,7 @@ import { Minus, Plus } from "lucide-react";
 import WishlistIcon from "@/components/hover/WishlistIcon";
 import SizeGuideTable from "@/components/hover/SizeGuideTable";
 import WashingInstructionsList from "@/components/hover/WashingInstructionsList";
+import OptimizedImage from "@/components/hover/OptimizedImage";
 import { useCartStore } from "@/lib/cartStore";
 import { useWishlistStore } from "@/lib/wishlistStore";
 import { useAuthStore } from "@/lib/authStore";
@@ -177,8 +178,7 @@ function GalleryImageSlot({
   priority?: boolean;
   loading?: "eager" | "lazy";
 }) {
-  const [failed, setFailed] = useState(false);
-  if (failed || !isValidGallerySrc(src)) return null;
+  if (!isValidGallerySrc(src)) return null;
 
   return (
     <div
@@ -193,18 +193,16 @@ function GalleryImageSlot({
           className="absolute inset-0 h-full w-full object-cover object-center"
           loading={loading}
           decoding="async"
-          onError={() => setFailed(true)}
         />
       ) : (
-        <Image
+        <OptimizedImage
           src={src}
           alt={alt}
+          role="pdp"
           fill
-          unoptimized
           sizes="(max-width: 768px) 100vw, 50vw"
           className="object-cover object-center"
           priority={priority}
-          onError={() => setFailed(true)}
         />
       )}
     </div>

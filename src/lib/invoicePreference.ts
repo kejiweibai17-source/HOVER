@@ -40,7 +40,10 @@ export function normalizeTwTaxId(raw: string): string {
 
 /**
  * 台灣統一編號檢查（財政部演算法）
- * 權重 [1,2,1,2,1,2,4,1]；第 7 碼為 7 時有例外可再 +1 判斷。
+ * 權重 [1,2,1,2,1,2,4,1]；第 7 碼為 7 時乘積之和可取兩種進位。
+ *
+ * 112 年（2023）起檢查邏輯由「可被 10 整除」改為「可被 5 整除」，
+ * 以相容新配發統編（舊號仍可被 5 整除）。見財政部財政資訊中心公告。
  */
 export function isValidTwTaxId(raw: string): boolean {
   const id = normalizeTwTaxId(raw);
@@ -51,9 +54,9 @@ export function isValidTwTaxId(raw: string): boolean {
     const n = Number(id[i]) * weights[i];
     sum += Math.floor(n / 10) + (n % 10);
   }
-  if (sum % 10 === 0) return true;
-  // 第 7 碼為 7 的例外（乘積進位可忽略一次）
-  if (id[6] === "7" && (sum + 1) % 10 === 0) return true;
+  if (sum % 5 === 0) return true;
+  // 第 7 碼為 7：7×4=28 → 2+8=10，可再拆成 1 或當 0，故 sum+1 亦可
+  if (id[6] === "7" && (sum + 1) % 5 === 0) return true;
   return false;
 }
 

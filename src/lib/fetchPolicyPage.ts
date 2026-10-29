@@ -24,7 +24,7 @@ export async function fetchPolicyPage(
 
   try {
     const res = await fetch(`${base}/wp-json/hover/v1/policy-pages/${key}`, {
-      cache: "no-store",
+      next: { revalidate: 300 },
     });
     if (!res.ok) {
       throw new Error(`Policy pages API ${res.status}`);

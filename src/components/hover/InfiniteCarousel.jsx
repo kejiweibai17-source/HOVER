@@ -85,10 +85,13 @@ export default function InfiniteCarousel({
   slideClassName = "pr-2 md:pr-3",
   mobileAutoplayInterval = 0,
   autoplayInterval = 0,
+  /** @deprecated 請用 draggable；兩者皆 true 時啟用滑鼠／觸控拖曳 */
   mobileDraggable = true,
+  draggable = true,
   imageAspectRatio = "",
   arrowClassName = "",
 }) {
+  const allowDrag = Boolean(draggable && mobileDraggable);
   const baseLength = items.length;
   const [visible, setVisible] = useState(visibleMd);
   const [index, setIndex] = useState(baseLength);
@@ -182,7 +185,7 @@ export default function InfiniteCarousel({
   /* Pointer Events：手指／滑鼠／觸控筆皆可拖曳跟隨；軸向鎖定後才擋垂直捲動 */
   useEffect(() => {
     const el = trackRef.current;
-    if (!el || !mobileDraggable) return undefined;
+    if (!el || !allowDrag) return undefined;
 
     const resetDragVisual = () => {
       draggingRef.current = false;
@@ -212,7 +215,8 @@ export default function InfiniteCarousel({
 
     const onPointerDown = (e) => {
       if (e.pointerType === "mouse" && e.button !== 0) return;
-      if (e.target?.closest?.("button, a[href] button")) return;
+      // 收藏等按鈕不介入；連結本身仍可開始「待判定」手勢（小位移＝點擊進內頁）
+      if (e.target?.closest?.("button")) return;
       // 桌面僅滑鼠拖曳；手機／平板接受 touch / pen / mouse
       if (!isMobile && e.pointerType !== "mouse") return;
 
@@ -220,22 +224,12 @@ export default function InfiniteCarousel({
       touchStartX.current = e.clientX;
       touchStartY.current = e.clientY;
       touchDelta.current = 0;
-      axisLock.current = e.pointerType === "mouse" ? "x" : null;
+      // 滑鼠／觸控都等超過 AXIS_LOCK_PX 再鎖軸；勿在 pointerdown 就 capture，
+      // 否則會吃掉商品 <Link> 的 click，導致首頁點不進內頁。
+      axisLock.current = null;
       draggingRef.current = false;
       setDragging(false);
       setDragPx(0);
-
-      if (e.pointerType === "mouse") {
-        pauseAutoplay();
-        draggingRef.current = true;
-        setDragging(true);
-        setAnimate(false);
-        try {
-          el.setPointerCapture(e.pointerId);
-        } catch {
-          /* ignore */
-        }
-      }
     };
 
     const onPointerMove = (e) => {
@@ -302,7 +296,7 @@ export default function InfiniteCarousel({
       el.removeEventListener("pointercancel", onPointerUp);
       el.removeEventListener("lostpointercapture", onPointerUp);
     };
-  }, [mobileDraggable, isMobile, goByUser, pauseAutoplay]);
+  }, [allowDrag, isMobile, goByUser, pauseAutoplay]);
 
   useEffect(() => {
     if (!baseLength) return;
@@ -341,8 +335,8 @@ export default function InfiniteCarousel({
       >
         <div
           ref={trackRef}
-          className={`relative overflow-hidden select-none ${trackClassName} ${
-            mobileDraggable
+          className={`relative overflow-hidden select-none [&_img]:pointer-events-none ${trackClassName} ${
+            allowDrag
               ? `touch-pan-y ${dragging ? "cursor-grabbing" : "cursor-grab"}`
               : ""
           }`}
@@ -352,6 +346,7 @@ export default function InfiniteCarousel({
             e.stopPropagation();
             suppressClickRef.current = false;
           }}
+          onDragStart={(e) => e.preventDefault()}
         >
           <CarouselArrows
             onPrev={() => goByUser(-1)}

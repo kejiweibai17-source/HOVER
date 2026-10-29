@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
-import { mailFromHeader, mailReplyTo } from "@/lib/mailFrom";
+import { mailFooterHtml, mailFooterText, mailFromHeader, mailReplyTo } from "@/lib/mailFrom";
 
 export const runtime = "nodejs";
 
@@ -141,8 +141,7 @@ export async function POST(req: Request) {
         "",
         "此連結約 15 分鐘內有效。若非您本人操作，請忽略本信。",
         "",
-        "HOVER 官方網站",
-        "https://hoverofficial.com",
+        mailFooterText(),
       ].join("\n");
 
       await transporter.sendMail({
@@ -162,9 +161,13 @@ export async function POST(req: Request) {
                 完成信箱驗證
               </a>
             </div>
-            <p style="font-size: 13px; color: #333; word-break: break-all;">${verifyUrl}</p>
-            <p style="color: #666;">此驗證連結約 15 分鐘內有效。若非您本人操作，請忽略本信。</p>
-            <p style="margin-top: 24px; font-size: 12px; color: #999;">HOVER｜官方網站</p>
+            <p style="font-size: 14px; color: #666; margin-bottom: 8px;">如果按鈕無法點擊，請將以下連結複製並貼上到瀏覽器網址列開啟：</p>
+            <div style="background-color: #f8f9fa; padding: 12px; border-radius: 4px; word-break: break-all; font-size: 13px; color: #333;">
+              ${verifyUrl}
+            </div>
+            <p style="color: #c90000; margin-top: 20px; font-weight: 600;">此驗證連結將在 15 分鐘後失效。</p>
+            <p style="color: #666; margin-top: 8px;">若非您本人操作，請忽略本信。</p>
+            ${mailFooterHtml()}
           </div>
         `,
       });

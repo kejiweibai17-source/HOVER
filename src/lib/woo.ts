@@ -294,9 +294,10 @@ export function mapWooToListProduct(product: WooProduct): ListProduct {
     price: product.price,
     images: product.images.map((image) => ({
       id: image.id,
-      src:
-        pickWpSizeUrl(image.sizes, "card", "") ||
-        toOptimizedImageUrl(image.src, "card"),
+      src: toOptimizedImageUrl(
+        pickWpSizeUrl(image.sizes, "card", "") || image.src,
+        "card",
+      ),
       alt: image.alt,
     })),
     category: primary?.name || undefined,
@@ -371,7 +372,8 @@ export function filterProductsByCategorySlug(
   );
 }
 
-const PRODUCT_REVALIDATE = 60;
+/** 商品／變體 ISR：5 分鐘（庫存仍走 /api/stock/check no-store） */
+const PRODUCT_REVALIDATE = 300;
 
 async function fetchProductVariations(productId: number) {
   const { base } = getEnv();

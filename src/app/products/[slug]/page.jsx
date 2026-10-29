@@ -5,13 +5,13 @@ import ProductClient from "./Client";
 import { DEFAULT_SIZE_GUIDE } from "@/lib/sizeGuide";
 import { DEFAULT_WASHING_INSTRUCTIONS } from "@/lib/washingInstructions";
 import { DEFAULT_PRODUCT_COLORS } from "@/lib/productColors";
-import { pickWpSizeUrl } from "@/lib/listImageUrl";
+import { pickWpSizeUrl, toOptimizedImageUrl } from "@/lib/listImageUrl";
 import { productDetailGallerySources } from "@/lib/productCardImages";
 import { stripHtmlToText } from "@/lib/utils";
 import { fetchShippingSettings } from "@/lib/shippingDefaults";
 
-/** ISR：商品頁 60s 熱快取；庫存結帳仍走 /api/stock/check（no-store） */
-export const revalidate = 60;
+/** ISR：商品頁 5 分鐘熱快取；庫存結帳仍走 /api/stock/check（no-store） */
+export const revalidate = 300;
 
 // 🌟 動態獲取網址：本地端會顯示 localhost，正式上線設定變數後自動轉為正式網址
 const getSiteUrl = () => {
@@ -138,10 +138,21 @@ export async function generateMetadata({ params }) {
   const gallerySources = productDetailGallerySources(safeImages);
   const images = gallerySources.length
     ? gallerySources
-        .map((i) => pickWpSizeUrl(i?.sizes, "pdp", "") || i?.src)
+        .map((i) =>
+          toOptimizedImageUrl(
+            pickWpSizeUrl(i?.sizes, "pdp", "") || i?.src || "",
+            "pdp",
+          ),
+        )
         .filter(Boolean)
     : Array.isArray(safeImages) && safeImages[0]?.src
-      ? [pickWpSizeUrl(safeImages[0].sizes, "pdp", "") || safeImages[0].src]
+      ? [
+          toOptimizedImageUrl(
+            pickWpSizeUrl(safeImages[0].sizes, "pdp", "") ||
+              safeImages[0].src,
+            "pdp",
+          ),
+        ]
       : [];
 
   return {
@@ -239,14 +250,16 @@ export default async function ProductPage({ params }) {
   const productFAQs = woo
     ? getProductFAQs(woo.name, shipping.freeShipThreshold)
     : [];
-  // 內頁大圖：只用 WP REST 真實 sizes；沒有就用原圖。
-  // 勿臆造 -1024x1024（本站多數商品沒有此尺寸 → 404 死圖）。
+  // 內頁大圖：WP sizes → Photon（小檔）；OptimizedImage 404 時回退原圖。
   const schemaImages =
     woo && Array.isArray(woo.images)
       ? productDetailGallerySources(woo.images)
           .map((i) => {
             if (!i?.src) return "";
-            return pickWpSizeUrl(i.sizes, "pdp", "") || i.src;
+            return toOptimizedImageUrl(
+              pickWpSizeUrl(i.sizes, "pdp", "") || i.src,
+              "pdp",
+            );
           })
           .filter(Boolean)
       : [];

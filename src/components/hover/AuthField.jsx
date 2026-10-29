@@ -1,18 +1,17 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Calendar, ChevronDown, ChevronUp, Eye, EyeOff } from "lucide-react";
 
 const inputClass =
   "w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none transition-colors focus:border-black disabled:opacity-50 disabled:cursor-not-allowed";
-
-const selectClass =
-  "w-full cursor-pointer appearance-none border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black outline-none transition-colors focus:border-black disabled:opacity-50 disabled:cursor-not-allowed";
 
 /** 註冊／會員生日：須年滿此歲數（對應 max 日期） */
 export const BIRTHDAY_MIN_AGE = 13;
 /** 可選最早出生年 */
 export const BIRTHDAY_MIN_YEAR = 1920;
+
+const WEEKDAYS = ["日", "一", "二", "三", "四", "五", "六"];
 
 /** 最晚可選生日（今天往前推 BIRTHDAY_MIN_AGE 年） */
 export function maxBirthDateISO() {
@@ -39,8 +38,24 @@ function parseISODate(value) {
   return { year: m[1], month: m[2], day: m[3] };
 }
 
+function toISO(year, month, day) {
+  return `${year}-${pad2(month)}-${pad2(day)}`;
+}
+
+function displaySlash(iso) {
+  const p = parseISODate(iso);
+  if (!p.year || !p.month || !p.day) return "";
+  return `${p.year}/${p.month}/${p.day}`;
+}
+
+function clampISO(iso, maxISO) {
+  if (!iso) return "";
+  return iso > maxISO ? maxISO : iso;
+}
+
 /**
- * 生日選擇：年／月／日下拉（年份由早到晚完整列出，避免原生 date 只顯示到 max 年造成誤解）
+ * 生日選擇：日曆彈層（圖二樣式）
+ * 年份下拉維持完整可選（maxYear → 1920）
  * value / onChange 使用 YYYY-MM-DD
  */
 export function BirthdaySelect({
@@ -51,11 +66,14 @@ export function BirthdaySelect({
   id,
   name,
   className = "",
-  selectClassName = selectClass,
+  /** @deprecated 日曆樣式不再使用下拉 class，保留相容 */
+  selectClassName: _selectClassName,
 }) {
   const maxISO = maxBirthDateISO();
   const maxParts = parseISODate(maxISO);
-  const maxYear = Number(maxParts.year) || new Date().getFullYear() - BIRTHDAY_MIN_AGE;
+  const maxYear =
+    Number(maxParts.year) || new Date().getFullYear() - BIRTHDAY_MIN_AGE;
+  const maxMonth = Number(maxParts.month) || 12;
   const parts = parseISODate(value);
 
   const years = useMemo(() => {
@@ -64,115 +82,308 @@ export function BirthdaySelect({
     return list;
   }, [maxYear]);
 
-  const yearNum = parts.year ? Number(parts.year) : 0;
-  const monthNum = parts.month ? Number(parts.month) : 0;
-  const maxDay = daysInMonth(yearNum, monthNum);
+  const rootRef = useRef(null);
+  const [open, setOpen] = useState(false);
+  const [headerOpen, setHeaderOpen] = useState(false);
+  const [viewYear, setViewYear] = useState(
+    () => Number(parts.year) || maxYear,
+  );
+  const [viewMonth, setViewMonth] = useState(
+    () => Number(parts.month) || maxMonth,
+  );
 
-  const months = useMemo(() => {
-    const list = [];
-    const end =
-      yearNum && yearNum === maxYear ? Number(maxParts.month) : 12;
-    for (let m = 1; m <= end; m += 1) list.push(m);
-    return list;
-  }, [yearNum, maxYear, maxParts.month]);
+  useEffect(() => {
+    if (!open) return;
+    const p = parseISODate(value);
+    setViewYear(Number(p.year) || maxYear);
+    setViewMonth(Number(p.month) || maxMonth);
+    setHeaderOpen(false);
+  }, [open, value, maxYear, maxMonth]);
 
-  const days = useMemo(() => {
-    const list = [];
-    let end = maxDay || 31;
-    if (
-      yearNum &&
-      monthNum &&
-      yearNum === maxYear &&
-      monthNum === Number(maxParts.month)
-    ) {
-      end = Math.min(end, Number(maxParts.day));
+  useEffect(() => {
+    if (!open) return;
+    const onDoc = (e) => {
+      if (!rootRef.current?.contains(e.target)) {
+        setOpen(false);
+        setHeaderOpen(false);
+      }
+    };
+    const onKey = (e) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        setHeaderOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDoc);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDoc);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  const canGoPrev = viewYear > BIRTHDAY_MIN_YEAR || viewMonth > 1;
+  const canGoNext =
+    viewYear < maxYear || (viewYear === maxYear && viewMonth < maxMonth);
+
+  const shiftMonth = (delta) => {
+    let y = viewYear;
+    let m = viewMonth + delta;
+    while (m < 1) {
+      m += 12;
+      y -= 1;
     }
-    for (let d = 1; d <= end; d += 1) list.push(d);
-    return list;
-  }, [maxDay, yearNum, monthNum, maxYear, maxParts.month, maxParts.day]);
-
-  const emit = (nextYear, nextMonth, nextDay) => {
-    if (!onChange) return;
-    if (!nextYear || !nextMonth || !nextDay) {
-      onChange("");
-      return;
+    while (m > 12) {
+      m -= 12;
+      y += 1;
     }
-    const dim = daysInMonth(Number(nextYear), Number(nextMonth));
-    let day = Number(nextDay);
-    if (day > dim) day = dim;
-    // 仍超過 max 則夾住
-    const iso = `${nextYear}-${pad2(nextMonth)}-${pad2(day)}`;
-    onChange(iso > maxISO ? maxISO : iso);
+    if (y < BIRTHDAY_MIN_YEAR) return;
+    if (y > maxYear || (y === maxYear && m > maxMonth)) return;
+    setViewYear(y);
+    setViewMonth(m);
   };
 
+  const cells = useMemo(() => {
+    const firstDow = new Date(viewYear, viewMonth - 1, 1).getDay();
+    const dim = daysInMonth(viewYear, viewMonth);
+    const prevDim = daysInMonth(
+      viewMonth === 1 ? viewYear - 1 : viewYear,
+      viewMonth === 1 ? 12 : viewMonth - 1,
+    );
+    const list = [];
+    for (let i = 0; i < firstDow; i += 1) {
+      list.push({
+        day: prevDim - firstDow + 1 + i,
+        inMonth: false,
+        iso: "",
+      });
+    }
+    for (let d = 1; d <= dim; d += 1) {
+      const iso = toISO(viewYear, viewMonth, d);
+      list.push({ day: d, inMonth: true, iso });
+    }
+    let trailing = 1;
+    while (list.length % 7 !== 0) {
+      list.push({
+        day: trailing,
+        inMonth: false,
+        iso: "",
+      });
+      trailing += 1;
+    }
+    return list;
+  }, [viewYear, viewMonth]);
+
+  const isDisabledDay = (iso) => {
+    if (!iso) return true;
+    if (iso > maxISO) return true;
+    const y = Number(iso.slice(0, 4));
+    return y < BIRTHDAY_MIN_YEAR;
+  };
+
+  const pickDay = (iso) => {
+    if (!onChange || isDisabledDay(iso)) return;
+    onChange(clampISO(iso, maxISO));
+    setOpen(false);
+    setHeaderOpen(false);
+  };
+
+  const clear = () => {
+    onChange?.("");
+    setOpen(false);
+    setHeaderOpen(false);
+  };
+
+  const goToday = () => {
+    // 生日不可選「今天」本體；改為跳到／選取最晚可選日（年滿 13）
+    onChange?.(maxISO);
+    setViewYear(maxYear);
+    setViewMonth(maxMonth);
+    setOpen(false);
+    setHeaderOpen(false);
+  };
+
+  const display = displaySlash(value);
+
   return (
-    <div className={`grid grid-cols-3 gap-2 ${className}`}>
-      <label className="min-w-0">
-        <span className="sr-only">出生年</span>
-        <select
-          id={id}
-          name={name ? `${name}-year` : undefined}
-          value={parts.year}
-          disabled={disabled}
-          required={required}
-          className={selectClassName}
-          onChange={(e) => {
-            const y = e.target.value;
-            emit(y, parts.month, parts.day);
-          }}
+    <div ref={rootRef} className={`relative ${className}`}>
+      <button
+        type="button"
+        id={id}
+        disabled={disabled}
+        aria-required={required || undefined}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={() => {
+          if (disabled) return;
+          setOpen((v) => !v);
+        }}
+        className="flex w-full items-center gap-2 border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-left outline-none transition-colors focus:border-black disabled:cursor-not-allowed disabled:opacity-50"
+      >
+        <span
+          className={`min-w-0 flex-1 text-[14px] ${
+            display ? "text-black" : "text-[#aaa]"
+          }`}
         >
-          <option value="">年</option>
-          {years.map((y) => (
-            <option key={y} value={String(y)}>
-              {y}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="min-w-0">
-        <span className="sr-only">出生月</span>
-        <select
-          name={name ? `${name}-month` : undefined}
-          value={parts.month}
-          disabled={disabled}
-          required={required}
-          className={selectClassName}
-          onChange={(e) => {
-            const m = e.target.value;
-            emit(parts.year, m, parts.day);
-          }}
-        >
-          <option value="">月</option>
-          {months.map((m) => (
-            <option key={m} value={pad2(m)}>
-              {m}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label className="min-w-0">
-        <span className="sr-only">出生日</span>
-        <select
-          name={name ? `${name}-day` : undefined}
-          value={parts.day}
-          disabled={disabled}
-          required={required}
-          className={selectClassName}
-          onChange={(e) => {
-            const d = e.target.value;
-            emit(parts.year, parts.month, d);
-          }}
-        >
-          <option value="">日</option>
-          {days.map((d) => (
-            <option key={d} value={pad2(d)}>
-              {d}
-            </option>
-          ))}
-        </select>
-      </label>
-      {/* 保留隱藏欄位供表單語意／自動填入相容 */}
+          {display || "選擇日期"}
+        </span>
+        <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center border border-[#ccc] text-black">
+          <Calendar size={15} strokeWidth={1.75} />
+        </span>
+      </button>
+
       <input type="hidden" name={name} value={value || ""} readOnly />
+
+      {open ? (
+        <div
+          role="dialog"
+          aria-label="選擇生日"
+          className="absolute left-0 right-0 z-50 mt-2 w-full min-w-[280px] border border-[#ddd] bg-white p-3 shadow-[0_8px_24px_rgba(0,0,0,0.12)]"
+        >
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <button
+              type="button"
+              onClick={() => setHeaderOpen((v) => !v)}
+              className="inline-flex items-center gap-1 text-[14px] font-medium text-black hover:opacity-70"
+            >
+              {viewYear}年{viewMonth}月
+              <ChevronDown
+                size={14}
+                className={`transition-transform ${headerOpen ? "rotate-180" : ""}`}
+              />
+            </button>
+            <div className="flex items-center gap-0.5">
+              <button
+                type="button"
+                aria-label="上個月"
+                disabled={!canGoPrev}
+                onClick={() => shiftMonth(-1)}
+                className="p-1.5 text-black disabled:opacity-30"
+              >
+                <ChevronUp size={16} strokeWidth={1.75} />
+              </button>
+              <button
+                type="button"
+                aria-label="下個月"
+                disabled={!canGoNext}
+                onClick={() => shiftMonth(1)}
+                className="p-1.5 text-black disabled:opacity-30"
+              >
+                <ChevronDown size={16} strokeWidth={1.75} />
+              </button>
+            </div>
+          </div>
+
+          {headerOpen ? (
+            <div className="mb-3 grid grid-cols-2 gap-2 border border-[#eee] bg-[#fafafa] p-2">
+              <label className="block">
+                <span className="mb-1 block px-1 text-[11px] text-[#888]">
+                  年份（{BIRTHDAY_MIN_YEAR}–{maxYear}）
+                </span>
+                <select
+                  value={viewYear}
+                  onChange={(e) => {
+                    const y = Number(e.target.value);
+                    setViewYear(y);
+                    if (y === maxYear && viewMonth > maxMonth) {
+                      setViewMonth(maxMonth);
+                    }
+                  }}
+                  className="w-full border border-[#ddd] bg-white px-2 py-2 text-[13px] text-black outline-none"
+                  aria-label="選擇年份"
+                >
+                  {years.map((y) => (
+                    <option key={y} value={y}>
+                      {y}年
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="mb-1 block px-1 text-[11px] text-[#888]">
+                  月份
+                </span>
+                <select
+                  value={viewMonth}
+                  onChange={(e) => {
+                    setViewMonth(Number(e.target.value));
+                  }}
+                  className="w-full border border-[#ddd] bg-white px-2 py-2 text-[13px] text-black outline-none"
+                  aria-label="選擇月份"
+                >
+                  {Array.from({ length: 12 }, (_, i) => i + 1)
+                    .filter((m) => viewYear < maxYear || m <= maxMonth)
+                    .map((m) => (
+                      <option key={m} value={m}>
+                        {m}月
+                      </option>
+                    ))}
+                </select>
+              </label>
+              <div className="col-span-2 flex justify-end pt-1">
+                <button
+                  type="button"
+                  onClick={() => setHeaderOpen(false)}
+                  className="text-[12px] font-medium text-[#1a73e8] hover:underline"
+                >
+                  完成
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="grid grid-cols-7 gap-y-1 text-center">
+            {WEEKDAYS.map((w) => (
+              <div
+                key={w}
+                className="py-1 text-[11px] font-medium text-[#888]"
+              >
+                {w}
+              </div>
+            ))}
+            {cells.map((cell, idx) => {
+              const selected = cell.inMonth && cell.iso && cell.iso === value;
+              const disabledDay =
+                !cell.inMonth || isDisabledDay(cell.iso);
+              return (
+                <button
+                  key={`${cell.inMonth}-${cell.day}-${idx}`}
+                  type="button"
+                  disabled={disabledDay}
+                  onClick={() => pickDay(cell.iso)}
+                  className={`mx-auto flex h-8 w-8 items-center justify-center text-[13px] transition-colors ${
+                    selected
+                      ? "bg-[#1a73e8] font-medium text-white"
+                      : disabledDay
+                        ? "cursor-default text-[#ccc]"
+                        : "text-black hover:bg-[#e8f0fe]"
+                  }`}
+                >
+                  {cell.day}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="mt-3 flex items-center justify-between border-t border-[#eee] pt-2">
+            <button
+              type="button"
+              onClick={clear}
+              className="text-[13px] font-medium text-[#1a73e8] hover:underline"
+            >
+              清除
+            </button>
+            <button
+              type="button"
+              onClick={goToday}
+              className="text-[13px] font-medium text-[#1a73e8] hover:underline"
+              title="選取最晚可選日期（年滿 13 歲）"
+            >
+              今天
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 // app/products/page.tsx
+import { Suspense } from "react";
 import Client from "./Client";
 import Script from "next/script";
 import type { Metadata } from "next";
@@ -9,91 +10,55 @@ import {
   filterListableProducts,
   filterProductsByCategorySlug,
   mapWooToListProduct,
+  type WooCategoryRaw,
+  type ListProduct,
 } from "@/lib/woo";
-import {
-  fetchCategoryBannerSettings,
-  resolveCategoryBanner,
-} from "@/lib/categoryBannerDefaults";
+import { fetchCategoryBannerSettings } from "@/lib/categoryBannerDefaults";
 import { buildProductFilterOptions } from "@/lib/productFilters";
-import type { WooCategoryRaw } from "@/lib/woo";
 
 const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
 
-const CATEGORY_SEO: Record<string, { title: string; description: string }> = {
-  tops: {
-    title: "服飾｜HOVER",
-    description:
-      "探索 HOVER 服飾系列，以中性設計、舒適剪裁與簡約質感，打造自在融入生活的日常穿著。",
-  },
-  headwear: {
-    title: "帽款｜HOVER",
-    description:
-      "探索 HOVER 帽款系列，以簡約設計與舒適版型，打造適合日常穿搭的經典帽款。",
-  },
-  socks: {
-    title: "襪子｜HOVER",
-    description:
-      "探索 HOVER 襪子系列，以舒適著感與簡約設計，為日常穿搭增添細節與質感。",
-  },
-  bags: {
-    title: "包袋｜HOVER",
-    description:
-      "探索 HOVER 包袋系列，以簡約設計與實用機能，陪伴每個日常。",
-  },
-};
+/**
+ * 不在 Server 讀 searchParams（否則整頁變 dynamic、無法 ISR）。
+ * 分類篩選改由 Client 用 useSearchParams 處理。
+ */
+export const revalidate = 300;
 
-/** 分段快取：banner 短 TTL、商品列表 60s（見各自 fetch） */
-export const revalidate = 60;
-
-type PageProps = {
-  searchParams: Promise<{ category?: string }>;
-};
-
-export async function generateMetadata({
-  searchParams,
-}: PageProps): Promise<Metadata> {
-  const { category } = await searchParams;
-  const slug = category ? decodeURIComponent(category).toLowerCase() : "";
-  const seo = CATEGORY_SEO[slug] || {
+export const metadata: Metadata = {
+  metadataBase: new URL(SITE_URL),
+  title: "所有商品｜HOVER",
+  description:
+    "探索 HOVER 全系列服飾、帽款、襪子與包袋，以舒適剪裁與簡約質感，陪伴每個日常。",
+  alternates: { canonical: "/products" },
+  openGraph: {
+    type: "website",
+    locale: "zh_TW",
+    url: "/products",
+    siteName: "HOVER",
     title: "所有商品｜HOVER",
     description:
       "探索 HOVER 全系列服飾、帽款、襪子與包袋，以舒適剪裁與簡約質感，陪伴每個日常。",
-  };
-  const canonical = slug
-    ? `/products?category=${encodeURIComponent(slug)}`
-    : "/products";
+  },
+  twitter: {
+    card: "summary",
+    title: "所有商品｜HOVER",
+    description:
+      "探索 HOVER 全系列服飾、帽款、襪子與包袋，以舒適剪裁與簡約質感，陪伴每個日常。",
+  },
+};
 
-  return {
-    metadataBase: new URL(SITE_URL),
-    title: seo.title,
-    description: seo.description,
-    alternates: { canonical },
-    openGraph: {
-      type: "website",
-      locale: "zh_TW",
-      url: canonical,
-      siteName: "HOVER",
-      title: seo.title,
-      description: seo.description,
-    },
-    twitter: {
-      card: "summary",
-      title: seo.title,
-      description: seo.description,
-    },
-  };
-}
+type ProductsCategoryMeta = Record<
+  string,
+  { label: string; ids: number[] }
+>;
 
-export default async function ProductsPage({ searchParams }: PageProps) {
-  const { category: categorySlugRaw } = await searchParams;
-  const categorySlug = categorySlugRaw
-    ? decodeURIComponent(categorySlugRaw).toLowerCase()
-    : "";
-
-  let items = MOCK_PRODUCTS;
-  let categoryLabel = "ALL ITEMS";
+export default async function ProductsPage() {
+  let items: ListProduct[] = MOCK_PRODUCTS;
   let filterCategories: WooCategoryRaw[] = [];
+  let categoryMeta: ProductsCategoryMeta = {
+    all: { label: "ALL ITEMS", ids: MOCK_PRODUCTS.map((p) => p.id) },
+  };
 
   const [bannerSettings, productResult] = await Promise.all([
     fetchCategoryBannerSettings(),
@@ -105,50 +70,57 @@ export default async function ProductsPage({ searchParams }: PageProps) {
         ]);
 
         const listableProducts = filterListableProducts(wooProducts);
-        const filtered = categorySlug
-          ? filterProductsByCategorySlug(
-              listableProducts,
-              categories,
-              categorySlug,
-            )
-          : listableProducts;
+        const mapped = listableProducts.map(mapWooToListProduct);
+        const meta: ProductsCategoryMeta = {
+          all: {
+            label: "ALL ITEMS",
+            ids: mapped.map((p) => p.id),
+          },
+        };
 
-        let label = "ALL ITEMS";
-        if (categorySlug) {
-          const matched = categories.find(
-            (category) =>
-              category.slug.toLowerCase() === categorySlug.toLowerCase(),
+        for (const category of categories) {
+          const slug = String(category.slug || "")
+            .trim()
+            .toLowerCase();
+          if (!slug || meta[slug]) continue;
+          const filtered = filterProductsByCategorySlug(
+            listableProducts,
+            categories,
+            slug,
           );
-          label = matched?.name || categorySlug.toUpperCase();
+          meta[slug] = {
+            label: category.name || slug.toUpperCase(),
+            ids: filtered.map((p) => p.id),
+          };
         }
 
-        console.log(
-          "🌐 [商品列表] WooCommerce 商品數:",
-          wooProducts.length,
-          categorySlug ? `篩選 ${categorySlug}: ${filtered.length}` : "",
-        );
+        console.log("🌐 [商品列表] WooCommerce 商品數:", wooProducts.length);
 
         return {
-          items: filtered.map(mapWooToListProduct),
-          categoryLabel: label,
+          items: mapped,
           categories,
+          categoryMeta: meta,
         };
       } catch (error) {
         console.error("❌ 商品列表抓取失敗，使用 mock 資料:", error);
         return {
           items: MOCK_PRODUCTS,
-          categoryLabel: "ALL ITEMS",
           categories: [] as WooCategoryRaw[],
+          categoryMeta: {
+            all: {
+              label: "ALL ITEMS",
+              ids: MOCK_PRODUCTS.map((p) => p.id),
+            },
+          } as ProductsCategoryMeta,
         };
       }
     })(),
   ]);
 
   items = productResult.items;
-  categoryLabel = productResult.categoryLabel;
   filterCategories = productResult.categories;
+  categoryMeta = productResult.categoryMeta;
 
-  const banner = resolveCategoryBanner(bannerSettings, categorySlug || "all");
   const filterOptions = buildProductFilterOptions(filterCategories, items);
 
   const jsonLd = {
@@ -176,13 +148,18 @@ export default async function ProductsPage({ searchParams }: PageProps) {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
 
-      <Client
-        items={items}
-        categoryLabel={categoryLabel}
-        categorySlug={categorySlug || "all"}
-        banner={banner}
-        filterOptions={filterOptions}
-      />
+      <Suspense
+        fallback={
+          <div className="min-h-[60vh] bg-white" aria-hidden="true" />
+        }
+      >
+        <Client
+          items={items}
+          categoryMeta={categoryMeta}
+          bannerSettings={bannerSettings}
+          filterOptions={filterOptions}
+        />
+      </Suspense>
     </>
   );
 }

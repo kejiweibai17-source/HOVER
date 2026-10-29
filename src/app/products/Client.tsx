@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useMemo, useCallback, useRef, memo } from "react";
+import { useState, useMemo, useCallback, useRef, memo, useEffect } from "react";
 import Image from "next/image";
 import { Link } from "next-view-transitions";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { SlidersHorizontal, ChevronDown, X, ChevronRight } from "lucide-react";
 import WishlistIcon from "@/components/hover/WishlistIcon";
 import HoverLogo from "@/components/hover/HoverLogo";
@@ -17,13 +17,21 @@ import { useSearchStore } from "@/lib/searchStore";
 import { useCartStore } from "@/lib/cartStore";
 import { MOCK_PRODUCTS } from "@/lib/mockProducts";
 import CategoryBannerBlock from "@/components/hover/CategoryBannerBlock";
-import type { CategoryBanner } from "@/lib/categoryBannerDefaults";
+import {
+  resolveCategoryBanner,
+  type CategoryBannerSettings,
+} from "@/lib/categoryBannerDefaults";
 import {
   EMPTY_PRODUCT_FILTER_OPTIONS,
   type ProductFilterOptions,
 } from "@/lib/productFilters";
 import { formatProductPrice } from "@/lib/utils";
 import { pickProductHoverImage } from "@/lib/productCardImages";
+
+type ProductsCategoryMeta = Record<
+  string,
+  { label: string; ids: number[] }
+>;
 /* ─── Types ─────────────────────────────────────────────────────────────── */
 
 export type Product = {
@@ -578,18 +586,38 @@ function Pagination({
 
 export default function Client({
   items,
-  categoryLabel = "ALL ITEMS",
-  categorySlug = "all",
-  banner = null,
+  categoryMeta = { all: { label: "ALL ITEMS", ids: [] } },
+  bannerSettings = null,
   filterOptions = EMPTY_PRODUCT_FILTER_OPTIONS,
 }: {
   items: Product[];
-  categoryLabel?: string;
-  categorySlug?: string;
-  banner?: CategoryBanner | null;
+  categoryMeta?: ProductsCategoryMeta;
+  bannerSettings?: CategoryBannerSettings | null;
   filterOptions?: ProductFilterOptions;
 }) {
-  const products: Product[] = items?.length > 0 ? items : MOCK_PRODUCTS;
+  const searchParams = useSearchParams();
+  const categorySlugRaw = String(searchParams.get("category") || "")
+    .trim()
+    .toLowerCase();
+  const categorySlug = categorySlugRaw || "all";
+  const categoryInfo =
+    categoryMeta[categorySlug] || categoryMeta.all || {
+      label: "ALL ITEMS",
+      ids: (items || []).map((p) => p.id),
+    };
+  const categoryLabel = categoryInfo.label || "ALL ITEMS";
+  const allowedIds = useMemo(
+    () => new Set(categoryInfo.ids || []),
+    [categoryInfo.ids],
+  );
+  const products: Product[] = useMemo(() => {
+    const source = items?.length > 0 ? items : MOCK_PRODUCTS;
+    if (!categorySlugRaw || categorySlug === "all") return source;
+    return source.filter((p) => allowedIds.has(p.id));
+  }, [items, categorySlug, categorySlugRaw, allowedIds]);
+  const banner = bannerSettings
+    ? resolveCategoryBanner(bannerSettings, categorySlug)
+    : null;
 
   const [filterOpen, setFilterOpen] = useState(false);
   const [sortBy, setSortBy] = useState("最新上架");
@@ -600,6 +628,12 @@ export default function Client({
   // 側欄內暫存的勾選狀態（按下「篩選」才套用）
   const [draftFilters, setDraftFilters] = useState<Set<string>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
+
+  useEffect(() => {
+    setCurrentPage(1);
+    setSelectedFilters(new Set());
+    setDraftFilters(new Set());
+  }, [categorySlug]);
 
   const toggleFilter = useCallback((val: string) => {
     setDraftFilters((prev) => {

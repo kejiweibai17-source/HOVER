@@ -103,7 +103,7 @@ export async function fetchBrandPage(): Promise<BrandPageSettings> {
 
   try {
     const res = await fetch(`${base}/wp-json/hover/v1/brand-page`, {
-      cache: "no-store",
+      next: { revalidate: 300 },
     });
     if (!res.ok) throw new Error(`Brand page API ${res.status}`);
     const data = await res.json();

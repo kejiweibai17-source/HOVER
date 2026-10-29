@@ -772,6 +772,49 @@ function hoet_footer_html(): string
     </div>';
 }
 
+/**
+ * 移除信件常見服務套語；頁尾「HOVER 官方 LINE」補上可點擊連結（@330kefmm）
+ */
+function hoet_strip_service_phrase(string $html): string
+{
+    $html = (string) preg_replace('/我們將盡全力為[您你]服務。?/u', '', $html);
+    $html = (string) preg_replace('/<p[^>]*>\s*<\/p>/iu', '', $html);
+    return $html;
+}
+
+function hoet_ensure_line_footer_link(string $html): string
+{
+    // 已是連結則略過
+    if (preg_match('/<a[^>]*>\s*HOVER\s*官方\s*LINE\s*<\/a>/iu', $html)) {
+        return $html;
+    }
+    $link = '<a href="' . esc_url(HOET_LINE_URL) . '" style="color:' . HOET_GREEN . ';text-decoration:underline;">HOVER 官方 LINE</a>';
+    // 純文字「HOVER 官方 LINE」
+    $html = (string) preg_replace('/HOVER\s*官方\s*LINE/u', $link, $html, 1);
+    return $html;
+}
+
+add_filter('woocommerce_email_additional_content', function ($content, $email = null) {
+    $content = hoet_strip_service_phrase((string) $content);
+    return trim($content);
+}, 20, 2);
+
+add_filter('woocommerce_email_footer_text', function ($text) {
+    $text = hoet_strip_service_phrase((string) $text);
+    $text = hoet_ensure_line_footer_link($text);
+    // 若頁尾完全沒有 LINE，補上標準列
+    if (stripos($text, '官方 LINE') === false && stripos($text, 'line.me') === false) {
+        $text .= '<br />客服聯繫｜<a href="' . esc_url(HOET_LINE_URL) . '" style="color:' . HOET_GREEN . ';text-decoration:underline;">HOVER 官方 LINE</a>';
+    }
+    return $text;
+}, 20);
+
+add_filter('woocommerce_mail_content', function ($content) {
+    $content = hoet_strip_service_phrase((string) $content);
+    $content = hoet_ensure_line_footer_link($content);
+    return $content;
+}, 50);
+
 function hoet_shell(string $inner): string
 {
     return '<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /></head>
@@ -1036,14 +1079,15 @@ function hoet_tpl_arrived(WC_Order $order): string
     }
 
     $lead = hoet_is_cvs($order)
-        ? '您的商品已送達指定門市，請於期限內完成取貨。'
-        : '您的商品已送達，請留意配送／取貨通知。';
+        ? '您訂購的商品已經送達超商門市，請於期限內完成取貨。'
+        : '您訂購的商品已送達，請留意配送／取貨通知。';
 
     $hint = hoet_is_cvs($order)
         ? '請攜帶取貨代碼於期限內至門市取貨。逾期未取，貨件將依物流規定退回。'
         : '若為宅配，請依物流通知完成收件。';
 
     $inner = '
+      <h1 style="margin:0 0 16px;font-size:20px;font-weight:700;color:#111;text-align:center;">商品取貨通知</h1>
       <p style="margin:0 0 12px;font-size:15px;line-height:1.8;">親愛的' . hoet_esc($name) . '，</p>
       <p style="margin:0 0 8px;font-size:14px;line-height:1.8;color:#333;">' . hoet_esc($lead) . '</p>
       ' . hoet_order_info_block($order, $extra) . '
@@ -1075,7 +1119,7 @@ function hoet_send_arrived_notice(WC_Order $order): bool
         return false;
     }
 
-    $subject = '商品已到貨｜請盡速取貨';
+    $subject = '商品取貨通知';
     $html = hoet_tpl_arrived($order);
     $headers = ['Content-Type: text/html; charset=UTF-8'];
 

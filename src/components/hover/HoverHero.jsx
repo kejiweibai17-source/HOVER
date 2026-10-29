@@ -466,13 +466,20 @@ export default function HoverHero({ initialHero = null }) {
     <section className="relative w-full overflow-hidden bg-black">
       <div
         ref={viewportRef}
-        className="relative h-[85vh] min-h-[560px] w-full touch-pan-y overflow-hidden select-none md:h-[calc(100dvh-var(--hover-header-height,116px))] md:min-h-0"
+        className={`relative h-[85vh] min-h-[560px] w-full touch-pan-y overflow-hidden select-none [&_img]:pointer-events-none md:h-[calc(100dvh-var(--hover-header-height,116px))] md:min-h-0 ${
+          count > 1
+            ? dragging
+              ? "cursor-grabbing"
+              : "cursor-grab"
+            : ""
+        }`}
         onClickCapture={(e) => {
           if (!suppressClickRef.current) return;
           e.preventDefault();
           e.stopPropagation();
           suppressClickRef.current = false;
         }}
+        onDragStart={(e) => e.preventDefault()}
       >
         <motion.div
           className="flex h-full will-change-transform"

@@ -1,7 +1,7 @@
 import { Metadata } from "next";
 import MembershipClient from "./client";
 
-export const revalidate = 60;
+export const revalidate = 300;
 
 const getSiteUrl = () => {
   if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;

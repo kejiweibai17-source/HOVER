@@ -15,7 +15,6 @@ import HoverMidVideo from "@/components/hover/HoverMidVideo";
 import { FALLBACK_BRAND_STORY_SLIDES } from "@/lib/brandStoryDefaults";
 import { FALLBACK_CATEGORY_TILES } from "@/lib/categoryGridDefaults";
 import { FALLBACK_PEOPLE_SLIDES } from "@/lib/peopleDefaults";
-import { FALLBACK_HOME_PRODUCTS } from "@/lib/homeProductsDefaults";
 import { formatProductPrice } from "@/lib/utils";
 import { pickProductHoverSrc } from "@/lib/productCardImages";
 
@@ -96,6 +95,7 @@ function ProductCard({ product }) {
               role="card"
               alt={product.name}
               fill
+              draggable={false}
               className={`object-contain object-center transition-opacity duration-300 ${
                 hasHoverImage && hoverReady
                   ? "opacity-100 group-hover:opacity-0"
@@ -110,6 +110,7 @@ function ProductCard({ product }) {
                 role="card"
                 alt={`${product.name} alternate view`}
                 fill
+                draggable={false}
                 className="object-contain object-center opacity-0 transition-opacity duration-300 group-hover:opacity-100"
                 sizes="(max-width: 768px) 50vw, 28vw"
               />
@@ -172,6 +173,8 @@ function ProductCard({ product }) {
 }
 
 function ProductSection({ title, products }) {
+  if (!Array.isArray(products) || products.length === 0) return null;
+
   return (
     <InfiniteCarousel
       title={title}
@@ -182,7 +185,7 @@ function ProductSection({ title, products }) {
       imageAspectRatio="3/4"
       headerClassName={HOME_TITLE_ALIGN}
       slideClassName="pr-2 md:pr-3 flex"
-      mobileDraggable
+      draggable
       renderItem={(product) => <ProductCard product={product} />}
     />
   );
@@ -203,7 +206,7 @@ function BrandStorySection({ slides }) {
         trackContentClassName="!py-0 px-0"
         slideClassName="pr-0"
         autoplayInterval={5000}
-        mobileDraggable
+        draggable
         imageAspectRatio="16/9"
         renderItem={(slide) => {
           const image = (
@@ -214,6 +217,7 @@ function BrandStorySection({ slides }) {
                 role="banner"
                 alt={slide.alt || "HOVER brand story"}
                 fill
+                draggable={false}
                 className="object-cover"
                 sizes="(max-width: 768px) 100vw, 50vw"
               />
@@ -294,7 +298,7 @@ function HoverPeopleSection({ slides }) {
       trackContentClassName="px-0 md:px-16"
       slideClassName="md:pr-3"
       mobileAutoplayInterval={4500}
-      mobileDraggable
+      draggable
       imageAspectRatio="481/550"
       renderItem={(person, i) => {
         const image = (
@@ -302,9 +306,11 @@ function HoverPeopleSection({ slides }) {
             <OptimizedImage
               src={person.src}
               fullSrc={person.src}
-              role="card"
+              // PEOPLE 圖不是商品 3:4 縮圖；勿改寫 -600x800（常 404）
+              role="banner"
               alt={person.alt || `HOVER PEOPLE ${(i % items.length) + 1}`}
               fill
+              draggable={false}
               className="object-cover"
               sizes="(max-width: 768px) 50vw, 25vw"
             />
@@ -337,10 +343,10 @@ export default function Home({
 }) {
   const newArrivals = Array.isArray(initialNewArrivals)
     ? initialNewArrivals
-    : FALLBACK_HOME_PRODUCTS;
+    : [];
   const bestSeller = Array.isArray(initialBestSeller)
     ? initialBestSeller
-    : FALLBACK_HOME_PRODUCTS;
+    : [];
 
   return (
     <div className="bg-white">

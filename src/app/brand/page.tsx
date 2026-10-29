@@ -2,7 +2,7 @@ import { Metadata } from "next";
 import { fetchBrandPage, encodeBrandImageUrl } from "@/lib/brandPageDefaults";
 import BrandStoryView from "./client";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300;
 
 const getSiteUrl = () => {
   if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;

@@ -112,7 +112,7 @@ export default function RegisterPage() {
     <div className="flex min-h-[calc(100vh-var(--hover-header-height,116px))]">
       <div className="relative hidden w-1/2 lg:block">
         <Image
-          src="/images/hover/people-2.jpg"
+          src="/images/hover/auth-register.jpg"
           alt="HOVER"
           fill
           className="object-cover object-center"
@@ -211,7 +211,7 @@ export default function RegisterPage() {
               />
               <p className="mt-1.5 text-[12px] leading-[1.6] text-[#888]">
                 可於之後至會員中心補填；設定完成後不可自行修改。須年滿 13
-                歲。年份可由近到遠完整選擇（最早至 1920）。
+                歲。點日曆標題可完整選擇年份（最早至 1920）。
               </p>
             </div>
 

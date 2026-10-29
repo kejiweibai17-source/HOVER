@@ -3,8 +3,8 @@
 import { useMemo, useState } from "react";
 import Image, { type ImageProps } from "next/image";
 import {
-  applyWpSuffix,
-  getFallbackSuffixes,
+  stripPhotonUrl,
+  toDirectWpImageUrl,
   toFullUploadUrl,
   toOptimizedImageUrl,
   type ImageRole,
@@ -19,7 +19,8 @@ type Props = Omit<ImageProps, "src" | "onError"> & {
 };
 
 /**
- * 不經 Vercel 優化：優先載入 WP 縮圖，失敗再回退原圖／其他尺寸。
+ * 優先 Photon（小檔 WebP），失敗再回退 WP 尺寸檔／原圖。
+ * 候選鏈刻意縮短，避免連續 404 拖慢列表。
  */
 export default function OptimizedImage({
   src,
@@ -32,29 +33,16 @@ export default function OptimizedImage({
   const original = fullSrc || src;
   const candidates = useMemo(() => {
     const list: string[] = [];
-    const normalized = toOptimizedImageUrl(original, role);
+    const photon = toOptimizedImageUrl(original, role);
+    const direct = toDirectWpImageUrl(stripPhotonUrl(original) || original, role);
+    const full = toFullUploadUrl(stripPhotonUrl(original) || original);
 
-    if (src && src !== original) {
-      const fromSrc = toOptimizedImageUrl(src, role);
-      if (fromSrc) list.push(fromSrc);
-    }
-
-    // 已存在的尺寸檔：夠大才優先（避免先載 300×300 糊圖）
-    const sized = original.match(/-(\d+)x(\d+)\.[a-z]+$/i);
-    if (sized) {
-      const maxSide = Math.max(Number(sized[1]), Number(sized[2]));
-      if (maxSide >= 560) list.push(original);
-    }
-
-    list.push(normalized);
-    for (const suffix of getFallbackSuffixes(role)) {
-      const next = applyWpSuffix(toFullUploadUrl(original), suffix);
-      if (!list.includes(next)) list.push(next);
-    }
-    const full = toFullUploadUrl(original);
-    if (!list.includes(full)) list.push(full);
-    if (!list.includes(original)) list.push(original);
-    return Array.from(new Set(list.filter(Boolean)));
+    if (photon) list.push(photon);
+    if (direct && !list.includes(direct)) list.push(direct);
+    if (full && !list.includes(full)) list.push(full);
+    if (original && !list.includes(original)) list.push(original);
+    if (src && src !== original && !list.includes(src)) list.push(src);
+    return list.filter(Boolean);
   }, [original, role, src]);
 
   const [index, setIndex] = useState(0);

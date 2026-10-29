@@ -38,6 +38,8 @@ import {
   normalizeMobileCarrier,
 } from "@/lib/invoicePreference";
 import { formatProductPrice } from "@/lib/utils";
+import { toCartThumbUrl } from "@/lib/listImageUrl";
+import ConfirmDialog from "@/components/hover/ConfirmDialog";
 import {
   findPromotionVariant,
   isPoolVariantInStock,
@@ -863,12 +865,22 @@ function getProductHref(it) {
 
 function CheckoutProductThumb({ item }) {
   const href = getProductHref(item);
-  const imgSrc = item.image || item.img || "/images/hover/product-1.jpg";
+  const raw = item.image || item.img || "/images/hover/product-1.jpg";
+  const imgSrc = toCartThumbUrl(raw);
   const alt = item.name || item.title || "商品";
 
   const thumb = (
     <div className="relative h-[68px] w-[52px] shrink-0 overflow-hidden bg-[#e8e6e2]">
-      <img src={imgSrc} alt={alt} className="h-full w-full object-cover" />
+      <img
+        src={imgSrc}
+        alt={alt}
+        width={52}
+        height={68}
+        decoding="async"
+        loading="eager"
+        fetchPriority="high"
+        className="h-full w-full object-cover"
+      />
     </div>
   );
 
@@ -1204,7 +1216,15 @@ function PromotionOfferCard({
     >
       <div className="h-16 w-12 shrink-0 overflow-hidden bg-[#f3f3f1]">
         {thumb ? (
-          <img src={thumb} alt="" className="h-full w-full object-cover" />
+          <img
+            src={toCartThumbUrl(thumb)}
+            alt=""
+            width={48}
+            height={64}
+            decoding="async"
+            loading="lazy"
+            className="h-full w-full object-cover"
+          />
         ) : null}
       </div>
       <div className="min-w-0 flex-1">
@@ -1376,6 +1396,7 @@ function CartStep({
   onPromotionQuantity,
   onSelectPromotionVariant,
 }) {
+  const [pendingRemove, setPendingRemove] = useState(null);
   const orderSummary = useMemo(
     () =>
       buildCartOrderSummary({
@@ -1409,6 +1430,7 @@ function CartStep({
     pricing.needForFreeShip === 0 && pricing.discountedSubtotal > 0;
 
   return (
+    <>
     <div className="mx-auto max-w-[640px] px-5 pb-16 pt-2 md:px-8">
       <div className="divide-y divide-[#e8e8e8] border-y border-[#e8e8e8]">
         {items.map((it) => {
@@ -1426,7 +1448,13 @@ function CartStep({
             <div key={it.id} className="flex items-start gap-3 py-4">
               <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden bg-[#f5f5f3]">
                 <img
-                  src={it.image || it.img || "/images/hover/product-1.jpg"}
+                  src={toCartThumbUrl(
+                    it.image || it.img || "/images/hover/product-1.jpg",
+                  )}
+                  width={72}
+                  height={72}
+                  decoding="async"
+                  loading="eager"
                   className="h-full w-full object-cover"
                   alt={it.name || it.title}
                 />
@@ -1450,7 +1478,12 @@ function CartStep({
                   <button
                     type="button"
                     aria-label="移除"
-                    onClick={() => onRemove(it.id || it.wcProductId)}
+                    onClick={() =>
+                      setPendingRemove({
+                        id: it.id || it.wcProductId,
+                        name: it.name || it.title || "此商品",
+                      })
+                    }
                     className="shrink-0 text-[#bbb] transition-colors hover:text-black"
                   >
                     <X className="h-[14px] w-[14px]" strokeWidth={1.5} />
@@ -1549,6 +1582,20 @@ function CartStep({
         </a>
       </div>
     </div>
+
+    <ConfirmDialog
+      open={Boolean(pendingRemove)}
+      title="移除商品"
+      message={`確定要從購物車移除「${pendingRemove?.name || "此商品"}」嗎？`}
+      confirmLabel="確定移除"
+      cancelLabel="取消"
+      onCancel={() => setPendingRemove(null)}
+      onConfirm={() => {
+        if (pendingRemove?.id != null) onRemove(pendingRemove.id);
+        setPendingRemove(null);
+      }}
+    />
+    </>
   );
 }
 
@@ -1590,6 +1637,8 @@ function CheckoutStep({
   const [myCouponsLoading, setMyCouponsLoading] = useState(false);
   const [myCouponsLoaded, setMyCouponsLoaded] = useState(false);
   const [copiedCouponCode, setCopiedCouponCode] = useState("");
+  const myCouponsFetchRef = useRef(0);
+  const MY_COUPONS_CACHE_KEY = "hover_usable_coupons_v1";
 
   const displayName = [addr.lastName, addr.firstName]
     .filter(Boolean)
@@ -1642,28 +1691,77 @@ function CheckoutStep({
     if (!isLoggedIn) {
       setMyCoupons([]);
       setMyCouponsLoaded(true);
+      try {
+        sessionStorage.removeItem(MY_COUPONS_CACHE_KEY);
+      } catch {
+        /* ignore */
+      }
       return;
     }
-    setMyCouponsLoading(true);
+
+    const fetchId = ++myCouponsFetchRef.current;
+    // 沒有現成清單才顯示 loading；有快取時維持可見、背景刷新
+    setMyCoupons((current) => {
+      if (current.length === 0) setMyCouponsLoading(true);
+      return current;
+    });
     try {
-      const res = await fetch("/api/account/coupons/available", {
+      const subtotalAfterMember = Math.max(
+        0,
+        Number(pricing?.subtotal || 0) - Number(pricing?.memberDiscountAmount || 0),
+      );
+      const qs = new URLSearchParams({
+        subtotalAfterMember: String(subtotalAfterMember),
+      });
+      const res = await fetch(`/api/account/coupons/available?${qs}`, {
         cache: "no-store",
         credentials: "include",
       });
       const data = await res.json().catch(() => ({}));
-      const list = Array.isArray(data.coupons)
-        ? data.coupons
-        : Array.isArray(data.available)
+      if (fetchId !== myCouponsFetchRef.current) return;
+      // available 已依門檻篩過；coupons 作備援時再濾 usable
+      const list = (
+        Array.isArray(data.available)
           ? data.available
-          : [];
-      setMyCoupons(
-        list.filter((c) => String(c?.status || "usable") === "usable"),
+          : Array.isArray(data.coupons)
+            ? data.coupons.filter((c) => String(c?.status || "usable") === "usable")
+            : []
       );
+      setMyCoupons(list);
+      try {
+        sessionStorage.setItem(
+          MY_COUPONS_CACHE_KEY,
+          JSON.stringify({ at: Date.now(), coupons: list }),
+        );
+      } catch {
+        /* ignore */
+      }
     } catch {
-      setMyCoupons([]);
+      if (fetchId !== myCouponsFetchRef.current) return;
     } finally {
-      setMyCouponsLoading(false);
-      setMyCouponsLoaded(true);
+      if (fetchId === myCouponsFetchRef.current) {
+        setMyCouponsLoading(false);
+        setMyCouponsLoaded(true);
+      }
+    }
+  }, [isLoggedIn, pricing?.subtotal, pricing?.memberDiscountAmount]);
+
+  // 進結帳步驟先還原 session 快取，下拉可立刻顯示
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    try {
+      const raw = sessionStorage.getItem(MY_COUPONS_CACHE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      const coupons = Array.isArray(parsed?.coupons) ? parsed.coupons : [];
+      const age = Date.now() - Number(parsed?.at || 0);
+      if (coupons.length && age >= 0 && age < 10 * 60 * 1000) {
+        setMyCoupons(coupons);
+        setMyCouponsLoaded(true);
+        setMyCouponsLoading(false);
+      }
+    } catch {
+      /* ignore */
     }
   }, [isLoggedIn]);
 
@@ -1672,6 +1770,7 @@ function CheckoutStep({
       setMyCoupons([]);
       setMyCouponsLoaded(false);
       setMyCouponsOpen(false);
+      setMyCouponsLoading(false);
       return;
     }
     loadMyCoupons();
@@ -1741,11 +1840,11 @@ function CheckoutStep({
   };
 
   const handleSelectMyCoupon = async (coupon) => {
-    const code = String(coupon?.code || "").toUpperCase();
+    const code = String(coupon?.code || "").trim();
     if (!code) return;
     setDiscountCode(code);
     setCouponError("");
-    await handleCopyCouponCode(code);
+    // 點選即套用，不必再複製貼上
     await handleApplyCoupon(code);
   };
 
@@ -2472,7 +2571,7 @@ function CheckoutStep({
                     }}
                     className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[#2a514d] transition-opacity hover:opacity-80"
                   >
-                    查看我的適用優惠券
+                    查看可用優惠券／優惠碼
                     {myCouponsOpen ? (
                       <ChevronUp size={16} strokeWidth={1.75} />
                     ) : (
@@ -2482,19 +2581,23 @@ function CheckoutStep({
 
                   {myCouponsOpen ? (
                     <div className="mt-3 border border-[#ddd] bg-[#fafafa]">
-                      {myCouponsLoading ? (
+                      {myCouponsLoading && myCoupons.length === 0 ? (
                         <p className="px-4 py-5 text-center text-[13px] text-[#888]">
-                          讀取優惠券中…
+                          讀取中…
                         </p>
                       ) : myCoupons.length === 0 ? (
                         <p className="px-4 py-5 text-center text-[13px] text-[#888]">
-                          目前沒有可使用的優惠券。可至會員中心「優惠券」查看領取狀態。
+                          目前沒有可使用的優惠券或優惠碼。可至會員中心查看領取狀態，或手動輸入活動優惠碼。
                         </p>
                       ) : (
                         <ul className="max-h-[280px] divide-y divide-[#e5e5e5] overflow-y-auto">
                           {myCoupons.map((c) => {
                             const code = String(c.code || "").toUpperCase();
                             const name = c.kindLabel || "專屬優惠";
+                            const isPromoCode =
+                              c.entryType === "code" ||
+                              c.entryTypeLabel === "優惠碼";
+                            const typeLabel = isPromoCode ? "優惠碼" : "優惠券";
                             const minAmt = Number(c.minimumAmount || 0) || 0;
                             const expiresLabel = c.expires
                               ? new Date(c.expires).toLocaleDateString("zh-TW", {
@@ -2517,9 +2620,20 @@ function CheckoutStep({
                                     disabled={couponApplying}
                                     className="min-w-0 flex-1 text-left disabled:opacity-60"
                                   >
-                                    <p className="text-[14px] font-semibold text-black">
-                                      {name}
-                                      <span className="ml-2 text-[13px] font-bold text-[#c0392b]">
+                                    <p className="flex flex-wrap items-center gap-2">
+                                      <span
+                                        className={`inline-block px-1.5 py-0.5 text-[10px] font-semibold tracking-wide ${
+                                          isPromoCode
+                                            ? "bg-[#2a514d]/10 text-[#2a514d]"
+                                            : "bg-[#c0392b]/10 text-[#c0392b]"
+                                        }`}
+                                      >
+                                        {typeLabel}
+                                      </span>
+                                      <span className="text-[14px] font-semibold text-black">
+                                        {name}
+                                      </span>
+                                      <span className="text-[13px] font-bold text-[#c0392b]">
                                         {amountLabel}
                                       </span>
                                     </p>
@@ -2535,12 +2649,14 @@ function CheckoutStep({
                                       效期：{expiresLabel}
                                     </p>
                                     <p className="mt-1 text-[11px] text-[#888]">
-                                      點選即可複製並套用
+                                      {isPromoCode
+                                        ? "公開活動優惠碼 · 點選即可套用"
+                                        : "會員專屬優惠券 · 點選即可套用"}
                                     </p>
                                   </button>
                                   <button
                                     type="button"
-                                    title="複製折扣碼"
+                                    title="複製代碼"
                                     onClick={() => handleCopyCouponCode(code)}
                                     className="relative shrink-0 border border-[#ccc] bg-white p-2 text-[#555] transition-colors hover:border-[#2a514d] hover:text-[#2a514d]"
                                   >
@@ -2564,7 +2680,7 @@ function CheckoutStep({
                 </div>
               ) : (
                 <p className="mt-3 text-[12px] text-[#888]">
-                  登入會員後可查看並套用專屬優惠券。
+                  登入後可查看會員優惠券與可用活動優惠碼；訪客也可直接輸入優惠碼套用。
                 </p>
               )}
             </div>
@@ -2792,16 +2908,28 @@ function CartContent() {
 
     setItemsLoaded(true);
 
-    // 🌟 修正會員資料抓取，同步寫入 Email
+    // 先用 authStore 快速判定登入，讓優惠券可立刻開始預載
+    void (async () => {
+      try {
+        const loggedIn = await checkAuth();
+        if (loggedIn) setIsLoggedIn(true);
+      } catch {
+        /* ignore */
+      }
+    })();
+
+    // 🌟 修正會員資料抓取，同步寫入 Email／會員折扣
     const fetchProfile = async () => {
       try {
-        const res = await fetch("/api/account/profile");
+        const res = await fetch("/api/account/profile", {
+          cache: "no-store",
+          credentials: "include",
+        });
         const data = await res.json();
         if (data.loggedIn) {
-          setIsLoggedIn(true); // 標記為已登入
+          setIsLoggedIn(true);
 
           if (data.customer?.email) {
-            // 自動綁定信箱，並覆蓋掉任何從 sessionStorage 讀到的舊資料
             setContact((prev) => ({ ...prev, email: data.customer.email }));
           }
 
@@ -2814,6 +2942,7 @@ function CartContent() {
             setDiscountRate(data.membership.exclusiveActive ? rate : 1);
           }
         } else if (_step >= 2) {
+          setIsLoggedIn(false);
           setStep(1);
           sessionStorage.setItem("checkout_step", "1");
         }

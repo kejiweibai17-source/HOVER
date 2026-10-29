@@ -127,23 +127,21 @@ export async function fetchHomeCarouselProducts(): Promise<{
   newArrivals: HomeCarouselProduct[];
   bestSeller: HomeCarouselProduct[];
 }> {
-  const fallback = {
-    newArrivals: FALLBACK_HOME_PRODUCTS,
-    bestSeller: FALLBACK_HOME_PRODUCTS,
-  };
+  /** 後台沒放商品／關閉／讀取失敗 → 空陣列（不要塞開發用預設商品） */
+  const empty = { newArrivals: [] as HomeCarouselProduct[], bestSeller: [] as HomeCarouselProduct[] };
 
   const base = getWordPressBase();
-  if (!base) return fallback;
+  if (!base) return empty;
 
   try {
     const res = await fetch(`${base}/wp-json/hover/v1/home-products`, {
-      next: { revalidate: 60 },
+      next: { revalidate: 300 },
     });
     if (!res.ok) throw new Error(`Home products API ${res.status}`);
     const data = await res.json();
     const raw = data?.homeProducts ?? data;
     if (!raw?.enabled) {
-      return { newArrivals: [], bestSeller: [] };
+      return empty;
     }
 
     return {
@@ -156,7 +154,8 @@ export async function fetchHomeCarouselProducts(): Promise<{
           ? []
           : normalizeList(raw.bestSeller?.products),
     };
-  } catch {
-    return fallback;
+  } catch (error) {
+    console.error("[home-products] 讀取失敗，區塊改為空白:", error);
+    return empty;
   }
 }

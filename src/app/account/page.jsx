@@ -2216,7 +2216,8 @@ function AccountPageContent() {
                               selectClassName="box-border min-h-[44px] w-full appearance-none border-0 border-b border-[#bbb] bg-transparent px-0 py-2 text-[16px] text-black outline-none focus:border-black"
                             />
                             <p className="mt-1 text-[12px] text-[#888]">
-                              須年滿 13 歲；年份可由近到遠完整選擇。
+                              須年滿 13 歲；點日曆標題可完整選擇年份（最早至
+                              1920）。
                             </p>
                             {birthdayMessage && (
                               <p className="text-[12px] text-red-600">

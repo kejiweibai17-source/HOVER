@@ -19,10 +19,12 @@ function ReturnLineRedirect() {
       t: searchParams.get("t"),
       p: searchParams.get("p"),
       s: searchParams.get("s"),
+      cvs: searchParams.get("cvs"),
+      g: searchParams.get("g"),
       i: searchParams.get("i"),
     };
     const text = buildOrderLineMessageFromParams(params);
-    if (!params.n && !params.i) {
+    if (!params.n && !params.g && !params.i) {
       return HOVER_LINE_OA;
     }
     return `https://line.me/R/oaMessage/${HOVER_LINE_OA_ID}/?${encodeURIComponent(text)}`;

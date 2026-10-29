@@ -56,6 +56,8 @@ export type OrderLike = {
     price?: string | number;
     image?: string;
     sku?: string;
+    promotion_kind?: "gift" | "addon" | "" | string;
+    random_color?: boolean;
     meta_data?: Array<{ key?: string; value?: unknown }>;
   }>;
   meta_data?: Array<{ key?: string; value?: unknown }>;
@@ -270,21 +272,83 @@ function formatReturnYmd(value?: string | null): string {
   }
 }
 
+/** 規格：尺寸 / 顏色（略過活動 meta，避免帶入錯誤欄位） */
 function itemVariantForReturn(
   item: NonNullable<OrderLike["line_items"]>[number],
 ): string {
   const metas = Array.isArray(item?.meta_data) ? item.meta_data : [];
+  const sizeKeys = /尺寸|size|pa_size|pa_尺寸/i;
+  const colorKeys = /顏色|color|colour|pa_color|pa_顏色|pa_colour/i;
+  const skipKeys =
+    /^(variant|_reduced_stock|數量|qty|quantity|_hover_promotion|活動類型|活動名稱|活動編號|成交單價|貨號|sku|id)$/i;
+
+  let size = "";
+  let color = "";
+  const extras: string[] = [];
+
+  for (const m of metas) {
+    const key = String(m?.key || "").trim();
+    const raw = String(m?.value || "").trim();
+    if (!raw || skipKeys.test(key) || key.startsWith("_")) continue;
+
+    if (sizeKeys.test(key) && !size) {
+      size = raw;
+      continue;
+    }
+    if (colorKeys.test(key) && !color) {
+      color = raw;
+      continue;
+    }
+    if (/variant|規格|選項/i.test(key) || /\s*\/\s*/.test(raw)) {
+      const parts = raw
+        .split(/\s*\/\s*|\s*,\s*/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+      for (const p of parts) {
+        if (!size && /^[XSML]{1,3}$|^F$/i.test(p)) size = p;
+        else if (!color && !/^\d+$/.test(p)) color = color || p;
+        else if (p !== size && p !== color) extras.push(p);
+      }
+      continue;
+    }
+    if (!/^\d+$/.test(raw)) extras.push(raw);
+  }
+
+  const randomColor =
+    String(item?.promotion_kind || "") === "gift" && Boolean(item?.random_color);
+  const parts = randomColor
+    ? [size, ...extras, "顏色隨機出貨"].filter(Boolean)
+    : [size, color, ...extras].filter(Boolean);
   const seen = new Set<string>();
   const unique: string[] = [];
-  for (const m of metas) {
-    const p = String(m?.value || "").trim();
-    if (!p) continue;
+  for (const p of parts) {
     const k = p.toLowerCase();
     if (seen.has(k)) continue;
     seen.add(k);
     unique.push(p);
   }
   return unique.join(" / ");
+}
+
+function itemPromotionPrefix(
+  item: NonNullable<OrderLike["line_items"]>[number],
+): string {
+  const kind = String(item?.promotion_kind || "");
+  if (kind === "gift") return "[滿額贈]";
+  if (kind === "addon") return "[加價購]";
+  return "";
+}
+
+/** 單列商品：品名（規格）x數量，含加購／贈品標示 */
+export function formatOrderLineItemForCs(
+  item: NonNullable<OrderLike["line_items"]>[number],
+): string {
+  const prefix = itemPromotionPrefix(item);
+  const name = String(item?.name || "商品").trim() || "商品";
+  const variant = itemVariantForReturn(item);
+  const qty = Number(item?.quantity || 1) || 1;
+  const body = variant ? `${name}（${variant}）x${qty}` : `${name} x${qty}`;
+  return `${prefix}${body}`;
 }
 
 export function getFirstOrderItemImage(order: OrderLike): string {
@@ -296,9 +360,17 @@ export function getFirstOrderItemImage(order: OrderLike): string {
   return "";
 }
 
+function resolveCvsStoreName(order: OrderLike): string {
+  return metaVal(order, [
+    "_shipping_cvs_store_name",
+    "shipping_cvs_store_name",
+  ]);
+}
+
 /**
- * LINE 預填訊息（申請退貨／聯繫客服共用訂單欄位）
- * 保持精簡：過長會讓 QR 過密、掃不到。
+ * LINE 預填訊息（申請退貨／聯繫客服共用）
+ * 手機直接開 LINE、電腦「已安裝 LINE」按鈕共用此文案。
+ * 不附商品圖／圖片網址（避免 LINE 自動預覽多餘圖）。
  */
 export function buildOrderLineMessage(
   order: OrderLike,
@@ -319,33 +391,15 @@ export function buildOrderLineMessage(
   const shipTitle = String(order.shipping_lines?.[0]?.method_title || "").trim();
   if (shipTitle) lines.push(`配送方式：${shipTitle}`);
 
-  const storeName = metaVal(order, [
-    "_shipping_cvs_store_name",
-    "shipping_cvs_store_name",
-  ]);
+  const storeName = resolveCvsStoreName(order);
   if (storeName) lines.push(`取件門市：${storeName}`);
 
   const items = Array.isArray(order.line_items) ? order.line_items : [];
   if (items.length) {
-    const brief = items
-      .slice(0, 3)
-      .map((it) => {
-        const name = String(it?.name || "商品").trim();
-        const variant = itemVariantForReturn(it);
-        const qty = Number(it?.quantity || 1);
-        return variant
-          ? `${name}（${variant}）x${qty}`
-          : `${name} x${qty}`;
-      })
-      .join("；");
-    lines.push(`商品：${brief}`);
-    if (items.length > 3) lines.push(`（另有 ${items.length - 3} 件）`);
-  }
-
-  // 商品圖：僅附第一張網址（縮短參數避免 QR 爆掉；過長時省略）
-  const image = getFirstOrderItemImage(order);
-  if (image && image.length <= 180) {
-    lines.push(`商品圖：${image}`);
+    lines.push("商品清單：");
+    for (const it of items) {
+      lines.push(`・${formatOrderLineItemForCs(it)}`);
+    }
   }
 
   return lines.join("\n");
@@ -362,9 +416,24 @@ export function buildReturnLineUrl(order: OrderLike): string {
   return `https://line.me/R/oaMessage/${HOVER_LINE_OA_ID}/?${encodeURIComponent(text)}`;
 }
 
+/** 壓縮商品列供 QR bridge：name|variant|qty|kind~... */
+function encodeLineItemsForBridge(order: OrderLike): string {
+  const items = Array.isArray(order.line_items) ? order.line_items : [];
+  return items
+    .map((it) => {
+      const name = String(it?.name || "商品").trim().slice(0, 48);
+      const variant = itemVariantForReturn(it).slice(0, 24);
+      const qty = Number(it?.quantity || 1) || 1;
+      const kind = String(it?.promotion_kind || "");
+      const tag = kind === "gift" || kind === "addon" ? kind : "";
+      return [name, variant, qty, tag].join("|");
+    })
+    .join("~");
+}
+
 /**
  * 電腦版 QR 掃的短網址（落地頁再轉 LINE）
- * 避免直接把超長 LINE URL 編進 QR 造成「怪點、掃不到」
+ * 帶入與手機相同的訂單欄位＋完整商品清單（不含圖片）。
  */
 export function buildOrderLineBridgePath(
   order: OrderLike,
@@ -387,14 +456,11 @@ export function buildOrderLineBridgePath(
   }
   const ship = String(order.shipping_lines?.[0]?.method_title || "").trim();
   if (ship) params.set("s", ship.slice(0, 40));
+  const store = resolveCvsStoreName(order);
+  if (store) params.set("cvs", store.slice(0, 40));
 
-  const first = order.line_items?.[0];
-  if (first) {
-    const name = String(first.name || "").trim().slice(0, 40);
-    const variant = itemVariantForReturn(first).slice(0, 20);
-    const qty = Number(first.quantity || 1);
-    params.set("i", [name, variant, qty].filter(Boolean).join("|"));
-  }
+  const goods = encodeLineItemsForBridge(order);
+  if (goods) params.set("g", goods);
 
   return `/return-line?${params.toString()}`;
 }
@@ -415,7 +481,7 @@ export function buildReturnLineQrImageUrl(
   return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&ecc=M&margin=12&data=${encodeURIComponent(bridgeAbsoluteUrl)}`;
 }
 
-/** 從 /return-line query 還原預填文字 */
+/** 從 /return-line query 還原預填文字（與 buildOrderLineMessage 欄位一致） */
 export function buildOrderLineMessageFromParams(
   params: Record<string, string | null | undefined>,
 ): string {
@@ -427,7 +493,32 @@ export function buildOrderLineMessageFromParams(
   if (params.t) lines.push(`訂單金額：${formatReturnNt(params.t)}`);
   if (params.p) lines.push(`付款方式：${params.p}`);
   if (params.s) lines.push(`配送方式：${params.s}`);
-  if (params.i) {
+  if (params.cvs) lines.push(`取件門市：${params.cvs}`);
+
+  const goodsRaw = String(params.g || "").trim();
+  if (goodsRaw) {
+    const rows = goodsRaw
+      .split("~")
+      .map((row) => row.trim())
+      .filter(Boolean)
+      .map((row) => {
+        const [name, variant, qty, kind] = row.split("|");
+        const prefix =
+          kind === "gift" ? "[滿額贈]" : kind === "addon" ? "[加價購]" : "";
+        const n = String(name || "").trim();
+        if (!n) return "";
+        const v = String(variant || "").trim();
+        const q = String(qty || "1").trim() || "1";
+        const body = v ? `${n}（${v}）x${q}` : `${n} x${q}`;
+        return `・${prefix}${body}`;
+      })
+      .filter(Boolean);
+    if (rows.length) {
+      lines.push("商品清單：");
+      lines.push(...rows);
+    }
+  } else if (params.i) {
+    // 相容舊版只帶第一件的 i=
     const [name, variant, qty] = String(params.i).split("|");
     const item =
       name && variant
@@ -435,7 +526,10 @@ export function buildOrderLineMessageFromParams(
         : name
           ? `${name} x${qty || 1}`
           : "";
-    if (item) lines.push(`商品：${item}`);
+    if (item) {
+      lines.push("商品清單：");
+      lines.push(`・${item}`);
+    }
   }
   return lines.join("\n");
 }

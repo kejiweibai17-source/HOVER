@@ -43,9 +43,10 @@ function mapSearchProduct(p: WooSearchProduct): SearchProductResult {
   const img = p.images?.[0];
   const src = img?.src || "";
   const image = src
-    ? pickWpSizeUrl(img?.sizes, "card", "") ||
-      toOptimizedImageUrl(src, "card") ||
-      src
+    ? toOptimizedImageUrl(
+        pickWpSizeUrl(img?.sizes, "card", "") || src,
+        "card",
+      ) || src
     : undefined;
   return {
     id: p.id,

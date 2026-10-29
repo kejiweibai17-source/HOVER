@@ -8,6 +8,7 @@ import {
   STOCK_INSUFFICIENT_MSG,
   STOCK_SOLD_OUT_MSG,
 } from "@/lib/productStock";
+import { toCartThumbUrl } from "@/lib/listImageUrl";
 import { useToastStore } from "@/lib/toastStore";
 
 export type CartItem = {
@@ -77,8 +78,10 @@ function withStockSnapshot(item: CartItem): CartItem {
       : stock
         ? getMaxOrderQty(stock)
         : undefined;
+  const image = item.image ? toCartThumbUrl(item.image) : item.image;
   return {
     ...item,
+    image,
     maxQty,
     manageStock: item.manageStock ?? stock?.manageStock,
     stockQuantity:

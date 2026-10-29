@@ -1,30 +1,44 @@
 /**
- * 不依賴 Vercel Image Optimization：改指向 WordPress 已生成的尺寸檔。
+ * 不依賴 Vercel Image Optimization：優先走 Jetpack Photon（WebP／縮圖），
+ * 失敗再回退 WordPress 本機已生成的尺寸檔。
  *
- * 商品圖統一 3:4。避開舊的 4:5（600×750）與 1:1（300×300）裁切檔。
+ * 商品圖統一 3:4。避開舊的 4:5（600×750）與 1:1（300×300）裁切檔僅作來源參考。
  */
 
 export type ImageRole = "card" | "pdp" | "banner" | "thumb";
 
 const ROLE_MAX: Record<ImageRole, number> = {
-  thumb: 200,
-  card: 900,
+  /** 購物車側欄／結帳縮圖（約 90px ×2） */
+  thumb: 240,
+  /** 列表卡約 22vw；600 足夠 2x */
+  card: 600,
   pdp: 1024,
-  banner: 1536,
+  banner: 1400,
 };
 
-/** 依角色嘗試的 WP 尺寸後綴（card 避開過小的 300×300） */
+const ROLE_QUALITY: Record<ImageRole, number> = {
+  thumb: 70,
+  card: 72,
+  pdp: 78,
+  banner: 78,
+};
+
+/**
+ * 依角色嘗試的 WP 尺寸後綴。
+ * 本站實際常有 -600x750（約 200KB PNG），少有 -600x800／-768x1024；
+ * 優先順序避免先打 404 再 fallback。
+ */
 const ROLE_SUFFIXES: Record<ImageRole, string[]> = {
-  thumb: ["-150x200", "-150x150", "-300x300"],
-  card: ["-600x800", "-600x750", "-768x1024", "-900x1200", "-1024x1024"],
+  // 縮圖仍優先 3:4 來源，交由 Photon 縮小（避免 150 方圖被 object-cover 裁怪）
+  thumb: ["-600x750", "-300x300", "-150x150"],
+  card: ["-600x750", "-600x800", "-768x1024", "-900x1200", "-1024x1024"],
   pdp: [
-    "-900x1200",
-    "-768x1024",
-    "-600x800",
     "-600x750",
+    "-600x800",
+    "-768x1024",
+    "-900x1200",
     "-1024x1024",
     "-768x768",
-    "-300x300",
   ],
   banner: [
     "-1536x864",
@@ -37,8 +51,25 @@ const ROLE_SUFFIXES: Record<ImageRole, string[]> = {
   ],
 };
 
+function photonDisabled(): boolean {
+  return (
+    typeof process !== "undefined" &&
+    process.env.NEXT_PUBLIC_DISABLE_PHOTON === "1"
+  );
+}
+
+function isPhotonHost(hostname: string): boolean {
+  return /(^|\.)wp\.com$/i.test(hostname);
+}
+
 /** 寬高比是否接近目標（容許誤差） */
-function isNearRatio(w: number, h: number, rw: number, rh: number, tol = 0.03): boolean {
+function isNearRatio(
+  w: number,
+  h: number,
+  rw: number,
+  rh: number,
+  tol = 0.03,
+): boolean {
   if (w <= 0 || h <= 0) return false;
   return Math.abs(w / h - rw / rh) <= tol;
 }
@@ -57,9 +88,33 @@ export function toFullUploadUrl(src: string): string {
 }
 
 /**
+ * Photon → 原始 WP uploads URL（去掉 ?w=&quality=）
+ */
+export function stripPhotonUrl(src: string): string {
+  if (!src || typeof src !== "string") return src;
+  try {
+    const u = new URL(src);
+    if (!isPhotonHost(u.hostname)) return src;
+    const raw = u.pathname.replace(/^\//, "");
+    const slash = raw.indexOf("/");
+    if (slash <= 0) return src;
+    const host = raw.slice(0, slash);
+    const path = raw.slice(slash);
+    if (!path.includes("/wp-content/uploads/")) return src;
+    const ssl = u.searchParams.get("ssl") !== "0";
+    return `${ssl ? "https" : "http"}://${host}${path}`;
+  } catch {
+    return src;
+  }
+}
+
+/**
  * 商品圖：方圖／過小縮圖（如 300×300）還原原圖，再選較大尺寸。
  */
-export function unwrapNonProductRatioUrl(src: string, role: ImageRole = "card"): string {
+export function unwrapNonProductRatioUrl(
+  src: string,
+  role: ImageRole = "card",
+): string {
   if (!src || typeof src !== "string") return src;
   try {
     const u = new URL(src);
@@ -83,7 +138,6 @@ export function unwrapNonProductRatioUrl(src: string, role: ImageRole = "card"):
 }
 
 function withSuffix(pathname: string, suffix: string): string {
-  // 已有 -WxH 則先剝掉再加
   const stripped = pathname.replace(/-\d+x\d+(\.[a-zA-Z]+)$/i, "$1");
   return stripped.replace(/(\.[a-zA-Z]+)$/, `${suffix}$1`);
 }
@@ -112,7 +166,6 @@ export function pickWpSizeUrl(
 ): string {
   if (!sizes) return fallbackSrc || "";
 
-  // card：優先較大現有縮圖，避免卡在 300×300
   const order: Array<keyof NonNullable<typeof sizes>> =
     role === "thumb"
       ? ["woocommerce_thumbnail", "medium", "thumbnail", "full"]
@@ -146,11 +199,8 @@ export function pickWpSizeUrl(
   return fallbackSrc ? unwrapNonProductRatioUrl(fallbackSrc, role) : "";
 }
 
-/**
- * 沒有 sizes 物件時：依角色改寫 uploads URL 嘗試常見後綴。
- * 元件端應搭配 onError 回退原圖。
- */
-export function toOptimizedImageUrl(
+/** 挑選本站 WP 實體檔 URL（尚未走 Photon） */
+export function toDirectWpImageUrl(
   src: string,
   role: ImageRole = "card",
 ): string {
@@ -160,35 +210,28 @@ export function toOptimizedImageUrl(
     const baseSrc =
       role === "banner" ? src : unwrapNonProductRatioUrl(src, role);
     const u = new URL(baseSrc);
-    const maxEdge = ROLE_MAX[role];
 
-    // Jetpack / WP.com Photon
-    if (/(^|\.)wp\.com$/i.test(u.hostname)) {
-      u.searchParams.set("w", String(maxEdge));
-      u.searchParams.set("quality", "80");
-      return u.toString();
+    if (isPhotonHost(u.hostname)) {
+      return stripPhotonUrl(baseSrc) || baseSrc;
     }
 
-    // 非 WP uploads 不動
     if (!u.pathname.includes("/wp-content/uploads/")) {
       return baseSrc;
     }
 
-    // 內頁／橫幅：用原圖（已 unwrap 掉錯誤比例縮圖）
-    if (role === "pdp" || role === "banner") {
+    if (role === "banner") {
       return baseSrc;
     }
 
-    // 列表 card：過小／方圖不沿用，改挑較大後綴
     const sized = u.pathname.match(/-(\d+)x(\d+)(\.[a-z]+)$/i);
     if (sized) {
       const w = Number(sized[1]);
       const h = Number(sized[2]);
       const maxSide = Math.max(w, h);
-      if (maxSide >= 560 && maxSide <= maxEdge * 1.25 && !isNearRatio(w, h, 1, 1)) {
+      // 非方圖且夠大：保留當 Photon 來源（由 ?w= 縮小），勿改成 150 方圖
+      if (maxSide >= 400 && !isNearRatio(w, h, 1, 1)) {
         return baseSrc;
       }
-      // 過小或方圖：還原原圖路徑再套用較大後綴
       u.pathname = u.pathname.replace(/-\d+x\d+(\.[a-z]+)$/i, "$1");
     }
 
@@ -200,10 +243,64 @@ export function toOptimizedImageUrl(
   }
 }
 
+/**
+ * 經 Jetpack Photon 輸出較小 WebP／縮圖（CDN）。
+ * Bluehost 原圖 PNG 600×750 ≈ 220KB；Photon ≈ 8–15KB。
+ */
+export function viaPhoton(src: string, role: ImageRole = "card"): string {
+  if (!src || photonDisabled()) return src;
+  try {
+    const u = new URL(src);
+    const maxEdge = ROLE_MAX[role];
+    const quality = ROLE_QUALITY[role];
+
+    if (isPhotonHost(u.hostname)) {
+      u.searchParams.set("w", String(maxEdge));
+      u.searchParams.set("quality", String(quality));
+      return u.toString();
+    }
+
+    if (!u.pathname.includes("/wp-content/uploads/")) return src;
+
+    const photon = new URL(`https://i0.wp.com/${u.host}${u.pathname}`);
+    photon.searchParams.set("w", String(maxEdge));
+    photon.searchParams.set("quality", String(quality));
+    if (u.protocol === "https:") photon.searchParams.set("ssl", "1");
+    return photon.toString();
+  } catch {
+    return src;
+  }
+}
+
+/**
+ * 列表／內頁／橫幅統一入口：先挑 WP 尺寸檔，再包 Photon。
+ */
+export function toOptimizedImageUrl(
+  src: string,
+  role: ImageRole = "card",
+): string {
+  if (!src || typeof src !== "string") return src;
+  const direct = toDirectWpImageUrl(src, role);
+  return viaPhoton(direct, role);
+}
+
+/** 購物車／結帳小圖（顯示時呼叫即可，舊 localStorage 原圖也會被轉小） */
+export function toCartThumbUrl(src: string): string {
+  if (!src || typeof src !== "string") return src;
+  if (src.startsWith("/")) return src;
+  return toOptimizedImageUrl(src, "thumb");
+}
+
 /** @deprecated 使用 toOptimizedImageUrl(src, 'card') */
 export function toListImageUrl(src: string, maxEdge = 300): string {
   const role: ImageRole =
-    maxEdge <= 150 ? "thumb" : maxEdge <= 400 ? "card" : maxEdge <= 900 ? "pdp" : "banner";
+    maxEdge <= 150
+      ? "thumb"
+      : maxEdge <= 400
+        ? "card"
+        : maxEdge <= 900
+          ? "pdp"
+          : "banner";
   return toOptimizedImageUrl(src, role);
 }
 
@@ -213,7 +310,8 @@ export function getFallbackSuffixes(role: ImageRole): string[] {
 
 export function applyWpSuffix(src: string, suffix: string): string {
   try {
-    const u = new URL(src);
+    const bare = stripPhotonUrl(src);
+    const u = new URL(bare);
     u.pathname = withSuffix(u.pathname, suffix);
     return u.toString();
   } catch {

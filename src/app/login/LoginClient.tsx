@@ -213,7 +213,7 @@ export default function LoginClient() {
       {/* Left — hero photo */}
       <div className="relative hidden w-1/2 lg:block">
         <Image
-          src="/images/hover/people-1.jpg"
+          src="/images/hover/auth-login.jpg"
           alt="HOVER"
           fill
           className="object-cover object-center"

@@ -1,8 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { X, Minus, Plus } from "lucide-react";
 import {
@@ -12,12 +11,14 @@ import {
   keyOf,
   type CartItem,
 } from "@/lib/cartStore";
+import { toCartThumbUrl } from "@/lib/listImageUrl";
 import { formatProductPrice } from "@/lib/utils";
 import {
   DEFAULT_SHIPPING,
   type ShippingSettings,
 } from "@/lib/shippingDefaults";
 import { useShippingSettings } from "@/lib/useShippingSettings";
+import ConfirmDialog from "@/components/hover/ConfirmDialog";
 
 const currency = (n: number) => formatProductPrice(n);
 
@@ -69,6 +70,10 @@ export default function CartSheet() {
   const inc = useCartStore((s) => s.inc);
   const dec = useCartStore((s) => s.dec);
   const remove = useCartStore((s) => s.removeItem);
+  const [pendingRemove, setPendingRemove] = useState<{
+    key: string;
+    name: string;
+  } | null>(null);
 
   const router = useRouter();
 
@@ -84,6 +89,17 @@ export default function CartSheet() {
     reachedFreeShip,
     needForFreeShip,
   } = summary;
+
+  // 進站／購物車變動時預載縮圖，打開側欄時幾乎秒出
+  useEffect(() => {
+    items.forEach((it) => {
+      const src = it.image ? toCartThumbUrl(it.image) : "";
+      if (!src || src.startsWith("/")) return;
+      const img = new window.Image();
+      img.decoding = "async";
+      img.src = src;
+    });
+  }, [items]);
 
   const goCheckout = () => {
     if (!items.length) return;
@@ -133,7 +149,7 @@ export default function CartSheet() {
             initial={{ x: "100%" }}
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
-            transition={{ type: "spring", stiffness: 260, damping: 28 }}
+            transition={{ type: "tween", duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
           >
             {/* Header */}
             <div className="flex items-center justify-between border-b border-[#ccc] px-6 py-5">
@@ -174,7 +190,12 @@ export default function CartSheet() {
                   >
                     <button
                       type="button"
-                      onClick={() => remove(k)}
+                      onClick={() =>
+                        setPendingRemove({
+                          key: k,
+                          name: it.name || "此商品",
+                        })
+                      }
                       className="absolute right-0 top-6 text-black transition-opacity hover:opacity-50"
                       aria-label="移除商品"
                     >
@@ -187,11 +208,16 @@ export default function CartSheet() {
                           className="relative shrink-0 overflow-hidden bg-white"
                           style={{ width: 90, aspectRatio: "3/4" }}
                         >
-                          <Image
-                            src={it.image}
+                          {/* eslint-disable-next-line @next/next/no-img-element -- Photon 小圖；img 比 next/image 更即時 */}
+                          <img
+                            src={toCartThumbUrl(it.image)}
                             alt={it.name || "Product Image"}
-                            fill
-                            className="object-cover"
+                            width={90}
+                            height={120}
+                            decoding="async"
+                            loading="eager"
+                            fetchPriority="high"
+                            className="h-full w-full object-cover"
                           />
                         </div>
                       )}
@@ -327,6 +353,20 @@ export default function CartSheet() {
               </button>
             </div>
           </motion.aside>
+
+          <ConfirmDialog
+            open={Boolean(pendingRemove)}
+            title="移除商品"
+            message={`確定要從購物車移除「${pendingRemove?.name || "此商品"}」嗎？`}
+            confirmLabel="確定移除"
+            cancelLabel="取消"
+            zIndexClassName="z-[10000000000000]"
+            onCancel={() => setPendingRemove(null)}
+            onConfirm={() => {
+              if (pendingRemove?.key) remove(pendingRemove.key);
+              setPendingRemove(null);
+            }}
+          />
         </>
       )}
     </AnimatePresence>

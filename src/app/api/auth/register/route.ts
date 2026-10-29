@@ -11,7 +11,7 @@ import {
   recordAuthFailure,
 } from "@/lib/authRateLimit";
 import { verifyTurnstileToken } from "@/lib/turnstile";
-import { mailFromHeader, mailReplyTo } from "@/lib/mailFrom";
+import { mailFooterHtml, mailFooterText, mailFromHeader, mailReplyTo } from "@/lib/mailFrom";
 
 export const runtime = "nodejs";
 
@@ -360,8 +360,7 @@ export async function POST(req: Request) {
         "",
         "此連結約 15 分鐘內有效。若非您本人操作，請忽略本信。",
         "",
-        "HOVER 官方網站",
-        "https://hoverofficial.com",
+        mailFooterText(),
       ].join("\n");
 
       const html = `
@@ -382,15 +381,10 @@ export async function POST(req: Request) {
             ${verifyUrl}
           </div>
 
-          <p style="color: #666; margin-top: 20px;">此驗證連結約 15 分鐘內有效。若非您本人操作，請忽略本信。</p>
+          <p style="color: #c90000; margin-top: 20px; font-weight: 600;">此驗證連結將在 15 分鐘後失效。</p>
+          <p style="color: #666; margin-top: 8px;">若非您本人操作，請忽略本信。</p>
 
-          <hr style="border: none; border-top: 1px solid #eaeaea; margin: 30px 0;" />
-
-          <p style="font-size: 13px; color: #666;">客服：service@hoverofficial.com　｜　網站：https://hoverofficial.com</p>
-
-          <div style="margin-top: 24px; font-size: 12px; color: #999; text-align: center;">
-            <p>HOVER｜官方網站</p>
-          </div>
+          ${mailFooterHtml()}
         </div>
       `;
 
