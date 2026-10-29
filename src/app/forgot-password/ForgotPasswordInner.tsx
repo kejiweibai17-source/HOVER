@@ -2,12 +2,11 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 
 export default function ForgotPasswordInner() {
-  const router = useRouter();
   const search = useSearchParams();
   const next = search.get("next") || "/account";
 
@@ -15,7 +14,6 @@ export default function ForgotPasswordInner() {
   const [sending, setSending] = useState(false);
   const [msg, setMsg] = useState("");
   const [error, setError] = useState("");
-  const [isSocial, setIsSocial] = useState(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -23,7 +21,6 @@ export default function ForgotPasswordInner() {
     setSending(true);
     setMsg("");
     setError("");
-    setIsSocial(false);
 
     try {
       const res = await fetch("/api/auth/forgot-password", {
@@ -36,7 +33,6 @@ export default function ForgotPasswordInner() {
       if (!res.ok || !data.ok) {
         setError(data.message || "發送重設密碼信件失敗，請稍後再試。");
       } else {
-        setIsSocial(Boolean(data.social));
         setMsg(
           data.message ||
             "如果此 Email 有註冊，我們已發送重設密碼連結。請於 30 分鐘內前往信箱操作。",
@@ -50,40 +46,30 @@ export default function ForgotPasswordInner() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-white px-4">
-      <div className="bg-white p-8 rounded-xl shadow-md w-full max-w-md space-y-4">
-        <h2 className="text-2xl font-semibold text-center">忘記密碼</h2>
-        <p className="text-sm text-slate-600 text-center">
-          請輸入你註冊時使用的電子郵件，我們會寄送一封重設密碼的連結給你。
+    <div className="flex min-h-screen items-center justify-center bg-white px-4">
+      <div className="w-full max-w-md space-y-4 rounded-xl bg-white p-8 shadow-md">
+        <h2 className="text-center text-2xl font-semibold text-black">
+          忘記密碼
+        </h2>
+        <p className="text-center text-sm leading-relaxed text-[#666]">
+          請輸入註冊時使用的電子郵件，我們會寄送重設密碼連結。請於 30
+          分鐘內至信箱點擊連結完成設定。
         </p>
 
-        {error && (
-          <p className="text-rose-600 text-sm text-center bg-rose-50 border border-rose-200 rounded-md py-2">
+        {error ? (
+          <p className="rounded-md border border-rose-200 bg-rose-50 py-2 text-center text-sm text-rose-600">
             {error}
           </p>
-        )}
-        {msg && (
-          <div
-            className={`text-sm text-center rounded-md py-3 px-3 border ${
-              isSocial
-                ? "text-[#2a514d] bg-[#f3f6f5] border-[#c5d4d1]"
-                : "text-emerald-700 bg-emerald-50 border-emerald-200"
-            }`}
-          >
-            <p>{msg}</p>
-            {isSocial ? (
-              <button
-                type="button"
-                onClick={() =>
-                  router.push(`/login?next=${encodeURIComponent(next)}`)
-                }
-                className="mt-3 inline-block bg-[#2a514d] px-5 py-2 text-[13px] font-medium text-white hover:opacity-80"
-              >
-                前往社群登入
-              </button>
-            ) : null}
+        ) : null}
+
+        {msg ? (
+          <div className="space-y-2 rounded-md border border-[#c5d4d1] bg-[#f3f6f5] px-3 py-3 text-center text-sm text-[#2a514d]">
+            <p className="font-medium">{msg}</p>
+            <p className="text-[12px] leading-relaxed text-[#2a514d]/90">
+              若未收到信件，請檢查垃圾郵件匣，或稍後再試一次。
+            </p>
           </div>
-        )}
+        ) : null}
 
         <form onSubmit={handleSubmit} className="space-y-3">
           <input
@@ -91,34 +77,21 @@ export default function ForgotPasswordInner() {
             placeholder="你的電子郵件"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="w-full border p-2 rounded-md focus:outline-none focus:ring-2 focus:ring-slate-300"
+            className="w-full rounded-md border p-2 outline-none focus:ring-2 focus:ring-[#2a514d]/30"
             required
           />
           <button
             type="submit"
             disabled={sending}
-            className={`w-full p-2 rounded-md text-white transition ${
+            className={`w-full rounded-md p-2 text-white transition ${
               sending
-                ? "bg-slate-400 cursor-not-allowed"
-                : "bg-slate-800 hover:bg-slate-700"
+                ? "cursor-not-allowed bg-[#2a514d]/40"
+                : "bg-[#2a514d] hover:bg-[#1e3d3a]"
             }`}
           >
             {sending ? "寄送中…" : "寄送重設密碼信件"}
           </button>
         </form>
-
-        <p className="text-center text-sm text-slate-500">
-          想起密碼了？{" "}
-          <button
-            type="button"
-            onClick={() =>
-              router.push(`/login?next=${encodeURIComponent(next)}`)
-            }
-            className="text-slate-700 underline"
-          >
-            回到登入
-          </button>
-        </p>
       </div>
     </div>
   );

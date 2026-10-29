@@ -5,6 +5,8 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 
 const MOBILE_MQ = "(max-width: 767px)";
 const SWIPE_THRESHOLD = 48;
+/** 超過此距離才判定軸向，避免誤觸 */
+const AXIS_LOCK_PX = 8;
 
 function CarouselArrows({ onPrev, onNext, imageAspectRatio, visible, arrowClassName }) {
   const btnClass =
@@ -83,7 +85,7 @@ export default function InfiniteCarousel({
   slideClassName = "pr-2 md:pr-3",
   mobileAutoplayInterval = 0,
   autoplayInterval = 0,
-  mobileDraggable = false,
+  mobileDraggable = true,
   imageAspectRatio = "",
   arrowClassName = "",
 }) {
@@ -95,9 +97,14 @@ export default function InfiniteCarousel({
   const [dragPx, setDragPx] = useState(0);
   const [dragging, setDragging] = useState(false);
 
+  const trackRef = useRef(null);
+  const pointerIdRef = useRef(null);
   const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
   const touchDelta = useRef(0);
+  const axisLock = useRef(null); // null | "x" | "y"
   const draggingRef = useRef(false);
+  const suppressClickRef = useRef(false);
   const autoplayPausedRef = useRef(false);
   const autoplayResumeTimer = useRef(null);
 
@@ -151,6 +158,14 @@ export default function InfiniteCarousel({
     [baseLength],
   );
 
+  const goByUser = useCallback(
+    (delta) => {
+      pauseAutoplay();
+      go(delta);
+    },
+    [go, pauseAutoplay],
+  );
+
   useEffect(() => {
     const interval =
       autoplayInterval || (isMobile ? mobileAutoplayInterval : 0);
@@ -164,42 +179,130 @@ export default function InfiniteCarousel({
     return () => window.clearInterval(timer);
   }, [autoplayInterval, mobileAutoplayInterval, isMobile, baseLength, go]);
 
-  const handleDragStart = useCallback(
-    (clientX) => {
-      if (!mobileDraggable || !isMobile) return;
-      pauseAutoplay();
-      draggingRef.current = true;
-      setDragging(true);
-      setAnimate(false);
-      touchStartX.current = clientX;
-      touchDelta.current = 0;
+  /* Pointer Events：手指／滑鼠／觸控筆皆可拖曳跟隨；軸向鎖定後才擋垂直捲動 */
+  useEffect(() => {
+    const el = trackRef.current;
+    if (!el || !mobileDraggable) return undefined;
+
+    const resetDragVisual = () => {
+      draggingRef.current = false;
+      setDragging(false);
       setDragPx(0);
-    },
-    [mobileDraggable, isMobile, pauseAutoplay],
-  );
+      setAnimate(true);
+    };
 
-  const handleDragMove = useCallback((clientX) => {
-    if (!draggingRef.current) return;
-    const dx = clientX - touchStartX.current;
-    touchDelta.current = dx;
-    setDragPx(dx);
-  }, []);
+    const finish = () => {
+      if (axisLock.current === "x" && draggingRef.current) {
+        const dx = touchDelta.current;
+        if (Math.abs(dx) > AXIS_LOCK_PX) {
+          suppressClickRef.current = true;
+        }
+        if (dx < -SWIPE_THRESHOLD) {
+          goByUser(1);
+        } else if (dx > SWIPE_THRESHOLD) {
+          goByUser(-1);
+        }
+      }
 
-  const handleDragEnd = useCallback(() => {
-    if (!draggingRef.current) return;
-    draggingRef.current = false;
-    setDragging(false);
+      pointerIdRef.current = null;
+      axisLock.current = null;
+      touchDelta.current = 0;
+      resetDragVisual();
+    };
 
-    if (touchDelta.current < -SWIPE_THRESHOLD) {
-      go(1);
-    } else if (touchDelta.current > SWIPE_THRESHOLD) {
-      go(-1);
-    }
+    const onPointerDown = (e) => {
+      if (e.pointerType === "mouse" && e.button !== 0) return;
+      if (e.target?.closest?.("button, a[href] button")) return;
+      // 桌面僅滑鼠拖曳；手機／平板接受 touch / pen / mouse
+      if (!isMobile && e.pointerType !== "mouse") return;
 
-    touchDelta.current = 0;
-    setDragPx(0);
-    setAnimate(true);
-  }, [go]);
+      pointerIdRef.current = e.pointerId;
+      touchStartX.current = e.clientX;
+      touchStartY.current = e.clientY;
+      touchDelta.current = 0;
+      axisLock.current = e.pointerType === "mouse" ? "x" : null;
+      draggingRef.current = false;
+      setDragging(false);
+      setDragPx(0);
+
+      if (e.pointerType === "mouse") {
+        pauseAutoplay();
+        draggingRef.current = true;
+        setDragging(true);
+        setAnimate(false);
+        try {
+          el.setPointerCapture(e.pointerId);
+        } catch {
+          /* ignore */
+        }
+      }
+    };
+
+    const onPointerMove = (e) => {
+      if (pointerIdRef.current !== e.pointerId) return;
+      if (axisLock.current === "y") return;
+
+      const dx = e.clientX - touchStartX.current;
+      const dy = e.clientY - touchStartY.current;
+
+      if (axisLock.current === null) {
+        if (Math.abs(dx) < AXIS_LOCK_PX && Math.abs(dy) < AXIS_LOCK_PX) {
+          return;
+        }
+        axisLock.current = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+        if (axisLock.current === "y") {
+          pointerIdRef.current = null;
+          resetDragVisual();
+          return;
+        }
+        pauseAutoplay();
+        draggingRef.current = true;
+        setDragging(true);
+        setAnimate(false);
+        try {
+          el.setPointerCapture(e.pointerId);
+        } catch {
+          /* ignore */
+        }
+      }
+
+      if (axisLock.current !== "x") return;
+
+      // touch-action: pan-y 已交垂直給瀏覽器；水平拖曳時再擋預設
+      if (e.pointerType !== "mouse" && e.cancelable) {
+        e.preventDefault();
+      }
+
+      touchDelta.current = dx;
+      setDragPx(dx);
+    };
+
+    const onPointerUp = (e) => {
+      if (pointerIdRef.current !== e.pointerId) return;
+      try {
+        if (el.hasPointerCapture?.(e.pointerId)) {
+          el.releasePointerCapture(e.pointerId);
+        }
+      } catch {
+        /* ignore */
+      }
+      finish();
+    };
+
+    el.addEventListener("pointerdown", onPointerDown);
+    el.addEventListener("pointermove", onPointerMove, { passive: false });
+    el.addEventListener("pointerup", onPointerUp);
+    el.addEventListener("pointercancel", onPointerUp);
+    el.addEventListener("lostpointercapture", onPointerUp);
+
+    return () => {
+      el.removeEventListener("pointerdown", onPointerDown);
+      el.removeEventListener("pointermove", onPointerMove);
+      el.removeEventListener("pointerup", onPointerUp);
+      el.removeEventListener("pointercancel", onPointerUp);
+      el.removeEventListener("lostpointercapture", onPointerUp);
+    };
+  }, [mobileDraggable, isMobile, goByUser, pauseAutoplay]);
 
   useEffect(() => {
     if (!baseLength) return;
@@ -237,17 +340,22 @@ export default function InfiniteCarousel({
         className={`relative ${title ? "pb-12" : "py-12"} ${trackContentClassName || contentClassName}`}
       >
         <div
-          className={`relative overflow-hidden ${trackClassName} ${
-            mobileDraggable && isMobile ? "touch-pan-y" : ""
+          ref={trackRef}
+          className={`relative overflow-hidden select-none ${trackClassName} ${
+            mobileDraggable
+              ? `touch-pan-y ${dragging ? "cursor-grabbing" : "cursor-grab"}`
+              : ""
           }`}
-          onTouchStart={(e) => handleDragStart(e.touches[0].clientX)}
-          onTouchMove={(e) => handleDragMove(e.touches[0].clientX)}
-          onTouchEnd={handleDragEnd}
-          onTouchCancel={handleDragEnd}
+          onClickCapture={(e) => {
+            if (!suppressClickRef.current) return;
+            e.preventDefault();
+            e.stopPropagation();
+            suppressClickRef.current = false;
+          }}
         >
           <CarouselArrows
-            onPrev={() => go(-1)}
-            onNext={() => go(1)}
+            onPrev={() => goByUser(-1)}
+            onNext={() => goByUser(1)}
             imageAspectRatio={imageAspectRatio}
             visible={visible}
             arrowClassName={arrowClassName}

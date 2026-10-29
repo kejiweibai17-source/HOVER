@@ -210,7 +210,8 @@ export default function RegisterPage() {
                 autoComplete="bday"
               />
               <p className="mt-1.5 text-[12px] leading-[1.6] text-[#888]">
-                可於之後至會員中心補填；設定完成後不可自行修改。
+                可於之後至會員中心補填；設定完成後不可自行修改。須年滿 13
+                歲。年份可由近到遠完整選擇（最早至 1920）。
               </p>
             </div>
 

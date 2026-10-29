@@ -16,6 +16,21 @@ function metaVal(order: any, key: string) {
   return hit ? String(hit.value || "") : "";
 }
 
+async function addOrderNote(
+  base: string,
+  auth: string,
+  orderId: string,
+  note: string,
+  customerNote = false,
+) {
+  const res = await fetch(`${base}/wp-json/wc/v3/orders/${orderId}/notes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: auth },
+    body: JSON.stringify({ note, customer_note: customerNote }),
+  });
+  return res.ok;
+}
+
 export function verifyEcpayMac(data: Record<string, string>) {
   const hashKey = (process.env.ECPAY_HASH_KEY || "").trim();
   const hashIv = (process.env.ECPAY_HASH_IV || "").trim();
@@ -25,7 +40,11 @@ export function verifyEcpayMac(data: Record<string, string>) {
   return received === computed;
 }
 
-/** 綠界 ATM/超商取號成功後寫入 Woo；ATM 以顧客備註觸發通知（snippet 覆蓋成第 4 封） */
+/**
+ * 綠界 ATM/超商取號成功後寫入 Woo。
+ * ATM／超商「訂單已建立｜請完成付款」依賴 customer_note:true 觸發 WC 顧客備註信。
+ * 去重以 _hover_order_created_notice_sent 為準（勿僅因已有帳號 meta 就略過，避免備註失敗後永不再寄）。
+ */
 export async function saveEcpayPaymentInfo(data: Record<string, string>) {
   const orderId = data.CustomField1;
   const auth = basicAuth();
@@ -48,9 +67,8 @@ export async function saveEcpayPaymentInfo(data: Record<string, string>) {
     cache: "no-store",
   });
   const existing = existingRes.ok ? await existingRes.json() : null;
-  const alreadyHasAccount = Boolean(
-    metaVal(existing, "_vAccount") || metaVal(existing, "_PaymentNo"),
-  );
+  const noticeAlreadySent =
+    metaVal(existing, "_hover_order_created_notice_sent") === "1";
 
   const metaData: { key: string; value: string }[] = [];
   let customerNote = "";
@@ -67,19 +85,62 @@ export async function saveEcpayPaymentInfo(data: Record<string, string>) {
   }
 
   if (metaData.length > 0) {
-    await fetch(`${base}/wp-json/wc/v3/orders/${orderId}`, {
+    const metaRes = await fetch(`${base}/wp-json/wc/v3/orders/${orderId}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json", Authorization: auth },
       body: JSON.stringify({ meta_data: metaData }),
     });
+    if (!metaRes.ok) {
+      console.error(`❌ 訂單 #${orderId} 取號 meta 寫入失敗`, metaRes.status);
+      await addOrderNote(
+        base,
+        auth,
+        orderId,
+        `❌ 綠界取號資訊寫入失敗（HTTP ${metaRes.status}），顧客可能未收到付款通知信`,
+      );
+      throw new Error(`取號 meta 寫入失敗: ${metaRes.status}`);
+    }
 
-    // 顧客備註會觸發 WC「顧客備註」信 → snippet 覆蓋為第 4 封「訂單已建立｜請完成付款」
-    if (!alreadyHasAccount && customerNote) {
-      await fetch(`${base}/wp-json/wc/v3/orders/${orderId}/notes`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: auth },
-        body: JSON.stringify({ note: customerNote, customer_note: true }),
-      });
+    // 顧客備註 → WC「顧客備註」信 → snippet 覆蓋為「訂單已建立｜請完成付款」
+    if (!noticeAlreadySent && customerNote) {
+      const noteOk = await addOrderNote(
+        base,
+        auth,
+        orderId,
+        customerNote,
+        true,
+      );
+      if (noteOk) {
+        await fetch(`${base}/wp-json/wc/v3/orders/${orderId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json", Authorization: auth },
+          body: JSON.stringify({
+            meta_data: [
+              { key: "_hover_order_created_notice_sent", value: "1" },
+              {
+                key: "_hover_order_created_notice_sent_at",
+                value: new Date().toISOString(),
+              },
+            ],
+          }),
+        });
+        await addOrderNote(
+          base,
+          auth,
+          orderId,
+          `HOVER：已觸發「訂單已建立｜請完成付款」通知（customer_note → ${
+            existing?.billing?.email || "（訂單信箱）"
+          }）`,
+        );
+      } else {
+        console.error(`❌ 訂單 #${orderId} 顧客備註／確認信觸發失敗`);
+        await addOrderNote(
+          base,
+          auth,
+          orderId,
+          "❌ 取號成功但顧客備註寫入失敗，訂單確認信可能未寄出。請至訂單後台「重新傳送」或手動補寄。",
+        );
+      }
     }
   }
 

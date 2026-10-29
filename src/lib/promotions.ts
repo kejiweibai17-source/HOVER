@@ -186,13 +186,18 @@ async function fetchProductFacts(
     ).values(),
   ).filter((item) => item.productId > 0);
 
+  const FACT_REVALIDATE = 30;
+
   await Promise.all(
     uniqueItems.map(async ({ productId, variationId }) => {
       const key = `${productId}:${variationId}`;
       try {
         const productResponse = await fetch(
           `${base.replace(/\/$/, "")}/wp-json/wc/v3/products/${productId}`,
-          { headers: { Authorization: auth }, cache: "no-store" },
+          {
+            headers: { Authorization: auth },
+            next: { revalidate: FACT_REVALIDATE },
+          },
         );
         if (!productResponse.ok) return;
         const product = await productResponse.json();
@@ -205,7 +210,10 @@ async function fetchProductFacts(
         if (variationId) {
           const variationResponse = await fetch(
             `${base.replace(/\/$/, "")}/wp-json/wc/v3/products/${productId}/variations/${variationId}`,
-            { headers: { Authorization: auth }, cache: "no-store" },
+            {
+              headers: { Authorization: auth },
+              next: { revalidate: FACT_REVALIDATE },
+            },
           );
           if (!variationResponse.ok) return;
           priceSource = await variationResponse.json();
@@ -274,6 +282,12 @@ export async function evaluatePromotions(
 
 export function promotionLinePrice(promotion: PromotionRule): number {
   return promotion.type === "addon" ? promotion.purchasePrice : 0;
+}
+
+/** 完整商品名稱（去掉「 - F, 棕」這類規格後綴，避免透露隨機贈品實際顏色） */
+export function promotionProductBaseName(name?: string | null): string {
+  const raw = String(name || "").trim();
+  return raw.replace(/\s+[-–—]\s+[^-–—]+$/, "").trim() || raw;
 }
 
 export function promotionPool(promotion: PromotionRule): PromotionProduct[] {

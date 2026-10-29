@@ -89,12 +89,14 @@ export async function POST(req: Request) {
         }),
       });
 
+      const paidNote = wcRes.ok
+        ? `🟢 綠界付款成功。交易單號：${data.TradeNo}。狀態→processing，應觸發「付款完成｜訂單確認中」至帳單信箱。`
+        : `❌ 綠界付款成功但訂單狀態更新失敗（HTTP ${wcRes.status}）。交易單號：${data.TradeNo}。確認信可能未寄出，請手動改為處理中或補寄。`;
+
       await fetch(`${wcBaseUrl}/wp-json/wc/v3/orders/${orderId}/notes`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: auth },
-        body: JSON.stringify({
-          note: `🟢 綠界付款成功。交易單號：${data.TradeNo}`,
-        }),
+        body: JSON.stringify({ note: paidNote }),
       });
 
       if (wcRes.ok) console.log(`✅ 訂單 #${orderId} 狀態已更新為 processing`);

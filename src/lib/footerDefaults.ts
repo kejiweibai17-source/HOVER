@@ -1,3 +1,9 @@
+import {
+  HOVER_LINE_OA,
+  HOVER_LINE_OA_ID,
+  HOVER_SUPPORT_EMAIL,
+} from "@/lib/hoverContact";
+
 export type FooterLink = {
   label: string;
   href: string;
@@ -78,17 +84,17 @@ export const DEFAULT_FOOTER: FooterSettings = {
   ],
   contact: {
     title: "聯絡我們",
-    email: "service@hoverofficial.com",
+    email: HOVER_SUPPORT_EMAIL,
     emailLabel: "SERVICE@HOVEROFFICIAL.COM",
     hours: "MON.-FRI. 10:00-19:00",
-    lineId: "@HOVER",
-    lineUrl: "https://line.me/R/ti/p/@330kefmm",
+    lineId: HOVER_LINE_OA_ID,
+    lineUrl: HOVER_LINE_OA,
     companyInfo: "",
   },
   social: [
     {
       label: "LINE",
-      href: "https://line.me/R/ti/p/@330kefmm",
+      href: HOVER_LINE_OA,
       icon: "line",
     },
     {

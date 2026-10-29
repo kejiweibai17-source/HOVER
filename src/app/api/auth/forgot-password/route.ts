@@ -18,40 +18,6 @@ function basicAuth() {
   return "Basic " + Buffer.from(`${CK}:${CS}`).toString("base64");
 }
 
-function normalizeProvider(raw: unknown): "google" | "facebook" | "line" | null {
-  const v = String(raw || "").trim().toLowerCase();
-  if (v === "google" || v === "facebook" || v === "line") return v;
-  return null;
-}
-
-function resolveSocialProvider(customer: any): "google" | "facebook" | "line" | null {
-  const meta: any[] = Array.isArray(customer?.meta_data) ? customer.meta_data : [];
-  const fromKey = normalizeProvider(
-    meta.find((m) => m.key === "oauth_provider")?.value,
-  );
-  if (fromKey) return fromKey;
-  if (meta.find((m) => m.key === "social_login_google_id")?.value) {
-    return "google";
-  }
-  if (meta.find((m) => m.key === "social_login_facebook_id")?.value) {
-    return "facebook";
-  }
-  if (meta.find((m) => m.key === "social_login_line_id")?.value) {
-    return "line";
-  }
-  // Google 舊帳：有 oauth_display_name、無社群 id meta 時視為 Google
-  if (meta.find((m) => m.key === "oauth_display_name")?.value) {
-    return "google";
-  }
-  return null;
-}
-
-function socialProviderLabel(provider: "google" | "facebook" | "line") {
-  if (provider === "google") return "Google";
-  if (provider === "facebook") return "Facebook";
-  return "LINE";
-}
-
 async function findWooCustomerByEmail(email: string) {
   const res = await fetch(
     `${BASE}/wp-json/wc/v3/customers?email=${encodeURIComponent(email)}&role=all`,
@@ -123,25 +89,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // 社群登入帳號：不寄重設信，直接告知改用社群登入
-    const socialProvider = resolveSocialProvider(customer);
-    if (socialProvider) {
-      const label = socialProviderLabel(socialProvider);
-      return NextResponse.json(
-        {
-          ok: true,
-          social: true,
-          provider: socialProvider,
-          message: `此 Email 為 ${label} 社群登入帳號，請直接使用 ${label} 登入，無需重設密碼。`,
-        },
-        {
-          headers: {
-            "Cache-Control": "no-store, no-cache, must-revalidate",
-          },
-        },
-      );
-    }
-
+    // 含社群登入帳號：一律寄重設信（官網可另設／變更密碼），不導向社群登入
     // Email 帳號 → 建立 reset token（預設 30 分鐘）
     const token = jwt.sign(
       {
@@ -167,7 +115,7 @@ export async function POST(req: Request) {
         <p>我們收到您重設密碼的請求。請點擊下方按鈕前往重設密碼頁面：</p>
         <p style="margin: 24px 0;">
           <a href="${url.toString()}" 
-             style="display:inline-block;padding:10px 18px;background:#111;color:#fff;text-decoration:none;border-radius:999px;">
+             style="display:inline-block;padding:10px 18px;background:#2a514d;color:#fff;text-decoration:none;border-radius:4px;">
             前往重設密碼
           </a>
         </p>

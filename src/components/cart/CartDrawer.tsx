@@ -13,19 +13,40 @@ import {
   type CartItem,
 } from "@/lib/cartStore";
 import { formatProductPrice } from "@/lib/utils";
-import { shippingFeeFor, type ShippingSettings } from "@/lib/shippingDefaults";
+import {
+  DEFAULT_SHIPPING,
+  type ShippingSettings,
+} from "@/lib/shippingDefaults";
 import { useShippingSettings } from "@/lib/useShippingSettings";
 
 const currency = (n: number) => formatProductPrice(n);
 
-function calcTotals(items: CartItem[], shippingSettings: ShippingSettings) {
+/**
+ * 購物袋尚未選配送方式：
+ * - 免運門檻與結帳一致：以「應付商品金額」判斷（此抽屜尚無折扣碼／會員折，即商品小計）
+ * - 未達免運時不預估單一運費進總計，避免與結帳（宅配／超商費率不同）不一致
+ */
+function calcBagSummary(items: CartItem[], shippingSettings: ShippingSettings) {
   const subtotal = items.reduce(
     (sum, it) => sum + Number(it.price || 0) * (it.qty || 0),
     0,
   );
-  const shipping = shippingFeeFor(subtotal, "711", shippingSettings);
-  const total = subtotal + shipping;
-  return { subtotal, shipping, total };
+  const threshold =
+    shippingSettings.freeShipThreshold || DEFAULT_SHIPPING.freeShipThreshold;
+  const homeFee =
+    shippingSettings.homeDeliveryFee || DEFAULT_SHIPPING.homeDeliveryFee;
+  const cvsFee = shippingSettings.cvsFee || DEFAULT_SHIPPING.cvsFee;
+  const reachedFreeShip = subtotal > 0 && subtotal >= threshold;
+  const needForFreeShip = Math.max(0, threshold - subtotal);
+
+  return {
+    subtotal,
+    threshold,
+    homeFee,
+    cvsFee,
+    reachedFreeShip,
+    needForFreeShip,
+  };
 }
 
 function getVariantLines(item: CartItem): string[] {
@@ -51,10 +72,18 @@ export default function CartSheet() {
 
   const router = useRouter();
 
-  const { subtotal, total } = useMemo(
-    () => calcTotals(items, shippingSettings),
+  const summary = useMemo(
+    () => calcBagSummary(items, shippingSettings),
     [items, shippingSettings],
   );
+  const {
+    subtotal,
+    threshold,
+    homeFee,
+    cvsFee,
+    reachedFreeShip,
+    needForFreeShip,
+  } = summary;
 
   const goCheckout = () => {
     if (!items.length) return;
@@ -233,9 +262,54 @@ export default function CartSheet() {
                     <span>小計</span>
                     <span>{currency(subtotal)}</span>
                   </div>
-                  <div className="flex items-center justify-between font-bold">
-                    <span>總計</span>
-                    <span>{currency(total)}</span>
+
+                  <div className="flex items-start justify-between gap-3">
+                    <span>運費</span>
+                    <div className="text-right">
+                      {reachedFreeShip ? (
+                        <span className="font-medium text-[#2a514d]">免運</span>
+                      ) : (
+                        <>
+                          <span className="block text-[#666]">
+                            結帳時依配送方式計算
+                          </span>
+                          <span className="mt-0.5 block text-[12px] text-[#888]">
+                            未滿免運：宅配 {currency(homeFee)}／超商{" "}
+                            {currency(cvsFee)}
+                          </span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {reachedFreeShip ? (
+                    <p className="bg-[#edf4f3] px-3 py-2 text-center text-[12px] text-[#2a514d]">
+                      ✓ 已達免運門檻（滿 {currency(threshold)}）
+                    </p>
+                  ) : (
+                    <p className="text-center text-[12px] text-[#666]">
+                      再購買{" "}
+                      <span className="font-semibold text-black">
+                        {currency(needForFreeShip)}
+                      </span>{" "}
+                      即享免運
+                      <span className="text-[#888]">
+                        {" "}
+                        · 滿 {currency(threshold)}
+                      </span>
+                    </p>
+                  )}
+
+                  <div className="flex items-center justify-between border-t border-[#ddd] pt-2.5 font-bold">
+                    <span>
+                      總計
+                      {!reachedFreeShip ? (
+                        <span className="ml-1 text-[12px] font-normal text-[#888]">
+                          （未含運費）
+                        </span>
+                      ) : null}
+                    </span>
+                    <span>{currency(subtotal)}</span>
                   </div>
                 </div>
               )}

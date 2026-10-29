@@ -371,12 +371,14 @@ export function filterProductsByCategorySlug(
   );
 }
 
+const PRODUCT_REVALIDATE = 60;
+
 async function fetchProductVariations(productId: number) {
   const { base } = getEnv();
   const url = withAuth(
     `${base}/wp-json/wc/v3/products/${productId}/variations?per_page=100&status=publish`,
   );
-  const res = await fetch(url, { cache: "no-store" });
+  const res = await fetch(url, { next: { revalidate: PRODUCT_REVALIDATE } });
   if (!res.ok) return [];
   const data = (await res.json()) as any[];
   return Array.isArray(data) ? data : [];
@@ -414,7 +416,7 @@ export async function fetchProductBySlug(slug: string) {
   // Bluehost 偶爾會短暫 DNS/連線失敗；重試一次且不要讓商品頁直接 500。
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      const res = await fetch(url, { cache: "no-store" });
+      const res = await fetch(url, { next: { revalidate: PRODUCT_REVALIDATE } });
       if (!res.ok) return null;
       const arr = (await res.json()) as any[];
       if (!Array.isArray(arr) || arr.length === 0) return null;

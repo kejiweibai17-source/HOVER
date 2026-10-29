@@ -18,6 +18,23 @@ export interface AuthFieldProps {
 
 export function AuthField(props: AuthFieldProps): JSX.Element;
 
+export const BIRTHDAY_MIN_AGE: number;
+export const BIRTHDAY_MIN_YEAR: number;
+export function maxBirthDateISO(): string;
+
+export interface BirthdaySelectProps {
+  value?: string;
+  onChange: (v: string) => void;
+  disabled?: boolean;
+  required?: boolean;
+  id?: string;
+  name?: string;
+  className?: string;
+  selectClassName?: string;
+}
+
+export function BirthdaySelect(props: BirthdaySelectProps): JSX.Element;
+
 export interface PasswordInputProps {
   value: string;
   onChange: ((e: React.ChangeEvent<HTMLInputElement>) => void) | ((v: string) => void);

@@ -346,8 +346,8 @@ export default function QuickViewModal({ product, onClose }) {
                             onClick={() => setSelectedSize(s)}
                             className={`flex h-[36px] w-[50px] items-center justify-center border text-[14px] font-bold transition-colors ${
                               selectedSize === s
-                                ? "border-black bg-black text-white"
-                                : "border-black bg-transparent text-black hover:bg-black/5"
+                                ? "border-[#2a514d] bg-[#2a514d] text-white"
+                                : "border-[#2a514d] bg-transparent text-[#2a514d] hover:bg-[#2a514d]/5"
                             }`}
                           >
                             {s}
@@ -412,7 +412,7 @@ export default function QuickViewModal({ product, onClose }) {
                   <Link
                     href={product.href}
                     onClick={onClose}
-                    className="mb-6 block w-full border border-black py-2.5 text-center text-[13px] font-semibold tracking-[0.08em] text-black transition-colors hover:bg-black hover:text-white"
+                    className="mb-6 block w-full border border-[#2a514d] py-2.5 text-center text-[13px] font-semibold tracking-[0.08em] text-[#2a514d] transition-colors hover:bg-[#2a514d] hover:text-white"
                   >
                     查看完整商品
                   </Link>

@@ -5,8 +5,12 @@
  * 前台按鈕：取消訂單（僅待付款）｜申請退貨｜聯繫客服
  */
 
-export const HOVER_LINE_OA = "https://line.me/R/ti/p/@330kefmm";
-export const HOVER_LINE_OA_ID = "@330kefmm";
+import {
+  HOVER_LINE_OA,
+  HOVER_LINE_OA_ID,
+} from "@/lib/hoverContact";
+
+export { HOVER_LINE_OA, HOVER_LINE_OA_ID };
 
 /** 鑑賞期（天）— 以消費者實際取貨／簽收日起算（不是貨到超商門市日） */
 export const RETURN_WINDOW_DAYS = 7;

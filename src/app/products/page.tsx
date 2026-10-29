@@ -43,8 +43,8 @@ const CATEGORY_SEO: Record<string, { title: string; description: string }> = {
   },
 };
 
-// Banner 需即時讀 WP；商品列表仍可在 fetch 層各自快取
-export const dynamic = "force-dynamic";
+/** 分段快取：banner 短 TTL、商品列表 60s（見各自 fetch） */
+export const revalidate = 60;
 
 type PageProps = {
   searchParams: Promise<{ category?: string }>;

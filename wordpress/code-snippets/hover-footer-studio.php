@@ -140,7 +140,7 @@ function hfs_defaults(): array
             'email'       => 'service@hoverofficial.com',
             'emailLabel'  => 'SERVICE@HOVEROFFICIAL.COM',
             'hours'       => 'MON.-FRI. 10:00-19:00',
-            'lineId'      => '@HOVER',
+            'lineId'      => '@330kefmm',
             'lineUrl'     => 'https://line.me/R/ti/p/@330kefmm',
             'companyInfo' => '威爾特國際文創股份有限公司 | 90230279',
         ],

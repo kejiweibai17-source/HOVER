@@ -1,6 +1,5 @@
 // app/page.jsx
 import Client from "./home";
-import { fetchAllProducts } from "@/lib/woo";
 import {
   fetchHeroSettings,
   getActiveHeroSlides,
@@ -171,21 +170,21 @@ export default async function Page() {
     ],
   };
 
-  // 🚀 核心：在伺服器端抓取 WooCommerce 商品資料
-  let items = [];
-  try {
-    items = await fetchAllProducts();
-    console.log("🌐 [首頁] 成功抓取 WooCommerce 商品數量:", items?.length);
-  } catch (error) {
-    console.error("❌ 首頁抓取產品失敗:", error);
-  }
-
-  const initialHero = await fetchHeroSettings();
-  const initialBrandStory = await fetchBrandStorySlides();
-  const initialMidVideo = await fetchMidVideoSettings();
-  const initialCategoryGrid = await fetchCategoryTiles();
-  const initialPeople = await fetchPeopleSlides();
-  const homeCarousels = await fetchHomeCarouselProducts();
+  const [
+    initialHero,
+    initialBrandStory,
+    initialMidVideo,
+    initialCategoryGrid,
+    initialPeople,
+    homeCarousels,
+  ] = await Promise.all([
+    fetchHeroSettings(),
+    fetchBrandStorySlides(),
+    fetchMidVideoSettings(),
+    fetchCategoryTiles(),
+    fetchPeopleSlides(),
+    fetchHomeCarouselProducts(),
+  ]);
 
   return (
     <>

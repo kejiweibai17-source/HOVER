@@ -90,11 +90,27 @@ export async function GET(req: Request) {
     if (lpData.returnCode === "0000") {
       console.log("✅ [LINE Pay] 扣款成功！準備更新訂單與開立發票...");
 
-      await fetch(`${BASE.replace(/\/$/, "")}/wp-json/wc/v3/orders/${orderId}`, {
-        method: "PUT",
-        headers: { Authorization: auth!, "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "processing", set_paid: true }),
-      });
+      const wcPayRes = await fetch(
+        `${BASE.replace(/\/$/, "")}/wp-json/wc/v3/orders/${orderId}`,
+        {
+          method: "PUT",
+          headers: { Authorization: auth!, "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "processing", set_paid: true }),
+        },
+      );
+
+      await fetch(
+        `${BASE.replace(/\/$/, "")}/wp-json/wc/v3/orders/${orderId}/notes`,
+        {
+          method: "POST",
+          headers: { Authorization: auth!, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            note: wcPayRes.ok
+              ? "🟢 LINE Pay 付款成功。狀態→processing，應觸發「付款完成｜訂單確認中」至帳單信箱。"
+              : `❌ LINE Pay 付款成功但訂單狀態更新失敗（HTTP ${wcPayRes.status}）。確認信可能未寄出，請手動改為處理中或補寄。`,
+          }),
+        },
+      );
 
       try {
         const rawName =

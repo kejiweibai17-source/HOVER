@@ -7,10 +7,12 @@ import {
 } from "@/lib/socialAccount";
 import {
   bindSocialToCustomer,
+  bindSocialToLoggedInCustomer,
   clearSocialPendingCookie,
   findCustomerByPhone,
   isValidTwMobile,
   normalizeTwPhone,
+  resolveSessionCustomerId,
   SOCIAL_PENDING_COOKIE,
   verifySocialPending,
 } from "@/lib/socialLink";
@@ -100,6 +102,47 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json().catch(() => ({}));
+    const mode = String(body.mode || "").toLowerCase();
+
+    // 已登入：用目前 session 綁定，略過手機＋密碼
+    if (mode === "session") {
+      const customerId = await resolveSessionCustomerId();
+      if (!customerId) {
+        return NextResponse.json(
+          {
+            ok: false,
+            message: "請先登入官網後再綁定社群帳號",
+            code: "bind_login_required",
+          },
+          { status: 401 },
+        );
+      }
+
+      const bound = await bindSocialToLoggedInCustomer({
+        customerId,
+        provider: pending.provider,
+        providerUserId: pending.providerUserId,
+        name: pending.name,
+        picture: pending.picture,
+        emailVerified: pending.emailVerified,
+      });
+      if (!bound.ok) {
+        return NextResponse.json(
+          { ok: false, message: bound.message, code: bound.code },
+          { status: bound.code === "social_taken" ? 409 : 400 },
+        );
+      }
+
+      const next = String(pending.next || "/account");
+      const res = NextResponse.json({
+        ok: true,
+        next: next.startsWith("/") ? next : "/account",
+        message: bound.already ? "此社群已綁定" : "已綁定至目前登入帳號",
+      });
+      clearSocialPendingCookie(res);
+      return res;
+    }
+
     const phone = normalizeTwPhone(String(body.phone || ""));
     const password = String(body.password || "");
     const turnstileToken = String(body.turnstileToken || "").trim();

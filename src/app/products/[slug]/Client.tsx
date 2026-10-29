@@ -400,8 +400,8 @@ function ProductPurchasePanel({
                   sizeSoldOut
                     ? "cursor-not-allowed border-[#ddd] bg-[#f5f5f5] text-[#aaa] line-through"
                     : active
-                      ? "border-[#8b8b8b] bg-[#8b8b8b] text-white"
-                      : "border-[#ccc] bg-white text-black hover:border-[#888]"
+                      ? "border-[#2a514d] bg-[#2a514d] text-white"
+                      : "border-[#ccc] bg-white text-black hover:border-[#2a514d]"
                 }`}
               >
                 {s}

@@ -1,9 +1,9 @@
 import {
+  type LineOAuthFrom,
   getSiteUrl,
   lineAuthCookieOpts,
   redirectWithLineError,
   safeNextPath,
-  sessionCookieOpts,
 } from "@/lib/lineAuth";
 
 export const FACEBOOK_STATE_COOKIE = "facebook_oauth_state";
@@ -12,7 +12,7 @@ export type FacebookOAuthState = {
   csrf: string;
   next: string;
   ref: string;
-  from: "login" | "register";
+  from: LineOAuthFrom;
 };
 
 export function getFacebookClientId() {
@@ -45,7 +45,12 @@ export function decodeFacebookState(
       csrf: String(parsed.csrf),
       next: safeNextPath(parsed.next),
       ref: String(parsed.ref || "").trim(),
-      from: parsed.from === "register" ? "register" : "login",
+      from:
+        parsed.from === "register"
+          ? "register"
+          : parsed.from === "account"
+            ? "account"
+            : "login",
     };
   } catch {
     return null;
@@ -65,11 +70,11 @@ export function facebookSyntheticEmail(facebookUserId: string) {
 }
 
 export function redirectWithFacebookError(
-  page: "login" | "register",
+  page: LineOAuthFrom,
   code: string,
   nextPath?: string,
 ) {
   return redirectWithLineError(page, code, nextPath);
 }
 
-export { getSiteUrl, safeNextPath, sessionCookieOpts };
+export { getSiteUrl, safeNextPath, sessionCookieOpts, withBoundSuccessPath } from "@/lib/lineAuth";

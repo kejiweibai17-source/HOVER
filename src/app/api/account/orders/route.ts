@@ -74,11 +74,11 @@ function linePromotionKind(metaData: any[]): "gift" | "addon" | "" {
 }
 
 /** 變體品項改用父商品完整名稱（去掉「 - F, 黑」這類規格後綴） */
-function lineDisplayName(item: any): string {
+function lineDisplayName(item: any, stripSuffix = false): string {
   const parent = String(item?.parent_name || "").trim();
   if (parent) return parent;
   const name = String(item?.name || "").trim();
-  if (!Number(item?.variation_id)) return name;
+  if (!stripSuffix && !Number(item?.variation_id)) return name;
   return name.replace(/\s+[-–—]\s+[^-–—]+$/, "").trim() || name;
 }
 
@@ -264,6 +264,7 @@ export async function GET() {
       date_created: o.date_created,
       date_paid: o.date_paid || o.date_completed || null,
       total: o.total,
+      total_refunded: o.total_refunded || "0",
       currency: o.currency,
       payment_method_title: o.payment_method_title || "標準支付",
       customer_note: o.customer_note || "",
@@ -317,7 +318,7 @@ export async function GET() {
           promotionKind === "gift" &&
           /^(yes|1|true)$/i.test(rawMetaValue(rawMeta, "_hover_random_color"));
         return {
-          name: lineDisplayName(it),
+          name: lineDisplayName(it, randomColor),
           quantity: it.quantity,
           total: it.total,
           subtotal: it.subtotal,

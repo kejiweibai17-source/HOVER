@@ -25,6 +25,8 @@ export type HeroSlide = {
   enabled: boolean;
   mediaType: HeroMediaType;
   image: HeroSlideImage;
+  /** 手機版主圖；空白時前台沿用 image */
+  imageMobile: HeroSlideImage;
   video: HeroSlideVideo;
   link: HeroSlideLink;
   cta: HeroSlideCta;
@@ -56,6 +58,10 @@ export const FALLBACK_HERO: HeroSettings = {
       url: HOVER_PLACEHOLDER_IMAGE,
       alt: "HOVER",
     },
+    imageMobile: {
+      url: "",
+      alt: "HOVER",
+    },
     video: { url: "" },
     link: { href: "/products" },
     cta: { label: "SHOP NOW", show: true },
@@ -82,11 +88,17 @@ function normalizeSlide(raw: unknown, index: number): HeroSlide {
 
   const o = raw as Record<string, unknown>;
   const imageRaw = (o.image as Record<string, unknown>) || {};
+  const imageMobileRaw =
+    (o.imageMobile as Record<string, unknown>) ||
+    (o.image_mobile as Record<string, unknown>) ||
+    {};
   const videoRaw = (o.video as Record<string, unknown>) || {};
   const linkRaw = (o.link as Record<string, unknown>) || {};
   const ctaRaw = (o.cta as Record<string, unknown>) || {};
   const typeRaw = String(o.mediaType || o.media_type || "image");
   const mediaType: HeroMediaType = typeRaw === "video" ? "video" : "image";
+  const desktopAlt =
+    String(imageRaw.alt || d.image.alt).trim() || d.image.alt;
 
   return {
     id: String(o.id || `hero-${index + 1}`).trim() || `hero-${index + 1}`,
@@ -94,7 +106,12 @@ function normalizeSlide(raw: unknown, index: number): HeroSlide {
     mediaType,
     image: {
       url: String(imageRaw.url || "").trim(),
-      alt: String(imageRaw.alt || d.image.alt).trim() || d.image.alt,
+      alt: desktopAlt,
+    },
+    imageMobile: {
+      url: String(imageMobileRaw.url || "").trim(),
+      alt:
+        String(imageMobileRaw.alt || desktopAlt).trim() || desktopAlt,
     },
     video: {
       url: String(videoRaw.url || "").trim(),
@@ -107,6 +124,27 @@ function normalizeSlide(raw: unknown, index: number): HeroSlide {
       show: parseBool(ctaRaw.show ?? ctaRaw.enabled, d.cta.show),
     },
   };
+}
+
+/** 手機畫面使用的主圖（未設手機圖時沿用桌機） */
+export function resolveHeroImageUrl(
+  slide: HeroSlide,
+  viewport: "desktop" | "mobile" = "desktop",
+): string {
+  if (viewport === "mobile" && slide.imageMobile.url.trim()) {
+    return slide.imageMobile.url.trim();
+  }
+  return slide.image.url.trim();
+}
+
+export function resolveHeroImageAlt(
+  slide: HeroSlide,
+  viewport: "desktop" | "mobile" = "desktop",
+): string {
+  if (viewport === "mobile" && slide.imageMobile.alt.trim()) {
+    return slide.imageMobile.alt.trim();
+  }
+  return slide.image.alt.trim() || "HOVER";
 }
 
 export function getActiveHeroSlides(hero: HeroSettings): HeroSlide[] {

@@ -8,9 +8,12 @@ import OptimizedImage from "@/components/hover/OptimizedImage";
 import {
   getActiveHeroSlides,
   normalizeHeroSettings,
+  resolveHeroImageAlt,
+  resolveHeroImageUrl,
 } from "@/lib/heroDefaults";
 
 const SWIPE_THRESHOLD = 52;
+const AXIS_LOCK_PX = 8;
 const EASE = [0.22, 1, 0.36, 1];
 const SLIDE_SPRING = {
   type: "spring",
@@ -92,7 +95,7 @@ function HeroMedia({ slide, isActive, dragging }) {
           ref={videoRef}
           className="absolute inset-0 h-full w-full object-cover object-center"
           src={slide.video.url}
-          poster={slide.image?.url || undefined}
+          poster={resolveHeroImageUrl(slide, "desktop") || undefined}
           muted
           loop
           playsInline
@@ -105,6 +108,15 @@ function HeroMedia({ slide, isActive, dragging }) {
       </div>
     );
   }
+
+  const desktopUrl = resolveHeroImageUrl(slide, "desktop");
+  const mobileUrl = resolveHeroImageUrl(slide, "mobile");
+  const desktopAlt = resolveHeroImageAlt(slide, "desktop");
+  const mobileAlt = resolveHeroImageAlt(slide, "mobile");
+  const hasSeparateMobile = Boolean(
+    slide.imageMobile?.url?.trim() &&
+      slide.imageMobile.url.trim() !== desktopUrl,
+  );
 
   return (
     <motion.div
@@ -122,16 +134,31 @@ function HeroMedia({ slide, isActive, dragging }) {
       }
     >
       <OptimizedImage
-        src={slide.image.url}
-        fullSrc={slide.image.url}
+        src={desktopUrl}
+        fullSrc={desktopUrl}
         role="banner"
-        alt={slide.image.alt || "HOVER"}
+        alt={desktopAlt}
         fill
         priority={isActive}
         sizes="100vw"
-        className="object-cover object-top"
+        className={`object-cover object-top ${
+          hasSeparateMobile ? "hidden md:block" : ""
+        }`}
         draggable={false}
       />
+      {hasSeparateMobile ? (
+        <OptimizedImage
+          src={mobileUrl}
+          fullSrc={mobileUrl}
+          role="banner"
+          alt={mobileAlt}
+          fill
+          priority={isActive}
+          sizes="100vw"
+          className="object-cover object-top md:hidden"
+          draggable={false}
+        />
+      ) : null}
     </motion.div>
   );
 }
@@ -154,8 +181,11 @@ export default function HoverHero({ initialHero = null }) {
 
   const x = useMotionValue(0);
   const touchStartX = useRef(0);
+  const touchStartY = useRef(0);
   const touchDelta = useRef(0);
+  const axisLock = useRef(null); // null | "x" | "y"
   const draggingRef = useRef(false);
+  const suppressClickRef = useRef(false);
   const indexRef = useRef(0);
   const instantSnapRef = useRef(false);
   const autoplayPausedRef = useRef(false);
@@ -279,13 +309,14 @@ export default function HoverHero({ initialHero = null }) {
     return () => window.clearInterval(timer);
   }, [count, hero?.autoplayMs, go]);
 
-  const handleDragStart = useCallback(
+  const handleMouseDragStart = useCallback(
     (clientX, target) => {
       if (count <= 1 || !viewportWidth) return;
       if (target?.closest?.("a, button")) return;
 
       pauseAutoplay();
       draggingRef.current = true;
+      axisLock.current = "x";
       setDragging(true);
       touchStartX.current = clientX;
       touchDelta.current = 0;
@@ -293,7 +324,7 @@ export default function HoverHero({ initialHero = null }) {
     [count, viewportWidth, pauseAutoplay],
   );
 
-  const handleDragMove = useCallback(
+  const handleMouseDragMove = useCallback(
     (clientX) => {
       if (!draggingRef.current || !viewportWidth) return;
       const dx = clientX - touchStartX.current;
@@ -304,9 +335,10 @@ export default function HoverHero({ initialHero = null }) {
     [viewportWidth, x],
   );
 
-  const handleDragEnd = useCallback(() => {
+  const handleMouseDragEnd = useCallback(() => {
     if (!draggingRef.current) return;
     draggingRef.current = false;
+    axisLock.current = null;
     setDragging(false);
 
     if (touchDelta.current < -SWIPE_THRESHOLD) {
@@ -320,16 +352,17 @@ export default function HoverHero({ initialHero = null }) {
     touchDelta.current = 0;
   }, [go, snapTo]);
 
+  /* 桌面拖曳 */
   useEffect(() => {
     const el = viewportRef.current;
     if (!el) return undefined;
 
     const onMouseDown = (e) => {
       if (e.button !== 0) return;
-      handleDragStart(e.clientX, e.target);
+      handleMouseDragStart(e.clientX, e.target);
     };
-    const onMouseMove = (e) => handleDragMove(e.clientX);
-    const onMouseUp = () => handleDragEnd();
+    const onMouseMove = (e) => handleMouseDragMove(e.clientX);
+    const onMouseUp = () => handleMouseDragEnd();
 
     el.addEventListener("mousedown", onMouseDown);
     window.addEventListener("mousemove", onMouseMove);
@@ -340,7 +373,91 @@ export default function HoverHero({ initialHero = null }) {
       window.removeEventListener("mousemove", onMouseMove);
       window.removeEventListener("mouseup", onMouseUp);
     };
-  }, [handleDragStart, handleDragMove, handleDragEnd]);
+  }, [handleMouseDragStart, handleMouseDragMove, handleMouseDragEnd]);
+
+  /* 手機滑動：先判軸向，僅水平手勢才 preventDefault，垂直捲動不受影響 */
+  useEffect(() => {
+    const el = viewportRef.current;
+    if (!el || count <= 1) return undefined;
+
+    const onTouchStart = (e) => {
+      if (e.touches.length !== 1) return;
+      if (e.target?.closest?.("button")) return;
+
+      const t = e.touches[0];
+      touchStartX.current = t.clientX;
+      touchStartY.current = t.clientY;
+      touchDelta.current = 0;
+      axisLock.current = null;
+      draggingRef.current = false;
+      setDragging(false);
+    };
+
+    const onTouchMove = (e) => {
+      if (e.touches.length !== 1 || !viewportWidth) return;
+      if (axisLock.current === "y") return;
+
+      const t = e.touches[0];
+      const dx = t.clientX - touchStartX.current;
+      const dy = t.clientY - touchStartY.current;
+
+      if (axisLock.current === null) {
+        if (Math.abs(dx) < AXIS_LOCK_PX && Math.abs(dy) < AXIS_LOCK_PX) {
+          return;
+        }
+        axisLock.current = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
+        if (axisLock.current === "y") {
+          draggingRef.current = false;
+          setDragging(false);
+          return;
+        }
+        pauseAutoplay();
+        draggingRef.current = true;
+        setDragging(true);
+      }
+
+      if (axisLock.current !== "x") return;
+      if (e.cancelable) e.preventDefault();
+
+      touchDelta.current = dx;
+      const base = -indexRef.current * viewportWidth;
+      x.set(base + dx);
+    };
+
+    const onTouchEnd = () => {
+      if (axisLock.current === "x" && draggingRef.current) {
+        draggingRef.current = false;
+        setDragging(false);
+
+        if (Math.abs(touchDelta.current) > AXIS_LOCK_PX) {
+          suppressClickRef.current = true;
+        }
+
+        if (touchDelta.current < -SWIPE_THRESHOLD) {
+          go(1);
+        } else if (touchDelta.current > SWIPE_THRESHOLD) {
+          go(-1);
+        } else {
+          snapTo(indexRef.current);
+        }
+      }
+
+      axisLock.current = null;
+      touchDelta.current = 0;
+    };
+
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+    el.addEventListener("touchend", onTouchEnd, { passive: true });
+    el.addEventListener("touchcancel", onTouchEnd, { passive: true });
+
+    return () => {
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+      el.removeEventListener("touchend", onTouchEnd);
+      el.removeEventListener("touchcancel", onTouchEnd);
+    };
+  }, [count, viewportWidth, pauseAutoplay, go, snapTo, x]);
 
   if (!hero) return <HeroSkeleton />;
   if (!count) return null;
@@ -350,16 +467,12 @@ export default function HoverHero({ initialHero = null }) {
       <div
         ref={viewportRef}
         className="relative h-[85vh] min-h-[560px] w-full touch-pan-y overflow-hidden select-none md:h-[calc(100dvh-var(--hover-header-height,116px))] md:min-h-0"
-        onTouchStart={(e) =>
-          handleDragStart(e.touches[0].clientX, e.target)
-        }
-        onTouchMove={(e) => {
-          if (!draggingRef.current) return;
+        onClickCapture={(e) => {
+          if (!suppressClickRef.current) return;
           e.preventDefault();
-          handleDragMove(e.touches[0].clientX);
+          e.stopPropagation();
+          suppressClickRef.current = false;
         }}
-        onTouchEnd={handleDragEnd}
-        onTouchCancel={handleDragEnd}
       >
         <motion.div
           className="flex h-full will-change-transform"

@@ -11,6 +11,7 @@ import {
   recordAuthFailure,
 } from "@/lib/authRateLimit";
 import { verifyTurnstileToken } from "@/lib/turnstile";
+import { mailFromHeader, mailReplyTo } from "@/lib/mailFrom";
 
 export const runtime = "nodejs";
 
@@ -300,14 +301,14 @@ export async function POST(req: Request) {
     const newCustomerId: number = data.id;
     const createdEmail = String(data?.email || email).trim().toLowerCase();
 
-    // 入會禮（會另寄「歡迎加入 HOVER FRIENDS」）
+    // ① 入會禮 →「歡迎加入 HOVER」（含入會禮）
     try {
       await grantWelcomeGiftIfEligible(newCustomerId, createdEmail);
     } catch (e) {
       console.error("grantWelcomeCoupon error:", e);
     }
 
-    // 當月壽星補發生日禮（FRIENDS／臻享皆適用）
+    // 當月壽星才加寄生日禮（非當月不寄，避免多餘信件）
     if (birthday) {
       try {
         await grantBirthdayGiftIfEligible({
@@ -348,7 +349,20 @@ export async function POST(req: Request) {
       const transporter = createTransport();
       await transporter.verify();
 
-      const mailFrom = process.env.SMTP_USER!;
+      const verifyUrl = url.toString();
+
+      const text = [
+        "HOVER 會員信箱驗證",
+        "",
+        "親愛的會員您好：",
+        "感謝您註冊 HOVER。請開啟以下連結完成信箱驗證：",
+        verifyUrl,
+        "",
+        "此連結約 15 分鐘內有效。若非您本人操作，請忽略本信。",
+        "",
+        "HOVER 官方網站",
+        "https://hoverofficial.com",
+      ].join("\n");
 
       const html = `
         <div style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
@@ -357,39 +371,35 @@ export async function POST(req: Request) {
           <p>感謝您註冊 HOVER，請點擊下方按鈕完成信箱驗證：</p>
 
           <div style="margin: 30px 0; text-align: center;">
-            <a href="${url.toString()}" target="_blank"
+            <a href="${verifyUrl}" target="_blank"
                style="display: inline-block; padding: 14px 28px; background-color: #2a514d; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; letter-spacing: 1px;">
               完成信箱驗證
             </a>
           </div>
 
           <p style="font-size: 14px; color: #666; margin-bottom: 8px;">如果按鈕無法點擊，請將以下連結複製並貼上到瀏覽器網址列開啟：</p>
-          <div style="background-color: #f8f9fa; padding: 12px; border-radius: 4px; word-break: break-all; font-size: 13px; color: #0056b3;">
-            ${url.toString()}
+          <div style="background-color: #f8f9fa; padding: 12px; border-radius: 4px; word-break: break-all; font-size: 13px; color: #333;">
+            ${verifyUrl}
           </div>
 
-          <p style="color: #e63946; font-weight: bold; margin-top: 20px;">此驗證連結將在 15 分鐘後失效。</p>
+          <p style="color: #666; margin-top: 20px;">此驗證連結約 15 分鐘內有效。若非您本人操作，請忽略本信。</p>
 
           <hr style="border: none; border-top: 1px solid #eaeaea; margin: 30px 0;" />
 
-          <p style="font-size: 14px; color: #666;">若您在驗證過程中遇到任何問題，歡迎透過 LINE 官方客服與我們聯繫：</p>
-          <div style="margin-top: 15px;">
-            <a href="https://line.me/R/ti/p/@330kefmm" target="_blank"
-               style="display: inline-block; padding: 10px 20px; background-color: #00B900; color: #ffffff; text-decoration: none; border-radius: 4px; font-weight: bold; font-size: 14px;">
-              聯繫 LINE 客服
-            </a>
-          </div>
+          <p style="font-size: 13px; color: #666;">客服：service@hoverofficial.com　｜　網站：https://hoverofficial.com</p>
 
-          <div style="margin-top: 40px; font-size: 12px; color: #999; text-align: center;">
+          <div style="margin-top: 24px; font-size: 12px; color: #999; text-align: center;">
             <p>HOVER｜官方網站</p>
           </div>
         </div>
       `;
 
       const info = await transporter.sendMail({
-        from: `"HOVER" <${mailFrom}>`,
+        from: mailFromHeader(),
+        replyTo: mailReplyTo(),
         to: createdEmail,
-        subject: "HOVER – 會員信箱驗證",
+        subject: "HOVER 會員信箱驗證",
+        text,
         html,
       });
 

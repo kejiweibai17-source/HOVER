@@ -8,6 +8,7 @@
  * 3. 左側選單「HOVER 首頁主圖」
  *
  * 每張 slide 可選「圖片」或「影片」呈現。
+ * 圖片支援桌機／手機分開上傳與強制裁切預覽（桌機 16:9、手機 9:16）。
  *
  * REST API（給 Next.js）：
  * GET /wp-json/hover/v1/hero
@@ -66,6 +67,11 @@ function hhs_default_slide(string $id = 'hero-1'): array
             'url' => '',
             'alt' => 'HOVER',
         ],
+        /** 手機版主圖；空白時前台沿用桌機 image */
+        'imageMobile' => [
+            'url' => '',
+            'alt' => 'HOVER',
+        ],
         'video' => [
             'url' => '',
         ],
@@ -114,14 +120,18 @@ function hhs_normalize_slide(array $slide, int $index): array
 {
     $d = hhs_default_slide('hero-' . ($index + 1));
 
-    $image = $slide['image'] ?? [];
-    $video = $slide['video'] ?? [];
-    $link  = $slide['link'] ?? [];
-    $cta   = $slide['cta'] ?? [];
-    $type  = sanitize_text_field($slide['mediaType'] ?? $d['mediaType']);
+    $image       = $slide['image'] ?? [];
+    $imageMobile = $slide['imageMobile'] ?? ($slide['image_mobile'] ?? []);
+    $video       = $slide['video'] ?? [];
+    $link        = $slide['link'] ?? [];
+    $cta         = $slide['cta'] ?? [];
+    $type        = sanitize_text_field($slide['mediaType'] ?? $d['mediaType']);
     if (!in_array($type, ['image', 'video'], true)) {
         $type = 'image';
     }
+
+    $desktopAlt = sanitize_text_field($image['alt'] ?? $d['image']['alt']) ?: $d['image']['alt'];
+    $mobileAlt  = sanitize_text_field($imageMobile['alt'] ?? '') ?: $desktopAlt;
 
     return [
         'id'        => sanitize_text_field($slide['id'] ?? $d['id']) ?: $d['id'],
@@ -129,7 +139,11 @@ function hhs_normalize_slide(array $slide, int $index): array
         'mediaType' => $type,
         'image'     => [
             'url' => esc_url_raw($image['url'] ?? ''),
-            'alt' => sanitize_text_field($image['alt'] ?? $d['image']['alt']),
+            'alt' => $desktopAlt,
+        ],
+        'imageMobile' => [
+            'url' => esc_url_raw($imageMobile['url'] ?? ''),
+            'alt' => $mobileAlt,
         ],
         'video' => [
             'url' => esc_url_raw($video['url'] ?? ''),
@@ -247,7 +261,7 @@ function hhs_render_page(): void
             <div class="hhs-topbar">
                 <div>
                     <h1>HOVER 首頁主圖</h1>
-                    <p class="description">管理首頁 Hero 輪播：每張可選圖片或影片、設定連結與 CTA。前台支援自動輪播與拖曳切換。儲存後約 1 分鐘內同步至 Next.js。</p>
+                    <p class="description">管理首頁 Hero 輪播：每張可選圖片或影片、分別設定桌機／手機主圖（強制裁切預覽），並設定連結與 CTA。前台支援自動輪播與拖曳切換。儲存後約 1 分鐘內同步至 Next.js。</p>
                 </div>
                 <div class="hhs-topbar-actions">
                     <span class="hhs-status <?php echo !empty($s['enabled']) && $active_n ? 'is-live' : ''; ?>">
@@ -314,11 +328,16 @@ function hhs_render_page(): void
                             <div class="hhs-card-head">
                                 <div>
                                     <h2>即時預覽</h2>
-                                    <p class="description" style="margin:4px 0 0">模擬前台 Hero 比例</p>
+                                    <p class="description" style="margin:4px 0 0">對齊前台桌機／手機裁切比例</p>
+                                </div>
+                                <div class="hhs-preview-tabs" role="tablist">
+                                    <button type="button" class="hhs-preview-tab is-on" data-preview-mode="desktop">桌機</button>
+                                    <button type="button" class="hhs-preview-tab" data-preview-mode="mobile">手機</button>
                                 </div>
                             </div>
                             <div class="hhs-preview-body">
-                                <div class="hhs-mock-hero" id="hhs-live-preview"></div>
+                                <div class="hhs-mock-hero is-desktop" id="hhs-live-preview" data-mode="desktop"></div>
+                                <p class="hhs-preview-ratio" id="hhs-preview-ratio">桌機預覽 · 16:9</p>
                             </div>
                             <div class="hhs-preview-foot">
                                 <span id="hhs-preview-dots"></span>
@@ -413,14 +432,25 @@ function hhs_print_admin_styles(): void
         .hover-hero-admin .hhs-slide-title { font-size: 13px; font-weight: 700; color: #202223; }
         .hover-hero-admin .hhs-slide-actions { display: flex; gap: 4px; flex-wrap: wrap; }
         .hover-hero-admin .hhs-slide-body {
-            display: grid; grid-template-columns: 200px 1fr; gap: 14px; padding: 14px;
+            display: grid; grid-template-columns: 1fr; gap: 14px; padding: 14px;
+        }
+        .hover-hero-admin .hhs-media-row {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+        }
+        .hover-hero-admin .hhs-media-col { min-width: 0; }
+        .hover-hero-admin .hhs-media-col-label {
+            display: block; font-size: 12px; font-weight: 700; color: #1d2327; margin-bottom: 6px;
+        }
+        .hover-hero-admin .hhs-media-col-label span {
+            font-weight: 500; color: #646970; margin-left: 4px;
         }
         .hover-hero-admin .hhs-thumb {
-            position: relative; aspect-ratio: 4/3; border-radius: 6px; border: 1px dashed #c3c4c7;
+            position: relative; aspect-ratio: 16/9; border-radius: 6px; border: 1px dashed #c3c4c7;
             background: #f6f7f7; overflow: hidden; display: flex; align-items: center; justify-content: center;
         }
+        .hover-hero-admin .hhs-thumb.is-mobile { aspect-ratio: 9/16; max-width: 168px; }
         .hover-hero-admin .hhs-thumb img,
-        .hover-hero-admin .hhs-thumb video { width: 100%; height: 100%; object-fit: cover; display: block; background: #111; }
+        .hover-hero-admin .hhs-thumb video { width: 100%; height: 100%; object-fit: cover; object-position: top; display: block; background: #111; }
         .hover-hero-admin .hhs-thumb-empty { font-size: 11px; color: #646970; text-align: center; padding: 8px; }
         .hover-hero-admin .hhs-thumb-badge {
             position: absolute; left: 6px; bottom: 6px; z-index: 1;
@@ -444,22 +474,40 @@ function hhs_print_admin_styles(): void
             background: #fff; color: #1d2327; box-shadow: 0 1px 2px rgba(0,0,0,.08);
         }
         .hover-hero-admin .hhs-preview { position: sticky; top: 32px; }
+        .hover-hero-admin .hhs-preview-tabs {
+            display: inline-flex; gap: 2px; background: #eef2f6; border-radius: 6px; padding: 3px;
+        }
+        .hover-hero-admin .hhs-preview-tab {
+            border: 0; background: transparent; border-radius: 4px; padding: 5px 10px;
+            font-size: 12px; font-weight: 600; color: #646970; cursor: pointer;
+        }
+        .hover-hero-admin .hhs-preview-tab.is-on {
+            background: #fff; color: #1d2327; box-shadow: 0 1px 2px rgba(0,0,0,.08);
+        }
         .hover-hero-admin .hhs-preview-body {
-            padding: 16px; background: #eef2f6;
+            padding: 16px; background: #eef2f6; display: flex; flex-direction: column; align-items: center; gap: 10px;
         }
         .hover-hero-admin .hhs-mock-hero {
-            position: relative; width: 100%; aspect-ratio: 16/10; border-radius: 6px;
-            overflow: hidden; background: #ddd;
+            position: relative; width: 100%; aspect-ratio: 16/9; border-radius: 6px;
+            overflow: hidden; background: #ddd; box-shadow: 0 8px 24px rgba(0,0,0,.12);
+        }
+        .hover-hero-admin .hhs-mock-hero.is-mobile {
+            width: 220px; aspect-ratio: 9/16; border-radius: 18px;
+            border: 3px solid #1d2327;
         }
         .hover-hero-admin .hhs-mock-hero img,
         .hover-hero-admin .hhs-mock-hero video {
             width: 100%; height: 100%; object-fit: cover; object-position: top;
         }
+        .hover-hero-admin .hhs-preview-ratio {
+            margin: 0; font-size: 11px; color: #646970; letter-spacing: .04em;
+        }
         .hover-hero-admin .hhs-mock-cta {
             position: absolute; left: 50%; bottom: 18%; transform: translateX(-50%);
             color: #fff; font-family: Georgia, serif; font-size: 13px; letter-spacing: .18em;
-            text-shadow: 0 1px 8px rgba(0,0,0,.35);
+            text-shadow: 0 1px 8px rgba(0,0,0,.35); white-space: nowrap;
         }
+        .hover-hero-admin .hhs-mock-hero.is-mobile .hhs-mock-cta { bottom: 14%; font-size: 11px; }
         .hover-hero-admin .hhs-mock-cta::after {
             content: ""; display: block; width: 72px; height: 1px; background: #fff; margin: 6px auto 0;
         }
@@ -477,8 +525,9 @@ function hhs_print_admin_styles(): void
             .hover-hero-admin .hhs-layout { grid-template-columns: 1fr; }
             .hover-hero-admin .hhs-preview { position: static; }
             .hover-hero-admin .hhs-grid-2,
-            .hover-hero-admin .hhs-slide-body,
+            .hover-hero-admin .hhs-media-row,
             .hover-hero-admin .hhs-slide-fields { grid-template-columns: 1fr; }
+            .hover-hero-admin .hhs-thumb.is-mobile { max-width: 200px; }
         }
     </style>
     <?php
@@ -497,6 +546,7 @@ function hhs_admin_footer_script(): void
     jQuery(function($){
         var state = <?php echo wp_json_encode($s, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES); ?>;
         var previewIndex = 0;
+        var previewMode = 'desktop'; // desktop | mobile
 
         function esc(s){ return $('<div/>').text(s || '').html(); }
 
@@ -510,7 +560,13 @@ function hhs_admin_footer_script(): void
             if (!state.slides[i].mediaType) state.slides[i].mediaType = 'image';
             if (!state.slides[i].video) state.slides[i].video = { url: '' };
             if (!state.slides[i].image) state.slides[i].image = { url: '', alt: 'HOVER' };
+            if (!state.slides[i].imageMobile) state.slides[i].imageMobile = { url: '', alt: 'HOVER' };
             if (typeof state.slides[i].image.url !== 'string') state.slides[i].image.url = '';
+            if (typeof state.slides[i].image.alt !== 'string') state.slides[i].image.alt = 'HOVER';
+            if (typeof state.slides[i].imageMobile.url !== 'string') state.slides[i].imageMobile.url = '';
+            if (typeof state.slides[i].imageMobile.alt !== 'string') {
+                state.slides[i].imageMobile.alt = state.slides[i].image.alt || 'HOVER';
+            }
             if (typeof state.slides[i].video.url !== 'string') state.slides[i].video.url = '';
             return state.slides[i];
         }
@@ -539,6 +595,7 @@ function hhs_admin_footer_script(): void
                 enabled: true,
                 mediaType: 'image',
                 image: { url: '', alt: 'HOVER' },
+                imageMobile: { url: '', alt: 'HOVER' },
                 video: { url: '' },
                 link: { href: '/products' },
                 cta: { label: 'SHOP NOW', show: true }
@@ -558,14 +615,104 @@ function hhs_admin_footer_script(): void
             });
         }
 
-        function thumbHtml(slide){
+        function resolveMobileImage(slide){
+            if (slide.imageMobile && slide.imageMobile.url) return slide.imageMobile.url;
+            return slide.image && slide.image.url ? slide.image.url : '';
+        }
+
+        function cropConfig(target){
+            if (target === 'mobile') {
+                return { ratio: 9/16, label: '9:16', w: 1080, h: 1920, maxW: 1080 };
+            }
+            return { ratio: 16/9, label: '16:9', w: 1920, h: 1080, maxW: 1920 };
+        }
+
+        function openCropFrame(index, target){
+            if (typeof wp === 'undefined' || !wp.media) {
+                alert('媒體庫尚未載入，請重新整理頁面後再試。');
+                return;
+            }
+            var cfg = cropConfig(target);
+            var ratio = cfg.ratio;
+
+            function imgSelectOptions(attachment, controller){
+                var w = attachment.get('width');
+                var h = attachment.get('height');
+                var selW = w;
+                var selH = Math.round(w / ratio);
+                if (selH > h) {
+                    selH = h;
+                    selW = Math.round(h * ratio);
+                }
+                var x1 = Math.round((w - selW) / 2);
+                var y1 = Math.round((h - selH) / 2);
+                controller.set('canSkipCrop', false);
+                return {
+                    handles: true, keys: true, instance: true, persistent: true,
+                    imageWidth: w, imageHeight: h,
+                    aspectRatio: cfg.label,
+                    minWidth: Math.min(120, selW),
+                    minHeight: Math.min(120, selH),
+                    x1: x1, y1: y1, x2: x1 + selW, y2: y1 + selH
+                };
+            }
+
+            var HhsCropper = wp.media.controller.Cropper.extend({
+                doCrop: function(attachment){
+                    var cd = attachment.get('cropDetails');
+                    var cropW = cd.width || (cd.x2 - cd.x1);
+                    var dstW = Math.min(cfg.maxW, cropW);
+                    cd.dst_width = dstW;
+                    cd.dst_height = Math.round(dstW / ratio);
+                    return wp.ajax.post('crop-image', {
+                        nonce: attachment.get('nonces').edit,
+                        id: attachment.get('id'),
+                        context: 'hover-hero',
+                        cropDetails: cd
+                    });
+                }
+            });
+
+            var frame = wp.media({
+                button: { text: '下一步：裁切 ' + cfg.label, close: false },
+                states: [
+                    new wp.media.controller.Library({
+                        title: '選擇' + (target === 'mobile' ? '手機' : '桌機') + '主圖（強制裁切 ' + cfg.label + '）',
+                        library: wp.media.query({ type: 'image' }),
+                        multiple: false,
+                        date: false,
+                        suggestedWidth: cfg.w,
+                        suggestedHeight: cfg.h
+                    }),
+                    new HhsCropper({ imgSelectOptions: imgSelectOptions })
+                ]
+            });
+
+            frame.on('select', function(){ frame.setState('cropper'); });
+            frame.on('cropped', function(cropped){
+                var slide = ensureSlide(index);
+                if (slide && cropped && cropped.url) {
+                    slide.mediaType = 'image';
+                    if (target === 'mobile') {
+                        slide.imageMobile.url = cropped.url;
+                        if (!slide.imageMobile.alt) slide.imageMobile.alt = slide.image.alt || 'HOVER';
+                    } else {
+                        slide.image.url = cropped.url;
+                    }
+                    renderSlides();
+                }
+                frame.close();
+            });
+            frame.open();
+        }
+
+        function desktopThumbHtml(slide){
             var isVideo = slide.mediaType === 'video';
             var poster = slide.image && slide.image.url ? slide.image.url : '';
             var videoUrl = slide.video && slide.video.url ? slide.video.url : '';
             var html = '';
 
             if (isVideo) {
-                // 優先顯示海報圖；沒有海報才用影片第一幀（#t=0.1）
                 if (poster) {
                     html = '<img src="'+esc(poster)+'" alt="">';
                 } else if (videoUrl) {
@@ -578,9 +725,18 @@ function hhs_admin_footer_script(): void
             }
 
             if (poster) {
-                return '<img src="'+esc(poster)+'" alt="">';
+                return '<img src="'+esc(poster)+'" alt=""><span class="hhs-thumb-badge">16:9</span>';
             }
-            return '<div class="hhs-thumb-empty">尚未選圖</div>';
+            return '<div class="hhs-thumb-empty">尚未選桌機圖</div>';
+        }
+
+        function mobileThumbHtml(slide){
+            var url = resolveMobileImage(slide);
+            if (url) {
+                var badge = (slide.imageMobile && slide.imageMobile.url) ? '9:16' : '沿用桌機';
+                return '<img src="'+esc(url)+'" alt=""><span class="hhs-thumb-badge">'+badge+'</span>';
+            }
+            return '<div class="hhs-thumb-empty">尚未選手機圖<br><span style="opacity:.75">可留空沿用桌機</span></div>';
         }
 
         function renderSlides(){
@@ -593,12 +749,18 @@ function hhs_admin_footer_script(): void
                 ensureSlide(i);
                 slide = state.slides[i];
                 var isVideo = slide.mediaType === 'video';
-                var meta = '';
+                var desktopMeta = '';
+                var mobileMeta = '';
                 if (isVideo && slide.video.url) {
-                    meta = '<div class="hhs-media-meta">影片：'+esc(fileLabel(slide.video.url))+'</div>';
-                    if (slide.image.url) meta += '<div class="hhs-media-meta">海報：'+esc(fileLabel(slide.image.url))+'</div>';
+                    desktopMeta = '<div class="hhs-media-meta">影片：'+esc(fileLabel(slide.video.url))+'</div>';
+                    if (slide.image.url) desktopMeta += '<div class="hhs-media-meta">海報：'+esc(fileLabel(slide.image.url))+'</div>';
                 } else if (!isVideo && slide.image.url) {
-                    meta = '<div class="hhs-media-meta">'+esc(fileLabel(slide.image.url))+'</div>';
+                    desktopMeta = '<div class="hhs-media-meta">'+esc(fileLabel(slide.image.url))+'</div>';
+                }
+                if (slide.imageMobile && slide.imageMobile.url) {
+                    mobileMeta = '<div class="hhs-media-meta">'+esc(fileLabel(slide.imageMobile.url))+'</div>';
+                } else if (slide.image && slide.image.url) {
+                    mobileMeta = '<div class="hhs-media-meta">目前沿用桌機圖</div>';
                 }
 
                 var html = '<div class="hhs-slide" data-index="'+i+'">';
@@ -610,17 +772,29 @@ function hhs_admin_footer_script(): void
                 html += '<button type="button" class="button button-small hhs-remove"'+(state.slides.length<=1?' disabled':'')+'>刪除</button>';
                 html += '</div></div>';
                 html += '<div class="hhs-slide-body">';
-                html += '<div><div class="hhs-thumb" data-thumb="'+i+'">'+thumbHtml(slide)+'</div>';
-                html += meta;
+                html += '<div class="hhs-media-row">';
+                html += '<div class="hhs-media-col">';
+                html += '<span class="hhs-media-col-label">桌機主圖 <span>裁切 16:9</span></span>';
+                html += '<div class="hhs-thumb" data-thumb="'+i+'">'+desktopThumbHtml(slide)+'</div>';
+                html += desktopMeta;
                 html += '<div class="hhs-media-actions">';
                 if (isVideo) {
                     html += '<button type="button" class="button button-primary button-small hhs-pick-video" data-index="'+i+'">選影片</button>';
                     html += '<button type="button" class="button button-small hhs-pick-poster" data-index="'+i+'">海報圖（選填）</button>';
                 } else {
-                    html += '<button type="button" class="button button-primary button-small hhs-pick" data-index="'+i+'">選圖</button>';
+                    html += '<button type="button" class="button button-primary button-small hhs-pick-crop" data-index="'+i+'" data-target="desktop">選圖並裁切</button>';
                 }
-                html += '<button type="button" class="button button-small hhs-clear" data-index="'+i+'">清除</button>';
+                html += '<button type="button" class="button button-small hhs-clear-desktop" data-index="'+i+'">清除</button>';
                 html += '</div></div>';
+                html += '<div class="hhs-media-col">';
+                html += '<span class="hhs-media-col-label">手機主圖 <span>裁切 9:16</span></span>';
+                html += '<div class="hhs-thumb is-mobile" data-thumb-mobile="'+i+'">'+mobileThumbHtml(slide)+'</div>';
+                html += mobileMeta;
+                html += '<div class="hhs-media-actions">';
+                html += '<button type="button" class="button button-primary button-small hhs-pick-crop" data-index="'+i+'" data-target="mobile">選圖並裁切</button>';
+                html += '<button type="button" class="button button-small hhs-clear-mobile" data-index="'+i+'">清除</button>';
+                html += '</div></div>';
+                html += '</div>';
                 html += '<div class="hhs-slide-fields">';
                 html += '<label class="hhs-switch hhs-span-2"><input type="checkbox" class="hhs-enabled" data-index="'+i+'"'+(slide.enabled?' checked':'')+'>';
                 html += '<span class="hhs-switch-ui"></span><span class="hhs-switch-label">啟用此張</span></label>';
@@ -629,7 +803,7 @@ function hhs_admin_footer_script(): void
                 html += '<button type="button" class="hhs-set-type'+(isVideo?'':' is-on')+'" data-index="'+i+'" data-type="image">圖片</button>';
                 html += '<button type="button" class="hhs-set-type'+(isVideo?' is-on':'')+'" data-index="'+i+'" data-type="video">影片</button>';
                 html += '</div>';
-                html += '<p class="description" style="margin:6px 0 0">'+(isVideo ? '建議上傳 MP4；海報圖會顯示在左側指示圖。' : '建議使用高解析橫式圖片。')+'</p></div>';
+                html += '<p class="description" style="margin:6px 0 0">'+(isVideo ? '建議上傳 MP4；海報／手機圖用於預覽與載入前畫面。' : '桌機建議 1920×1080；手機建議 1080×1920。可於右側切換預覽確認裁切。')+'</p></div>';
                 html += '<div class="hhs-field full"><label class="hhs-label">'+(isVideo ? '影片／海報替代文字' : '圖片替代文字')+'</label>';
                 html += '<input type="text" class="regular-text hhs-alt" data-index="'+i+'" value="'+esc(slide.image.alt)+'"></div>';
                 html += '<div class="hhs-field full"><label class="hhs-label">點擊連結</label>';
@@ -654,9 +828,19 @@ function hhs_admin_footer_script(): void
                 if (path.length === 1) state[path[0]] = val;
             });
 
+            var $preview = $('#hhs-live-preview');
+            $preview.toggleClass('is-desktop', previewMode === 'desktop');
+            $preview.toggleClass('is-mobile', previewMode === 'mobile');
+            $preview.attr('data-mode', previewMode);
+            $('#hhs-preview-ratio').text(
+                previewMode === 'mobile'
+                    ? '手機預覽 · 9:16（對齊前台直式主圖）'
+                    : '桌機預覽 · 16:9（對齊前台橫式主圖）'
+            );
+
             var slides = activeSlides();
             if (!slides.length) {
-                $('#hhs-live-preview').html('<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#646970;font-size:12px">尚無啟用中的主圖／影片</div>');
+                $preview.html('<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#646970;font-size:12px;padding:12px;text-align:center">尚無啟用中的主圖／影片</div>');
                 $('#hhs-preview-dots').empty();
                 return;
             }
@@ -665,14 +849,23 @@ function hhs_admin_footer_script(): void
             var slide = slides[previewIndex];
             var html = '';
             if (slide.mediaType === 'video' && slide.video && slide.video.url) {
-                html = '<video src="'+esc(slide.video.url)+'"'+(slide.image && slide.image.url ? ' poster="'+esc(slide.image.url)+'"' : '')+' muted autoplay loop playsinline></video>';
+                var poster = previewMode === 'mobile'
+                    ? (resolveMobileImage(slide) || (slide.image && slide.image.url) || '')
+                    : ((slide.image && slide.image.url) || '');
+                html = '<video src="'+esc(slide.video.url)+'"'+(poster ? ' poster="'+esc(poster)+'"' : '')+' muted autoplay loop playsinline></video>';
             } else {
-                html = '<img src="'+esc(slide.image.url)+'" alt="'+esc(slide.image.alt)+'">';
+                var imgUrl = previewMode === 'mobile' ? resolveMobileImage(slide) : (slide.image && slide.image.url);
+                var imgAlt = previewMode === 'mobile' && slide.imageMobile && slide.imageMobile.alt
+                    ? slide.imageMobile.alt
+                    : (slide.image && slide.image.alt) || '';
+                html = imgUrl
+                    ? '<img src="'+esc(imgUrl)+'" alt="'+esc(imgAlt)+'">'
+                    : '<div style="display:flex;align-items:center;justify-content:center;height:100%;color:#646970;font-size:12px">尚未設定圖片</div>';
             }
             if (slide.cta && slide.cta.show && slide.cta.label) {
                 html += '<div class="hhs-mock-cta">'+esc(slide.cta.label)+'</div>';
             }
-            $('#hhs-live-preview').html(html);
+            $preview.html(html);
 
             var dots = '';
             slides.forEach(function(_, i){
@@ -713,25 +906,15 @@ function hhs_admin_footer_script(): void
             renderSlides();
         });
 
-        $(document).on('click', '.hhs-pick', function(){
-            if (typeof wp === 'undefined' || !wp.media) {
-                alert('媒體庫尚未載入，請重新整理頁面後再試。');
-                return;
-            }
-            var i = slideIndex($(this));
-            var frame = wp.media({ title: '選擇主圖', button: { text: '使用這張圖' }, multiple: false, library: { type: 'image' } });
-            frame.on('select', function(){
-                var url = mediaUrl(frame.state().get('selection').first().toJSON());
-                var slide = ensureSlide(i);
-                if (!slide || !url) {
-                    alert('無法取得圖片網址，請改選其他檔案。');
-                    return;
-                }
-                slide.mediaType = 'image';
-                slide.image.url = url;
-                renderSlides();
-            });
-            frame.open();
+        $(document).on('click', '.hhs-pick-crop', function(){
+            openCropFrame(slideIndex($(this)), $(this).attr('data-target') === 'mobile' ? 'mobile' : 'desktop');
+        });
+
+        $(document).on('click', '.hhs-preview-tab', function(){
+            previewMode = $(this).attr('data-preview-mode') === 'mobile' ? 'mobile' : 'desktop';
+            $('.hhs-preview-tab').removeClass('is-on');
+            $(this).addClass('is-on');
+            renderPreview();
         });
 
         $(document).on('click', '.hhs-pick-video', function(){
@@ -792,18 +975,26 @@ function hhs_admin_footer_script(): void
             frame.open();
         });
 
-        $(document).on('click', '.hhs-clear', function(){
-            var i = slideIndex($(this));
-            var slide = ensureSlide(i);
+        $(document).on('click', '.hhs-clear-desktop', function(){
+            var slide = ensureSlide(slideIndex($(this)));
             if (!slide) return;
             slide.image.url = '';
             slide.video.url = '';
             renderSlides();
         });
 
+        $(document).on('click', '.hhs-clear-mobile', function(){
+            var slide = ensureSlide(slideIndex($(this)));
+            if (!slide) return;
+            slide.imageMobile.url = '';
+            renderSlides();
+        });
+
         $(document).on('input change', '.hhs-alt', function(){
             var slide = ensureSlide(slideIndex($(this)));
-            if (slide) slide.image.alt = $(this).val();
+            if (!slide) return;
+            slide.image.alt = $(this).val();
+            if (slide.imageMobile) slide.imageMobile.alt = $(this).val();
             renderPreview();
         });
         $(document).on('input change', '.hhs-href', function(){

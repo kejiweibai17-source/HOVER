@@ -11,6 +11,7 @@ import {
   netOrderTotal,
 } from "@/lib/membership";
 import { grantBirthdayGiftIfEligible } from "@/lib/birthdayGift";
+import { resolveLinkedProviders } from "@/lib/socialAccount";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -482,6 +483,7 @@ export async function GET() {
       };
 
     const authProvider = await resolveAuthProvider(session, customer);
+    const linkedProviders = resolveLinkedProviders(customer);
 
     return NextResponse.json(
       {
@@ -490,6 +492,7 @@ export async function GET() {
         membership: membershipPayload,
         isAdmin,
         authProvider,
+        linkedProviders,
       },
       { headers: noCache }
     );

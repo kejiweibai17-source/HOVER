@@ -18,7 +18,13 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const next = safeNextPath(url.searchParams.get("next"));
   const ref = String(url.searchParams.get("ref") || "").trim();
-  const from = url.searchParams.get("from") === "register" ? "register" : "login";
+  const fromRaw = String(url.searchParams.get("from") || "").toLowerCase();
+  const from =
+    fromRaw === "register"
+      ? "register"
+      : fromRaw === "account"
+        ? "account"
+        : "login";
 
   const channelId = getLineChannelId();
   const callbackUrl = getLineCallbackUrl();

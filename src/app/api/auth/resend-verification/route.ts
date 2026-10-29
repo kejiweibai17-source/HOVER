@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
+import { mailFromHeader, mailReplyTo } from "@/lib/mailFrom";
 
 export const runtime = "nodejs";
 
@@ -130,26 +131,40 @@ export async function POST(req: Request) {
     try {
       const transporter = createTransport();
       await transporter.verify();
-      const mailFrom = process.env.SMTP_USER!;
+      const verifyUrl = url.toString();
+      const text = [
+        "HOVER 會員信箱驗證（重新寄送）",
+        "",
+        "親愛的會員您好：",
+        "這是重新寄送的驗證信，請開啟以下連結完成信箱驗證：",
+        verifyUrl,
+        "",
+        "此連結約 15 分鐘內有效。若非您本人操作，請忽略本信。",
+        "",
+        "HOVER 官方網站",
+        "https://hoverofficial.com",
+      ].join("\n");
 
       await transporter.sendMail({
-        from: `"HOVER 威爾特" <${mailFrom}>`,
+        from: mailFromHeader(),
+        replyTo: mailReplyTo(),
         to: email,
-        subject: "HOVER – 會員信箱驗證（重新寄送）",
+        subject: "HOVER 會員信箱驗證（重新寄送）",
+        text,
         html: `
           <div style="font-family: system-ui, sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
-            <h2 style="color: #222;">會員信箱驗證</h2>
+            <h2 style="color: #222; border-bottom: 2px solid #2a514d; padding-bottom: 10px;">會員信箱驗證</h2>
             <p>親愛的會員您好：</p>
             <p>這是重新寄送的驗證信，請點擊下方按鈕完成信箱驗證：</p>
             <div style="margin: 30px 0; text-align: center;">
-              <a href="${url.toString()}" target="_blank"
+              <a href="${verifyUrl}" target="_blank"
                  style="display: inline-block; padding: 14px 28px; background-color: #2a514d; color: #fff; text-decoration: none; border-radius: 6px; font-weight: bold;">
                 完成信箱驗證
               </a>
             </div>
-            <p style="font-size: 13px; color: #666; word-break: break-all;">${url.toString()}</p>
-            <p style="color: #e63946; font-weight: bold;">此驗證連結將在 15 分鐘後失效。</p>
-            <p style="margin-top: 24px; font-size: 12px; color: #999;">HOVER 威爾特</p>
+            <p style="font-size: 13px; color: #333; word-break: break-all;">${verifyUrl}</p>
+            <p style="color: #666;">此驗證連結約 15 分鐘內有效。若非您本人操作，請忽略本信。</p>
+            <p style="margin-top: 24px; font-size: 12px; color: #999;">HOVER｜官方網站</p>
           </div>
         `,
       });

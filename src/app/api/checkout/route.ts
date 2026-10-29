@@ -23,6 +23,8 @@ import {
   isPoolVariantInStock,
   pickRandomGiftVariation,
   promotionLinePrice,
+  promotionPool,
+  promotionProductBaseName,
   type EvaluatedPromotion,
 } from "@/lib/promotions";
 import {
@@ -166,7 +168,6 @@ async function validateCouponOnServer(
   code: string,
   email: string,
   subtotalAfterMember: number,
-  hasMemberDiscount: boolean,
   hasSaleItems = false,
   customerId = 0,
 ): Promise<{ amount: number; code: string } | null> {
@@ -190,7 +191,7 @@ async function validateCouponOnServer(
       loggedIn: true,
     });
     if (!eligibility.valid) return null;
-    if (coupon.individual_use && hasMemberDiscount) return null;
+    // 會員折扣可與 1 張優惠券併用
 
     const minAmount = Number(coupon.minimum_amount || 0);
     if (minAmount > 0 && subtotalAfterMember < minAmount) return null;
@@ -206,7 +207,6 @@ async function validateCouponOnServer(
     return { amount: discount, code: String(coupon.code || code) };
   }
 
-  if (coupon.individual_use && hasMemberDiscount) return null;
   if (coupon.exclude_sale_items && hasSaleItems) return null;
   if (coupon.date_expires && new Date(coupon.date_expires).getTime() < Date.now()) return null;
 
@@ -447,7 +447,11 @@ export async function POST(req: Request) {
           }
           wcProductId = picked.productId;
           wcVariationId = picked.variationId || undefined;
-          title = promotion.product.name;
+          // 隨機色活動的 product.name 是前台規格行（如「F｜顏色隨機出貨」），品名需取自贈品池商品
+          title =
+            promotionProductBaseName(picked.name) ||
+            promotionProductBaseName(promotionPool(promotion)[0]?.name) ||
+            "滿額贈品";
           sku = String(picked.sku || "");
         } else if (promotion.type === "addon") {
           const chosen = findPromotionVariant(
@@ -588,7 +592,6 @@ export async function POST(req: Request) {
         coupon.code,
         memberEmail || contact?.email || "",
         subtotalAfterMember,
-        serverMemberDiscount > 0,
         hasSaleItems,
         Number(loggedInCustomerId) || 0,
       );
@@ -650,10 +653,19 @@ export async function POST(req: Request) {
       } catch (e) {}
     }
 
+    const promotionItemNames = promotionLines.map((line) => {
+      if (line.promotion.type === "gift") {
+        return `滿額贈｜${line.title}`;
+      }
+      return `加價購｜${line.title}`;
+    });
     const cleanItemName = (
-      [...(items || []), ...promotionLines]
-        ?.map((it) =>
-          String(it.title || it.name || "")
+      [
+        ...(items || []).map((it) => it.title || it.name || ""),
+        ...promotionItemNames,
+      ]
+        .map((name) =>
+          String(name)
             .replace(/[#&<>'"%\\]/g, "")
             .trim(),
         )
@@ -816,7 +828,7 @@ export async function POST(req: Request) {
                 meta.push({ key: "_hover_random_color", value: "yes" });
                 meta.push({
                   key: "_hover_display_name",
-                  value: line.promotion.product.name,
+                  value: line.title,
                 });
                 meta.push({
                   key: "出貨備註",

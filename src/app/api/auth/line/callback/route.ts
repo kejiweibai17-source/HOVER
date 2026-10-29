@@ -13,13 +13,16 @@ import {
   redirectWithLineError,
   safeNextPath,
   sessionCookieOpts,
+  withBoundSuccessPath,
 } from "@/lib/lineAuth";
 import {
   applyExclusiveCustomSession,
   upsertSocialCustomer,
 } from "@/lib/socialAccount";
 import {
+  bindSocialToLoggedInCustomer,
   linkAccountPath,
+  resolveSessionCustomerId,
   resolveSocialAccount,
   setSocialPendingCookie,
   signSocialPending,
@@ -104,8 +107,12 @@ export async function GET(req: Request) {
   const stateFromQuery = decodeLineState(stateParam);
   const state = stateFromCookie || stateFromQuery;
   const nextPath = safeNextPath(state?.next);
-  const from: "login" | "register" =
-    state?.from === "register" ? "register" : "login";
+  const from =
+    state?.from === "register"
+      ? "register"
+      : state?.from === "account"
+        ? "account"
+        : "login";
 
   if (error || !code) {
     return redirectWithLineError(from, "line_login_failed", nextPath);
@@ -144,6 +151,34 @@ export async function GET(req: Request) {
     });
 
     if (resolved.status === "pending") {
+      // 已登入會員從會員中心綁定 → 直接綁到目前帳號，免手機＋密碼
+      if (from === "account") {
+        const customerId = await resolveSessionCustomerId();
+        if (!customerId) {
+          return redirectWithLineError("account", "bind_login_required", nextPath);
+        }
+        const bound = await bindSocialToLoggedInCustomer({
+          customerId,
+          provider: "line",
+          providerUserId: lineUserId,
+          name: profile.name,
+          picture: profile.picture,
+          emailVerified: Boolean(profile.email_verified || rawEmail),
+        });
+        const site = getSiteUrl();
+        if (!bound.ok) {
+          return redirectWithLineError("account", bound.code, nextPath);
+        }
+        const response = NextResponse.redirect(
+          new URL(withBoundSuccessPath(nextPath || "/account"), site).toString(),
+        );
+        response.cookies.set(LINE_STATE_COOKIE, "", {
+          ...lineAuthCookieOpts(0),
+          maxAge: 0,
+        });
+        return response;
+      }
+
       const token = signSocialPending({
         provider: "line",
         providerUserId: lineUserId,
@@ -163,6 +198,26 @@ export async function GET(req: Request) {
         maxAge: 0,
       });
       return response;
+    }
+
+    // 已綁定其他帳：會員中心綁定流程不可直接切換登入
+    if (from === "account") {
+      const customerId = await resolveSessionCustomerId();
+      const existingId = Number(resolved.customer?.id || 0);
+      if (customerId && existingId === customerId) {
+        const site = getSiteUrl();
+        const response = NextResponse.redirect(
+          new URL(withBoundSuccessPath(nextPath || "/account"), site).toString(),
+        );
+        response.cookies.set(LINE_STATE_COOKIE, "", {
+          ...lineAuthCookieOpts(0),
+          maxAge: 0,
+        });
+        return response;
+      }
+      if (customerId && existingId && existingId !== customerId) {
+        return redirectWithLineError("account", "social_taken", nextPath);
+      }
     }
 
     const user = await upsertSocialCustomer({

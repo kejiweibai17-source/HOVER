@@ -182,6 +182,7 @@ function ProductSection({ title, products }) {
       imageAspectRatio="3/4"
       headerClassName={HOME_TITLE_ALIGN}
       slideClassName="pr-2 md:pr-3 flex"
+      mobileDraggable
       renderItem={(product) => <ProductCard product={product} />}
     />
   );

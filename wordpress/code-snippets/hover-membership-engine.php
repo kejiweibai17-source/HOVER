@@ -7,8 +7,10 @@
  * 功能：
  * 1. 訂單 processing / completed 時，依「已付款訂單淨額（扣除退款）」同步臻享會員 meta
  * 2. 每月 1 日 09:00 自動派發當月壽星生日禮 WC 原生折扣碼 + 寄信（純文字）
- * 3. 當月壽星若於月中註冊／補填生日 → 立即補發（FRIENDS／臻享皆適用）
+ * 3. 當月壽星若於 WP 後台補填生日 → 立即補發（FRIENDS／臻享皆適用）
+ *    ※ 前台註冊／會員中心經 Woo REST 寫入時略過，改由 Next.js 寄信，避免重複
  * 4. 發券通知：先寄 service@hoverofficial.com、bob112722761236tom@gmail.com，再寄會員本人（無 emoji）
+ * 5. 關閉 WooCommerce「新帳號」預設信（註冊信改由 Next：歡迎＋驗證＋必要時生日禮）
  *
  * 固定母券（WooCommerce → 行銷 → 優惠券，各建一張）：
  * - HOVER100 / HBDAY100 / VIPBDAY300
@@ -44,6 +46,12 @@ const HME_CODE_WELCOME = 'HOVER100';
 const HME_CODE_BDAY_FRIENDS = 'HBDAY100';
 const HME_CODE_BDAY_EXCLUSIVE = 'VIPBDAY300';
 
+/** 與官網／訂單信共用：官方 LINE @330kefmm */
+const HME_SITE_URL = 'https://hoverofficial.com';
+const HME_LINE_ID = '@330kefmm';
+const HME_LINE_URL = 'https://line.me/R/ti/p/@330kefmm';
+const HME_BRAND_GREEN = '#2a514d';
+
 /** 正規化台灣手機為 09xxxxxxxx（僅數字） */
 function hme_normalize_mobile(string $raw): string
 {
@@ -66,13 +74,34 @@ add_action('init', function () {
 });
 add_action('hme_monthly_birthday_cron', 'hme_dispatch_birthday_coupons');
 
-// 註冊完成、生日欄位寫入 → 當月壽星補發
+// WP 後台補填生日 → 當月壽星補發（REST／前台由 Next.js 處理，見 hme_should_skip_rest_birthday_grant）
 add_action('user_register', 'hme_maybe_grant_birthday_for_user', 30, 1);
 add_action('profile_update', 'hme_maybe_grant_birthday_for_user', 30, 1);
 add_action('updated_user_meta', 'hme_on_birthday_meta_saved', 20, 4);
 add_action('added_user_meta', 'hme_on_birthday_meta_saved', 20, 4);
 
 add_filter('woocommerce_coupon_is_valid', 'hme_validate_master_coupon', 20, 3);
+
+/** 關閉 Woo 預設「新帳號」信，避免註冊多出第 4 封 */
+add_filter('woocommerce_email_enabled_customer_new_account', '__return_false');
+
+/**
+ * 前台註冊／會員中心經 WooCommerce REST 寫入時，生日禮改由 Next.js 寄送。
+ */
+function hme_should_skip_rest_birthday_grant(): bool
+{
+    if (defined('REST_REQUEST') && REST_REQUEST) {
+        return true;
+    }
+    if (defined('WC_DOING_AJAX') && WC_DOING_AJAX) {
+        return false;
+    }
+    $uri = isset($_SERVER['REQUEST_URI']) ? (string) $_SERVER['REQUEST_URI'] : '';
+    if ($uri !== '' && strpos($uri, '/wp-json/') !== false) {
+        return true;
+    }
+    return false;
+}
 
 /**
  * 一次性轉換舊優惠券：
@@ -464,9 +493,9 @@ function hme_send_birthday_gift_mail(
     }
 
     $amount_label = number_format($amount);
-    $site = 'https://hoverofficial.com';
-    $line = 'https://line.me/R/ti/p/@330kefmm';
-    $green = '#2a514d';
+    $site = HME_SITE_URL;
+    $line = HME_LINE_URL;
+    $green = HME_BRAND_GREEN;
     $exclusive = ($amount >= HME_BIRTHDAY_EXCLUSIVE) || (strpos($tier, '臻享') !== false);
     $gift_title = $exclusive ? '臻享會員生日禮' : '品牌好友生日禮';
     $member_subject = $exclusive
@@ -645,6 +674,9 @@ function hme_try_grant_birthday_for_user(int $user_id, bool $send_mail = true): 
 
 function hme_maybe_grant_birthday_for_user($user_id): void
 {
+    if (hme_should_skip_rest_birthday_grant()) {
+        return;
+    }
     hme_try_grant_birthday_for_user((int) $user_id, true);
 }
 
@@ -652,6 +684,9 @@ function hme_on_birthday_meta_saved($meta_id, $user_id, $meta_key, $_meta_value)
 {
     $keys = ['birthday', 'billing_birth_date', '_billing_birth_date'];
     if (!in_array((string) $meta_key, $keys, true)) {
+        return;
+    }
+    if (hme_should_skip_rest_birthday_grant()) {
         return;
     }
     hme_try_grant_birthday_for_user((int) $user_id, true);

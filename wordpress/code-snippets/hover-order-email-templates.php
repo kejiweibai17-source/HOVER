@@ -30,7 +30,8 @@ define('HOVER_ORDER_EMAIL_TEMPLATES_LOADED', true);
 const HOET_SITE_URL = 'https://hoverofficial.com';
 /** 會員訂單頁 */
 const HOET_ACCOUNT_ORDERS_URL = 'https://hoverofficial.com/account?tab=orders';
-/** 官方 LINE（HOVER） */
+/** 官方 LINE（HOVER Basic ID @330kefmm） */
+const HOET_LINE_ID = '@330kefmm';
 const HOET_LINE_URL = 'https://line.me/R/ti/p/@330kefmm';
 /** 品牌綠 */
 const HOET_GREEN = '#2a514d';
@@ -455,9 +456,15 @@ function hoet_item_title(WC_Order_Item_Product $item): string
     }
 
     $display = trim((string) $item->get_meta('_hover_display_name', true));
-    if ($display !== '') {
+    // 舊訂單可能寫入規格行（如「F｜顏色隨機出貨」）而非品名
+    if ($display !== '' && strpos($display, '顏色隨機出貨') === false) {
         $stripped = preg_replace('/\s+[-–—]\s+[^-–—]+$/u', '', $display);
         return is_string($stripped) && trim($stripped) !== '' ? trim($stripped) : $display;
+    }
+
+    if (hoet_item_promo_kind($item) === 'gift' && hoet_item_promo_is_random($item)) {
+        $stripped = preg_replace('/\s+[-–—]\s+[^-–—]+$/u', '', $name);
+        return is_string($stripped) && trim($stripped) !== '' ? trim($stripped) : $name;
     }
 
     $opts = hoet_item_options($item, false);
@@ -515,9 +522,7 @@ function hoet_item_promo_badge(WC_Order_Item_Product $item): string
 {
     $kind = hoet_item_promo_kind($item);
     if ($kind === 'gift') {
-        $label = hoet_item_promo_is_random($item)
-            ? '滿額贈｜顏色隨機出貨'
-            : '滿額贈';
+        $label = '滿額贈';
     } elseif ($kind === 'addon') {
         $label = '加價購';
     } else {

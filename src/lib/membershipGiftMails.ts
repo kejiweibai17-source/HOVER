@@ -8,14 +8,19 @@ import {
   expiresAtFromClaimAt,
   MASTER_COUPONS,
 } from "@/lib/masterCoupons";
+import { mailFromHeader, mailReplyTo } from "@/lib/mailFrom";
+import {
+  HOVER_LINE_OA,
+  HOVER_SITE_URL,
+} from "@/lib/hoverContact";
 
 const SITE_URL = (
   process.env.NEXT_PUBLIC_SITE_URL ||
   process.env.NEXTAUTH_URL ||
-  "https://hoverofficial.com"
+  HOVER_SITE_URL
 ).replace(/\/$/, "");
 
-const LINE_URL = "https://line.me/R/ti/p/@330kefmm";
+const LINE_URL = HOVER_LINE_OA;
 const GREEN = "#2a514d";
 
 function createTransport() {
@@ -135,7 +140,7 @@ export function buildWelcomeGiftMailHtml(params: {
   );
   const html = shell(`
     <p style="margin:0 0 12px;font-size:15px;line-height:1.8;">親愛的${name}，</p>
-    <p style="margin:0 0 8px;font-size:14px;line-height:1.8;color:#333;">歡迎加入 HOVER FRIENDS 品牌好友。</p>
+    <p style="margin:0 0 8px;font-size:14px;line-height:1.8;color:#333;">歡迎加入 HOVER。</p>
     <p style="margin:0 0 8px;font-size:14px;line-height:1.8;color:#333;">感謝您的加入，我們為您準備了 ${money(MEMBERSHIP_RULES.welcomeGift)} 入會禮購物金。</p>
     <div style="height:16px;line-height:16px;font-size:16px;">&nbsp;</div>
     ${giftBlock({
@@ -146,7 +151,7 @@ export function buildWelcomeGiftMailHtml(params: {
       expiresLabel,
     })}
   `);
-  return { subject: "歡迎加入 HOVER FRIENDS", html };
+  return { subject: "歡迎加入 HOVER", html };
 }
 
 export function buildBirthdayGiftMailHtml(params: {
@@ -197,9 +202,9 @@ async function sendHtmlMail(to: string, subject: string, html: string) {
     console.warn("[membershipGiftMails] SMTP 未設定，略過寄信");
     return false;
   }
-  const mailFrom = process.env.SMTP_USER!;
   await transporter.sendMail({
-    from: `"HOVER" <${mailFrom}>`,
+    from: mailFromHeader(),
+    replyTo: mailReplyTo(),
     to,
     subject,
     html,

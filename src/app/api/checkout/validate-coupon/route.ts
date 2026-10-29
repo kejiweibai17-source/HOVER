@@ -2,6 +2,8 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
+import { getMemberSession } from "@/lib/memberSession";
+import { findCustomerByEmail } from "@/lib/socialAccount";
 import {
   fetchCustomerMembership,
   isMasterCouponCode,
@@ -55,7 +57,6 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const code = String(body.code || "").trim();
     const subtotalAfterMember = Math.max(0, Number(body.subtotalAfterMember) || 0);
-    const hasMemberDiscount = Boolean(body.hasMemberDiscount);
     const hasSaleItems = Boolean(body.hasSaleItems);
 
     if (!code) {
@@ -87,12 +88,31 @@ export async function POST(req: Request) {
 
     const coupon = arr[0];
 
+    // 與結帳一致：支援 Google NextAuth + Email／LINE／Facebook auth_token
+    const member = await getMemberSession();
     const session = await getServerSession(authOptions);
-    const userEmail = String(session?.user?.email || "").trim().toLowerCase();
-    const customerId = Number((session as any)?.customerId || 0);
+    let userEmail = String(
+      member?.email || session?.user?.email || "",
+    )
+      .trim()
+      .toLowerCase();
+    let customerId =
+      Number(member?.customerId || 0) ||
+      Number((session as { customerId?: number })?.customerId || 0);
+
+    if (!customerId && userEmail) {
+      try {
+        const byEmail = await findCustomerByEmail(userEmail);
+        const id = Number(byEmail?.id || 0);
+        if (id > 0) customerId = id;
+      } catch {
+        /* ignore */
+      }
+    }
 
     if (isMasterCouponCode(code)) {
-      if (!customerId || !userEmail) {
+      // 母券需已登入會員；勿只認 Google NextAuth（Email／LINE／FB 走 auth_token）
+      if (!customerId) {
         return NextResponse.json(
           { valid: false, message: "請先登入會員後再使用此折扣碼" },
           { status: 200, headers: noCache },
@@ -114,15 +134,7 @@ export async function POST(req: Request) {
         );
       }
 
-      if (coupon.individual_use && hasMemberDiscount) {
-        return NextResponse.json(
-          {
-            valid: false,
-            message: "此折扣碼不可與會員折扣或其他優惠併用",
-          },
-          { status: 200, headers: noCache },
-        );
-      }
+      // 會員折扣可與 1 張優惠券併用（individual_use 僅限制多張券互斥，不擋會員折）
 
       const minAmount = Number(coupon.minimum_amount || 0);
       if (minAmount > 0 && subtotalAfterMember < minAmount) {
@@ -160,15 +172,7 @@ export async function POST(req: Request) {
       );
     }
 
-    if (coupon.individual_use && hasMemberDiscount) {
-      return NextResponse.json(
-        {
-          valid: false,
-          message: "此折扣碼不可與會員折扣或其他優惠併用",
-        },
-        { status: 200, headers: noCache },
-      );
-    }
+    // 會員折扣可與 1 張優惠券併用；仍僅允許單張券
 
     if (coupon.exclude_sale_items && hasSaleItems) {
       return NextResponse.json(

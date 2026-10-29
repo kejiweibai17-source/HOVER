@@ -107,7 +107,7 @@ function SummaryPanel({
                   className="w-full h-full object-cover"
                 />
                 {it.qty > 1 && (
-                  <span className="absolute -top-1 -right-1 bg-black text-white text-xs px-1.5 py-0.5 rounded">
+                  <span className="absolute -top-1 -right-1 bg-[#2a514d] text-white text-xs px-1.5 py-0.5 rounded">
                     {it.qty}
                   </span>
                 )}
@@ -127,7 +127,7 @@ function SummaryPanel({
                   </div>
                 </div>
                 {it.compareAt && it.compareAt > it.price && (
-                  <p className="text-[12px] text-emerald-600 mt-0.5">
+                  <p className="text-[12px] text-[#2a514d] mt-0.5">
                     已節省 {currency((it.compareAt - it.price) * it.qty)}
                   </p>
                 )}
@@ -139,7 +139,7 @@ function SummaryPanel({
         {/* ✅ 自動讀取的折扣碼錢包 UI */}
         <div className="mt-5 border-t pt-5">
           <h3 className="font-bold text-gray-800 mb-3 flex items-center gap-2 text-sm">
-            <Tag size={16} className="text-[#008060]" /> 可用折扣金與專屬優惠
+            <Tag size={16} className="text-[#2a514d]" /> 可用折扣金與專屬優惠
           </h3>
 
           {couponLoading ? (
@@ -155,7 +155,7 @@ function SummaryPanel({
                   key={c.code}
                   className={`flex items-center justify-between p-3 border rounded-lg cursor-pointer transition-colors ${
                     selectedCoupon?.code === c.code
-                      ? "border-[#008060] bg-emerald-50 shadow-sm"
+                      ? "border-[#2a514d] bg-[#f3f6f5] shadow-sm"
                       : "border-gray-200 hover:bg-gray-50"
                   }`}
                 >
@@ -165,7 +165,7 @@ function SummaryPanel({
                       name="checkout_coupon"
                       checked={selectedCoupon?.code === c.code}
                       onChange={() => onSelectCoupon(c)}
-                      className="text-[#008060] focus:ring-[#008060] w-4 h-4"
+                      className="text-[#2a514d] focus:ring-[#2a514d] w-4 h-4"
                     />
                     <div>
                       <p className="text-sm font-bold text-gray-800">
@@ -207,7 +207,7 @@ function SummaryPanel({
                   <span className="line-through mr-1 text-gray-400">
                     {currency(80)}
                   </span>
-                  <span className="inline-flex items-center text-emerald-700">
+                  <span className="inline-flex items-center text-[#2a514d]">
                     免運
                   </span>
                 </>
@@ -219,7 +219,7 @@ function SummaryPanel({
           {pricing.discount > 0 && (
             <div className="flex justify-between">
               <span className="text-gray-600">折扣</span>
-              <span className="text-emerald-700 font-bold">
+              <span className="text-[#2a514d] font-bold">
                 - {currency(pricing.discount)}
               </span>
             </div>
@@ -462,7 +462,7 @@ export default function CheckoutPage() {
                     onChange={(e) =>
                       setContact((s) => ({ ...s, email: e.target.value }))
                     }
-                    className={`w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-[#008060] ${
+                    className={`w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-[#2a514d] ${
                       errors.email ? "border-red-500" : ""
                     }`}
                     placeholder="you@example.com"
@@ -478,7 +478,7 @@ export default function CheckoutPage() {
                         newsletter: e.target.checked,
                       }))
                     }
-                    className="text-[#008060] focus:ring-[#008060]"
+                    className="text-[#2a514d] focus:ring-[#2a514d]"
                   />
                   以電子郵件傳送最新消息和優惠活動給我
                 </label>
@@ -496,7 +496,7 @@ export default function CheckoutPage() {
                       onChange={(e) =>
                         setAddr((s) => ({ ...s, country: e.target.value }))
                       }
-                      className="w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-[#008060]"
+                      className="w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-[#2a514d]"
                     >
                       <option>台灣</option>
                       <option>香港</option>
@@ -509,7 +509,7 @@ export default function CheckoutPage() {
                       onChange={(e) =>
                         setAddr((s) => ({ ...s, firstName: e.target.value }))
                       }
-                      className={`w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-[#008060] ${
+                      className={`w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-[#2a514d] ${
                         errors.firstName ? "border-red-500" : ""
                       }`}
                       placeholder="名字"
@@ -521,7 +521,7 @@ export default function CheckoutPage() {
                       onChange={(e) =>
                         setAddr((s) => ({ ...s, lastName: e.target.value }))
                       }
-                      className={`w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-[#008060] ${
+                      className={`w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-[#2a514d] ${
                         errors.lastName ? "border-red-500" : ""
                       }`}
                       placeholder="姓氏"
@@ -535,7 +535,7 @@ export default function CheckoutPage() {
                     onChange={(e) =>
                       setAddr((s) => ({ ...s, line1: e.target.value }))
                     }
-                    className={`w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-[#008060] ${
+                    className={`w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-[#2a514d] ${
                       errors.line1 ? "border-red-500" : ""
                     }`}
                     placeholder="例：板橋區重慶路 〇號"
@@ -547,7 +547,7 @@ export default function CheckoutPage() {
                     onChange={(e) =>
                       setAddr((s) => ({ ...s, line2: e.target.value }))
                     }
-                    className="w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-[#008060]"
+                    className="w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-[#2a514d]"
                     placeholder="樓層、公司…"
                   />
                 </Field>
@@ -564,7 +564,7 @@ export default function CheckoutPage() {
                       onChange={(e) =>
                         setAddr((s) => ({ ...s, city: e.target.value }))
                       }
-                      className={`w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-[#008060] ${
+                      className={`w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-[#2a514d] ${
                         errors.city ? "border-red-500" : ""
                       }`}
                     />
@@ -575,7 +575,7 @@ export default function CheckoutPage() {
                       onChange={(e) =>
                         setAddr((s) => ({ ...s, zip: e.target.value }))
                       }
-                      className="w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-[#008060]"
+                      className="w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-[#2a514d]"
                     />
                   </Field>
                   <Field label="電話" required error={errors.phone}>
@@ -584,7 +584,7 @@ export default function CheckoutPage() {
                       onChange={(e) =>
                         setAddr((s) => ({ ...s, phone: e.target.value }))
                       }
-                      className={`w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-[#008060] ${
+                      className={`w-full rounded-lg border px-3 py-2 outline-none focus:ring-2 focus:ring-[#2a514d] ${
                         errors.phone ? "border-red-500" : ""
                       }`}
                       placeholder="09xxxxxxxx"
@@ -599,7 +599,7 @@ export default function CheckoutPage() {
                     onChange={(e) =>
                       setAddr((s) => ({ ...s, saveInfo: e.target.checked }))
                     }
-                    className="text-[#008060] focus:ring-[#008060]"
+                    className="text-[#2a514d] focus:ring-[#2a514d]"
                   />
                   儲存此資訊供下次使用
                 </label>
@@ -620,7 +620,7 @@ export default function CheckoutPage() {
                         <span className="line-through text-gray-400">
                           {currency(80)}
                         </span>
-                        <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 text-xs">
+                        <span className="px-2 py-0.5 rounded bg-[#edf4f3] text-[#2a514d] text-xs">
                           免費
                         </span>
                       </div>
@@ -684,7 +684,7 @@ export default function CheckoutPage() {
                   }
                 >
                   {payMethod === "linepay" && (
-                    <p className="text-xs text-emerald-600 font-bold mt-2 animate-in fade-in flex items-center gap-1">
+                    <p className="text-xs text-[#2a514d] font-bold mt-2 animate-in fade-in flex items-center gap-1">
                       <CheckCircle2 size={14} /> 點擊付款將導向 LINE Pay
                       官方驗證授權。
                     </p>
@@ -704,7 +704,7 @@ export default function CheckoutPage() {
                 className={`px-8 py-3.5 rounded-lg font-bold text-lg transition-all ${
                   submitting
                     ? "bg-gray-400 text-white cursor-not-allowed"
-                    : "bg-[#008060] text-white hover:bg-[#006e52] hover:shadow-lg active:scale-95"
+                    : "bg-[#2a514d] text-white hover:bg-[#1e3d3a] hover:shadow-lg active:scale-95"
                 }`}
               >
                 {submitting ? "處理跳轉中…" : "立即付款"}

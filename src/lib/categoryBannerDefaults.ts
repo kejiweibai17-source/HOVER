@@ -199,8 +199,8 @@ export async function fetchCategoryBannerSettings(): Promise<CategoryBannerSetti
 
   try {
     const res = await fetch(`${base}/wp-json/hover/v1/category-banners`, {
-      // 後台一更新就要前台立刻反映，不走 Data Cache
-      cache: "no-store",
+      // 短 TTL：後台改 banner 最多約 30s 反映，避免列表頁整頁 force-dynamic
+      next: { revalidate: 30 },
     });
     if (!res.ok) throw new Error(`Category banners API ${res.status}`);
     const data = await res.json();

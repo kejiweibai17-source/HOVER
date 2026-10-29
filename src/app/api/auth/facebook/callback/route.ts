@@ -13,13 +13,16 @@ import {
   redirectWithFacebookError,
   safeNextPath,
   sessionCookieOpts,
+  withBoundSuccessPath,
 } from "@/lib/facebookAuth";
 import {
   applyExclusiveCustomSession,
   upsertSocialCustomer,
 } from "@/lib/socialAccount";
 import {
+  bindSocialToLoggedInCustomer,
   linkAccountPath,
+  resolveSessionCustomerId,
   resolveSocialAccount,
   setSocialPendingCookie,
   signSocialPending,
@@ -109,8 +112,12 @@ export async function GET(req: Request) {
   const stateFromQuery = decodeFacebookState(stateParam);
   const state = stateFromCookie || stateFromQuery;
   const nextPath = safeNextPath(state?.next);
-  const from: "login" | "register" =
-    state?.from === "register" ? "register" : "login";
+  const from =
+    state?.from === "register"
+      ? "register"
+      : state?.from === "account"
+        ? "account"
+        : "login";
 
   if (error || !code) {
     return redirectWithFacebookError(from, "facebook_login_failed", nextPath);
@@ -149,6 +156,37 @@ export async function GET(req: Request) {
     });
 
     if (resolved.status === "pending") {
+      if (from === "account") {
+        const customerId = await resolveSessionCustomerId();
+        if (!customerId) {
+          return redirectWithFacebookError(
+            "account",
+            "bind_login_required",
+            nextPath,
+          );
+        }
+        const bound = await bindSocialToLoggedInCustomer({
+          customerId,
+          provider: "facebook",
+          providerUserId: facebookUserId,
+          name: profile.name,
+          picture: profile.pictureUrl,
+          emailVerified: Boolean(rawEmail),
+        });
+        const site = getSiteUrl();
+        if (!bound.ok) {
+          return redirectWithFacebookError("account", bound.code, nextPath);
+        }
+        const response = NextResponse.redirect(
+          new URL(withBoundSuccessPath(nextPath || "/account"), site).toString(),
+        );
+        response.cookies.set(FACEBOOK_STATE_COOKIE, "", {
+          ...facebookAuthCookieOpts(0),
+          maxAge: 0,
+        });
+        return response;
+      }
+
       const token = signSocialPending({
         provider: "facebook",
         providerUserId: facebookUserId,
@@ -168,6 +206,25 @@ export async function GET(req: Request) {
         maxAge: 0,
       });
       return response;
+    }
+
+    if (from === "account") {
+      const customerId = await resolveSessionCustomerId();
+      const existingId = Number(resolved.customer?.id || 0);
+      if (customerId && existingId === customerId) {
+        const site = getSiteUrl();
+        const response = NextResponse.redirect(
+          new URL(withBoundSuccessPath(nextPath || "/account"), site).toString(),
+        );
+        response.cookies.set(FACEBOOK_STATE_COOKIE, "", {
+          ...facebookAuthCookieOpts(0),
+          maxAge: 0,
+        });
+        return response;
+      }
+      if (customerId && existingId && existingId !== customerId) {
+        return redirectWithFacebookError("account", "social_taken", nextPath);
+      }
     }
 
     const user = await upsertSocialCustomer({

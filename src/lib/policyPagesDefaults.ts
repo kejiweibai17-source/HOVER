@@ -580,7 +580,7 @@ export const DEFAULT_POLICY_PAGES: PolicyPagesBundle = {
           {
             "title": "",
             "collapsible": false,
-            "contentHtml": "<p>若您對商品、訂單、付款、配送、退貨或本網站服務有任何疑問，請先透過 HOVER 官方客服與我們聯繫，我們將盡力協助確認並處理。</p><p>客服信箱：service@hoverofficial.com</p><p>客服時間：MON.–FRI. 10:00–19:00</p><p>官方 LINE：@HOVER</p><p>若因本服務條款或網路交易產生爭議，雙方應本於誠信原則協商解決。若仍有訴訟必要，依相關法律規定處理。</p>",
+            "contentHtml": "<p>若您對商品、訂單、付款、配送、退貨或本網站服務有任何疑問，請先透過 HOVER 官方客服與我們聯繫，我們將盡力協助確認並處理。</p><p>客服信箱：service@hoverofficial.com</p><p>客服時間：MON.–FRI. 10:00–19:00</p><p>官方 LINE：@330kefmm</p><p>若因本服務條款或網路交易產生爭議，雙方應本於誠信原則協商解決。若仍有訴訟必要，依相關法律規定處理。</p>",
             "titleColor": "#0f172a"
           }
         ]

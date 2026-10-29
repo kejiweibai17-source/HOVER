@@ -33,17 +33,28 @@ export function isValidLoveCode(code: string): boolean {
   return /^\d{3,7}$/.test(String(code || "").trim());
 }
 
-/** 台灣統一編號（含檢查碼） */
+/** 只保留數字（統編輸入用） */
+export function normalizeTwTaxId(raw: string): string {
+  return String(raw || "").replace(/\D/g, "").slice(0, 8);
+}
+
+/**
+ * 台灣統一編號檢查（財政部演算法）
+ * 權重 [1,2,1,2,1,2,4,1]；第 7 碼為 7 時有例外可再 +1 判斷。
+ */
 export function isValidTwTaxId(raw: string): boolean {
-  const id = String(raw || "").trim();
+  const id = normalizeTwTaxId(raw);
   if (!/^\d{8}$/.test(id)) return false;
-  const weights = [1, 2, 1, 2, 1, 2, 1, 2];
+  const weights = [1, 2, 1, 2, 1, 2, 4, 1];
   let sum = 0;
   for (let i = 0; i < 8; i++) {
     const n = Number(id[i]) * weights[i];
     sum += Math.floor(n / 10) + (n % 10);
   }
-  return sum % 10 === 0;
+  if (sum % 10 === 0) return true;
+  // 第 7 碼為 7 的例外（乘積進位可忽略一次）
+  if (id[6] === "7" && (sum + 1) % 10 === 0) return true;
+  return false;
 }
 
 export function validateInvoicePreference(
@@ -71,12 +82,15 @@ export function validateInvoicePreference(
 
   if (type === "triple") {
     const companyName = String(inv?.companyName || "").trim();
-    const taxId = String(inv?.taxId || "").trim();
+    const taxId = normalizeTwTaxId(inv?.taxId || "");
     if (!companyName) {
       return { ok: false, message: "請填寫發票抬頭" };
     }
+    if (taxId.length !== 8) {
+      return { ok: false, message: "統一編號須為 8 碼數字" };
+    }
     if (!isValidTwTaxId(taxId)) {
-      return { ok: false, message: "請輸入正確的統一編號（8 碼）" };
+      return { ok: false, message: "統一編號檢查碼不正確，請確認後再試" };
     }
     return { ok: true, value: { type: "triple", companyName, taxId } };
   }

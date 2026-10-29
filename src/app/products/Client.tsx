@@ -553,7 +553,7 @@ function Pagination({
             onClick={() => onChange(p as number)}
             className={`flex h-8 w-8 items-center justify-center rounded transition-colors ${
               p === current
-                ? "bg-black text-white"
+                ? "bg-[#2a514d] text-white"
                 : "text-[#333] hover:bg-[#f0f0f0]"
             }`}
           >

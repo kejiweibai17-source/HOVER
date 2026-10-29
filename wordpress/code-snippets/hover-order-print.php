@@ -21,6 +21,9 @@ if (defined('HOP_LOADED')) {
 }
 define('HOP_LOADED', true);
 
+/** 官方 LINE（與官網／信件 footer 一致） */
+const HOP_LINE_ID = '@330kefmm';
+
 /* ─────────────────────────────────────────────
  * 1. 訂單列表：加「明細」「揀貨」按鈕
  * ──────────────────────────────────────────── */
@@ -568,7 +571,7 @@ function hop_output_document(WC_Order $order, string $doc): void
         <div class="doc-footer">
             <div class="notice-txt">
                 如商品有任何問題，請保留完整包裝，<br>
-                並於收到商品7日內聯繫官方客服 Line ID : @hover.tw。
+                並於收到商品7日內聯繫官方客服 Line ID : <?php echo esc_html(HOP_LINE_ID); ?>。
             </div>
             <?php echo hop_print_logo_html(); ?>
         </div>

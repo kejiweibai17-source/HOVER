@@ -52,6 +52,8 @@ function LinkAccountContent() {
   );
   const [ready, setReady] = useState(isDemo);
   const [missing, setMissing] = useState(false);
+  const [loggedIn, setLoggedIn] = useState(false);
+  const [sessionName, setSessionName] = useState("");
 
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
@@ -71,20 +73,39 @@ function LinkAccountContent() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/auth/social/pending", {
-          cache: "no-store",
-          credentials: "include",
-        });
-        const data = await res.json().catch(() => ({}));
+        const [pendingRes, profileRes] = await Promise.all([
+          fetch("/api/auth/social/pending", {
+            cache: "no-store",
+            credentials: "include",
+          }),
+          fetch("/api/account/profile", {
+            cache: "no-store",
+            credentials: "include",
+          }),
+        ]);
+        const pendingData = await pendingRes.json().catch(() => ({}));
+        const profileData = await profileRes.json().catch(() => ({}));
         if (cancelled) return;
-        if (!res.ok || !data?.pending) {
+
+        if (profileData?.loggedIn) {
+          setLoggedIn(true);
+          setSessionName(
+            String(
+              profileData?.customer?.display_name ||
+                profileData?.customer?.email ||
+                "",
+            ).trim(),
+          );
+        }
+
+        if (!pendingRes.ok || !pendingData?.pending) {
           setMissing(true);
           setReady(true);
           return;
         }
-        const normalized = normalizeProvider(data.provider);
+        const normalized = normalizeProvider(pendingData.provider);
         setProvider(normalized);
-        setProviderLabel(String(data.providerLabel || "第三方"));
+        setProviderLabel(String(pendingData.providerLabel || "第三方"));
         setReady(true);
       } catch {
         if (!cancelled) {
@@ -97,6 +118,34 @@ function LinkAccountContent() {
       cancelled = true;
     };
   }, [demoProvider, isDemo]);
+
+  async function handleSessionBind() {
+    if (bindLoading) return;
+    if (isDemo) {
+      setError("這是預覽頁，不會真的綁定。請改用實際社群登入流程。");
+      return;
+    }
+    setError("");
+    setBindLoading(true);
+    try {
+      const res = await fetch("/api/auth/social/bind", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ mode: "session" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.ok) {
+        setError(String(data?.message || "綁定失敗"));
+        return;
+      }
+      router.replace(withBoundSuccessFlag(data.next || next || "/account"));
+    } catch {
+      setError("綁定失敗，請稍後再試");
+    } finally {
+      setBindLoading(false);
+    }
+  }
 
   async function handleBind(e: React.FormEvent) {
     e.preventDefault();
@@ -196,7 +245,9 @@ function LinkAccountContent() {
           綁定 {providerLabel}
         </h2>
         <p className="mt-3 text-[13px] leading-relaxed text-[#666]">
-          首次使用 {providerLabel} 登入，請先驗證您的 HOVER 會員帳號。
+          {loggedIn
+            ? `您目前已登入${sessionName ? `（${sessionName}）` : ""}，可直接將 ${providerLabel} 綁定至這個帳號。`
+            : `首次使用 ${providerLabel} 登入，請先驗證您的 HOVER 會員帳號。`}
         </p>
       </div>
 
@@ -204,66 +255,87 @@ function LinkAccountContent() {
         <p className="mt-6 text-center text-[13px] text-[#c90000]">{error}</p>
       ) : null}
 
-      <section className="mt-8 border-t border-[#ddd] pt-6">
-        <h3 className="text-center text-[15px] font-semibold text-[#2a514d]">
-          驗證 HOVER 會員帳號
-        </h3>
-        <form onSubmit={handleBind} className="mt-5 space-y-4">
-          <AuthField
-            label="註冊手機號碼"
-            type="tel"
-            name="phone"
-            value={phone}
-            onChange={setPhone}
-            required
-            autoComplete="tel"
-            inputMode="tel"
-            pattern="09[0-9]{8}"
-            maxLength={10}
-            disabled={bindLoading}
-          />
-          <AuthField
-            label="密碼"
-            type="password"
-            name="password"
-            value={password}
-            onChange={setPassword}
-            required
-            autoComplete="current-password"
-            disabled={bindLoading}
-          />
-          <TurnstileWidget
-            onToken={setTurnstileToken}
-            onExpire={() => setTurnstileToken("")}
-          />
+      {loggedIn ? (
+        <section className="mt-8 border-t border-[#ddd] pt-6">
           <button
-            type="submit"
+            type="button"
+            onClick={handleSessionBind}
             disabled={bindLoading}
             className="w-full bg-[#2a514d] py-3.5 text-[14px] font-semibold tracking-[0.06em] text-white disabled:opacity-60"
           >
-            {bindLoading ? "驗證中…" : "驗證並綁定"}
+            {bindLoading ? "綁定中…" : `確認綁定 ${providerLabel}`}
           </button>
-        </form>
-      </section>
+          <p className="mt-4 text-center text-[12px] text-[#888]">
+            不需再輸入手機與密碼
+          </p>
+        </section>
+      ) : (
+        <>
+          <section className="mt-8 border-t border-[#ddd] pt-6">
+            <h3 className="text-center text-[15px] font-semibold text-[#2a514d]">
+              驗證 HOVER 會員帳號
+            </h3>
+            <form onSubmit={handleBind} className="mt-5 space-y-4">
+              <AuthField
+                label="註冊手機號碼"
+                type="tel"
+                name="phone"
+                value={phone}
+                onChange={setPhone}
+                required
+                autoComplete="tel"
+                inputMode="tel"
+                pattern="09[0-9]{8}"
+                maxLength={10}
+                disabled={bindLoading}
+              />
+              <AuthField
+                label="密碼"
+                type="password"
+                name="password"
+                value={password}
+                onChange={setPassword}
+                required
+                autoComplete="current-password"
+                disabled={bindLoading}
+              />
+              <TurnstileWidget
+                onToken={setTurnstileToken}
+                onExpire={() => setTurnstileToken("")}
+              />
+              <button
+                type="submit"
+                disabled={bindLoading}
+                className="w-full bg-[#2a514d] py-3.5 text-[14px] font-semibold tracking-[0.06em] text-white disabled:opacity-60"
+              >
+                {bindLoading ? "驗證中…" : "驗證並綁定"}
+              </button>
+            </form>
+          </section>
 
-      <section className="mt-8 border-t border-[#ddd] pt-6 text-center">
-        <h3 className="text-[15px] font-semibold text-[#2a514d]">
-          尚未加入 HOVER ?
-        </h3>
-        <p className="mt-2 text-[12px] leading-relaxed text-[#888]">
-          請先完成會員註冊，再回來綁定 {providerLabel}。
-        </p>
-        <Link
-          href={registerHref}
-          className="mt-5 inline-flex w-full items-center justify-center border border-[#2a514d] py-3.5 text-[14px] font-semibold tracking-[0.06em] text-[#2a514d]"
-        >
-          前往註冊會員
-        </Link>
-      </section>
+          <section className="mt-8 border-t border-[#ddd] pt-6 text-center">
+            <h3 className="text-[15px] font-semibold text-[#2a514d]">
+              尚未加入 HOVER ?
+            </h3>
+            <p className="mt-2 text-[12px] leading-relaxed text-[#888]">
+              請先完成會員註冊，再回來綁定 {providerLabel}。
+            </p>
+            <Link
+              href={registerHref}
+              className="mt-5 inline-flex w-full items-center justify-center border border-[#2a514d] py-3.5 text-[14px] font-semibold tracking-[0.06em] text-[#2a514d]"
+            >
+              前往註冊會員
+            </Link>
+          </section>
+        </>
+      )}
 
       <p className="mt-8 text-center text-[12px] text-[#888]">
-        <Link href="/login" className="underline underline-offset-2">
-          取消，回到登入
+        <Link
+          href={loggedIn ? "/account" : "/login"}
+          className="underline underline-offset-2"
+        >
+          {loggedIn ? "取消，回到會員中心" : "取消，回到登入"}
         </Link>
       </p>
     </div>

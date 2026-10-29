@@ -20,6 +20,8 @@ import {
   Crown,
   AlertCircle,
   X,
+  Copy,
+  ChevronUp,
 } from "lucide-react";
 import { useCartStore } from "@/lib/cartStore";
 import { useAuthStore } from "@/lib/authStore";
@@ -32,6 +34,7 @@ import {
   isValidLoveCode,
   isValidMobileCarrier,
   isValidTwTaxId,
+  normalizeTwTaxId,
   normalizeMobileCarrier,
 } from "@/lib/invoicePreference";
 import { formatProductPrice } from "@/lib/utils";
@@ -783,7 +786,7 @@ function CartBreadcrumb({ currentStep, onStepClick }) {
                 <span
                   aria-hidden
                   className={`mx-4 h-px w-10 md:mx-6 md:w-16 ${
-                    isPast || isActive ? "bg-black" : "bg-[#ddd]"
+                    isPast || isActive ? "bg-[#2a514d]" : "bg-[#ddd]"
                   }`}
                 />
               )}
@@ -793,10 +796,10 @@ function CartBreadcrumb({ currentStep, onStepClick }) {
                   onClick={() => onStepClick(s.step)}
                   className="group flex flex-col items-center gap-2 transition-opacity hover:opacity-70"
                 >
-                  <span className="flex h-7 w-7 items-center justify-center rounded-full border border-black bg-black text-[12px] font-semibold text-white">
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full border border-[#2a514d] bg-[#2a514d] text-[12px] font-semibold text-white">
                     {s.step}
                   </span>
-                  <span className="text-[12px] font-medium text-black">
+                  <span className="text-[12px] font-medium text-[#2a514d]">
                     {s.zh}
                   </span>
                 </button>
@@ -805,7 +808,7 @@ function CartBreadcrumb({ currentStep, onStepClick }) {
                   <span
                     className={`flex h-7 w-7 items-center justify-center rounded-full border text-[12px] font-semibold ${
                       isActive
-                        ? "border-black bg-black text-white"
+                        ? "border-[#2a514d] bg-[#2a514d] text-white"
                         : "border-[#ccc] bg-white text-[#bbb]"
                     }`}
                   >
@@ -813,7 +816,7 @@ function CartBreadcrumb({ currentStep, onStepClick }) {
                   </span>
                   <span
                     className={`text-[12px] ${
-                      isActive ? "font-medium text-black" : "text-[#bbb]"
+                      isActive ? "font-medium text-[#2a514d]" : "text-[#bbb]"
                     }`}
                   >
                     {s.zh}
@@ -1258,7 +1261,7 @@ function PromotionOfferCard({
           }
           className={`min-w-[56px] px-3 py-2 text-[12px] transition-colors ${
             selected
-              ? "bg-black text-white"
+              ? "bg-[#1e3d3a] text-white"
               : disabled
                 ? "cursor-not-allowed bg-[#d0d0d0] text-white"
                 : "bg-[#2a514d] text-white hover:bg-[#1e3d3a]"
@@ -1582,6 +1585,11 @@ function CheckoutStep({
   const [couponError, setCouponError] = useState("");
   const [couponApplying, setCouponApplying] = useState(false);
   const [shipInfoOpen, setShipInfoOpen] = useState(false);
+  const [myCouponsOpen, setMyCouponsOpen] = useState(false);
+  const [myCoupons, setMyCoupons] = useState([]);
+  const [myCouponsLoading, setMyCouponsLoading] = useState(false);
+  const [myCouponsLoaded, setMyCouponsLoaded] = useState(false);
+  const [copiedCouponCode, setCopiedCouponCode] = useState("");
 
   const displayName = [addr.lastName, addr.firstName]
     .filter(Boolean)
@@ -1630,6 +1638,59 @@ function CheckoutStep({
     [checkoutPricing, shipMethod, shippingSettings, appliedCoupon],
   );
 
+  const loadMyCoupons = useCallback(async () => {
+    if (!isLoggedIn) {
+      setMyCoupons([]);
+      setMyCouponsLoaded(true);
+      return;
+    }
+    setMyCouponsLoading(true);
+    try {
+      const res = await fetch("/api/account/coupons/available", {
+        cache: "no-store",
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      const list = Array.isArray(data.coupons)
+        ? data.coupons
+        : Array.isArray(data.available)
+          ? data.available
+          : [];
+      setMyCoupons(
+        list.filter((c) => String(c?.status || "usable") === "usable"),
+      );
+    } catch {
+      setMyCoupons([]);
+    } finally {
+      setMyCouponsLoading(false);
+      setMyCouponsLoaded(true);
+    }
+  }, [isLoggedIn]);
+
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setMyCoupons([]);
+      setMyCouponsLoaded(false);
+      setMyCouponsOpen(false);
+      return;
+    }
+    loadMyCoupons();
+  }, [isLoggedIn, loadMyCoupons]);
+
+  const handleCopyCouponCode = async (code) => {
+    const value = String(code || "").toUpperCase();
+    if (!value) return;
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopiedCouponCode(value);
+      window.setTimeout(() => {
+        setCopiedCouponCode((prev) => (prev === value ? "" : prev));
+      }, 1800);
+    } catch {
+      /* ignore clipboard errors */
+    }
+  };
+
   const handleApplyCoupon = async (codeOverride) => {
     const code = String(codeOverride ?? discountCode).trim();
     if (!code) {
@@ -1670,12 +1731,22 @@ function CheckoutStep({
         discount: data.amount,
       });
       setCouponError("");
+      setMyCouponsOpen(false);
     } catch {
       setCouponError("驗證失敗，請稍後再試");
       setAppliedCoupon(null);
     } finally {
       setCouponApplying(false);
     }
+  };
+
+  const handleSelectMyCoupon = async (coupon) => {
+    const code = String(coupon?.code || "").toUpperCase();
+    if (!code) return;
+    setDiscountCode(code);
+    setCouponError("");
+    await handleCopyCouponCode(code);
+    await handleApplyCoupon(code);
   };
 
   // 🚨 【護城河 1】：前往地圖前，強制手動儲存至 sessionStorage
@@ -1771,9 +1842,12 @@ function CheckoutStep({
         e.invoice = "請輸入正確手機條碼（/ 開頭共 8 碼）";
       }
     } else if (invoiceType === "triple") {
+      const taxId = normalizeTwTaxId(invoiceTaxId);
       if (!String(invoiceTitle || "").trim()) e.invoice = "請填寫發票抬頭";
-      else if (!isValidTwTaxId(invoiceTaxId)) {
-        e.invoice = "請輸入正確統一編號（8 碼）";
+      else if (taxId.length !== 8) {
+        e.invoice = "統一編號須為 8 碼數字";
+      } else if (!isValidTwTaxId(taxId)) {
+        e.invoice = "統一編號檢查碼不正確，請確認後再試";
       }
     } else if (invoiceType === "donate") {
       if (!isValidLoveCode(donateCode)) {
@@ -2130,7 +2204,7 @@ function CheckoutStep({
               <ul className="mt-4 space-y-2 text-[11px] leading-[1.75] text-[#888]">
                 <li>
                   *
-                  訂單成立後系統將自動產生一組專屬付款資訊，包含銀行代碼、虛擬帳號、付款金額與繳費期限。
+                  訂單成立並於綠界頁取得繳費帳號後，系統會產生銀行代碼、虛擬帳號、金額與繳費期限。關閉付款頁後，可至「會員中心 → 訂單查詢」點入該筆訂單查看匯款資訊，無需重新下單。
                 </li>
                 <li>
                   *
@@ -2200,9 +2274,14 @@ function CheckoutStep({
                   onChange={(e) => setInvoiceTitle(e.target.value)}
                 />
                 <HoverUnderlineInput
-                  placeholder="統一編號"
+                  placeholder="統一編號（8 碼）"
                   value={invoiceTaxId}
-                  onChange={(e) => setInvoiceTaxId(e.target.value)}
+                  inputMode="numeric"
+                  maxLength={8}
+                  autoComplete="off"
+                  onChange={(e) =>
+                    setInvoiceTaxId(normalizeTwTaxId(e.target.value))
+                  }
                 />
               </div>
             )}
@@ -2344,41 +2423,150 @@ function CheckoutStep({
               </div>
             )}
 
-            <div className="mt-8 flex items-end justify-between gap-4 border-t border-[#e8e8e8] pt-6">
-              <div className="min-w-0 flex-1">
-                <input
-                  type="text"
-                  value={discountCode}
-                  onChange={(e) => {
-                    setDiscountCode(e.target.value);
-                    if (couponError) setCouponError("");
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") {
-                      e.preventDefault();
-                      handleApplyCoupon();
-                    }
-                  }}
-                  placeholder="輸入折扣碼"
-                  className="w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none transition-colors focus:border-black"
-                />
-                {couponError && (
-                  <p className="mt-1 text-[11px] text-red-600">{couponError}</p>
-                )}
-                {appliedCoupon && !couponError && (
-                  <p className="mt-1 text-[11px] text-[#2a514d]">
-                    已套用：{appliedCoupon.label}
-                  </p>
-                )}
+            <div className="mt-8 border-t border-[#e8e8e8] pt-6">
+              <div className="flex items-end justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <input
+                    type="text"
+                    value={discountCode}
+                    onChange={(e) => {
+                      setDiscountCode(e.target.value);
+                      if (couponError) setCouponError("");
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleApplyCoupon();
+                      }
+                    }}
+                    placeholder="輸入折扣碼"
+                    className="w-full border-0 border-b border-[#bbb] bg-transparent pb-2 pt-1 text-[14px] text-black placeholder-[#aaa] outline-none transition-colors focus:border-black"
+                  />
+                  {couponError && (
+                    <p className="mt-1 text-[11px] text-red-600">{couponError}</p>
+                  )}
+                  {appliedCoupon && !couponError && (
+                    <p className="mt-1 text-[11px] text-[#2a514d]">
+                      已套用：{appliedCoupon.label}
+                    </p>
+                  )}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => handleApplyCoupon()}
+                  disabled={couponApplying}
+                  className="shrink-0 bg-[#2a514d] px-6 py-2.5 text-[13px] font-medium text-white transition-colors hover:bg-[#1e3d3a] disabled:opacity-60 md:px-8"
+                >
+                  {couponApplying ? "驗證中..." : "套用"}
+                </button>
               </div>
-              <button
-                type="button"
-                onClick={() => handleApplyCoupon()}
-                disabled={couponApplying}
-                className="shrink-0 bg-[#2a514d] px-6 py-2.5 text-[13px] font-medium text-white transition-colors hover:bg-[#1e3d3a] disabled:opacity-60 md:px-8"
-              >
-                {couponApplying ? "驗證中..." : "套用"}
-              </button>
+
+              {isLoggedIn ? (
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const next = !myCouponsOpen;
+                      setMyCouponsOpen(next);
+                      if (next && !myCouponsLoaded) loadMyCoupons();
+                    }}
+                    className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[#2a514d] transition-opacity hover:opacity-80"
+                  >
+                    查看我的適用優惠券
+                    {myCouponsOpen ? (
+                      <ChevronUp size={16} strokeWidth={1.75} />
+                    ) : (
+                      <ChevronDown size={16} strokeWidth={1.75} />
+                    )}
+                  </button>
+
+                  {myCouponsOpen ? (
+                    <div className="mt-3 border border-[#ddd] bg-[#fafafa]">
+                      {myCouponsLoading ? (
+                        <p className="px-4 py-5 text-center text-[13px] text-[#888]">
+                          讀取優惠券中…
+                        </p>
+                      ) : myCoupons.length === 0 ? (
+                        <p className="px-4 py-5 text-center text-[13px] text-[#888]">
+                          目前沒有可使用的優惠券。可至會員中心「優惠券」查看領取狀態。
+                        </p>
+                      ) : (
+                        <ul className="max-h-[280px] divide-y divide-[#e5e5e5] overflow-y-auto">
+                          {myCoupons.map((c) => {
+                            const code = String(c.code || "").toUpperCase();
+                            const name = c.kindLabel || "專屬優惠";
+                            const minAmt = Number(c.minimumAmount || 0) || 0;
+                            const expiresLabel = c.expires
+                              ? new Date(c.expires).toLocaleDateString("zh-TW", {
+                                  year: "numeric",
+                                  month: "2-digit",
+                                  day: "2-digit",
+                                })
+                              : "無期限";
+                            const amountLabel =
+                              c.discountType === "percent"
+                                ? `${Number(c.amount) || 0}% 折`
+                                : currency(Number(c.amount) || 0);
+                            const copied = copiedCouponCode === code;
+                            return (
+                              <li key={code} className="bg-white px-4 py-3">
+                                <div className="flex items-start justify-between gap-3">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleSelectMyCoupon(c)}
+                                    disabled={couponApplying}
+                                    className="min-w-0 flex-1 text-left disabled:opacity-60"
+                                  >
+                                    <p className="text-[14px] font-semibold text-black">
+                                      {name}
+                                      <span className="ml-2 text-[13px] font-bold text-[#c0392b]">
+                                        {amountLabel}
+                                      </span>
+                                    </p>
+                                    <p className="mt-1 font-mono text-[13px] font-bold tracking-wide text-[#2a514d]">
+                                      {code}
+                                    </p>
+                                    <p className="mt-1 text-[12px] leading-relaxed text-[#666]">
+                                      門檻：
+                                      {minAmt > 0
+                                        ? `單筆滿 ${currency(minAmt)}`
+                                        : "無最低消費"}
+                                      <span className="mx-1.5 text-[#ccc]">｜</span>
+                                      效期：{expiresLabel}
+                                    </p>
+                                    <p className="mt-1 text-[11px] text-[#888]">
+                                      點選即可複製並套用
+                                    </p>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    title="複製折扣碼"
+                                    onClick={() => handleCopyCouponCode(code)}
+                                    className="relative shrink-0 border border-[#ccc] bg-white p-2 text-[#555] transition-colors hover:border-[#2a514d] hover:text-[#2a514d]"
+                                  >
+                                    <Copy size={15} />
+                                    <span
+                                      className={`pointer-events-none absolute -top-7 right-0 whitespace-nowrap text-[11px] text-[#2a514d] transition-opacity ${
+                                        copied ? "opacity-100" : "opacity-0"
+                                      }`}
+                                    >
+                                      已複製
+                                    </span>
+                                  </button>
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      )}
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <p className="mt-3 text-[12px] text-[#888]">
+                  登入會員後可查看並套用專屬優惠券。
+                </p>
+              )}
             </div>
           </section>
 

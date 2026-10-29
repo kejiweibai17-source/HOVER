@@ -62,7 +62,7 @@ export default function VerifyEmailInner() {
         {status !== "loading" && (
           <p
             className={`text-sm ${
-              status === "ok" ? "text-emerald-700" : "text-rose-600"
+              status === "ok" ? "text-[#2a514d]" : "text-rose-600"
             }`}
           >
             {msg}
@@ -72,7 +72,7 @@ export default function VerifyEmailInner() {
         {status === "ok" && (
           <button
             onClick={() => router.push("/login")}
-            className="mt-2 w-full rounded-md bg-slate-800 px-4 py-2 text-white hover:bg-slate-700"
+            className="mt-2 w-full rounded-md bg-[#2a514d] px-4 py-2 text-white hover:bg-[#1e3d3a]"
           >
             前往登入
           </button>

@@ -67,7 +67,7 @@ export default function ResetPasswordInner() {
   }
 
   const resetInputClass =
-    "w-full border p-2 rounded-md pr-10 focus:outline-none focus:ring-2 focus:ring-slate-300";
+    "w-full border p-2 rounded-md pr-10 focus:outline-none focus:ring-2 focus:ring-[#2a514d]/30";
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-white px-4">
@@ -86,7 +86,7 @@ export default function ResetPasswordInner() {
           </p>
         )}
         {msg && (
-          <p className="text-emerald-700 text-sm text-center bg-emerald-50 border border-emerald-200 rounded-md py-2">
+          <p className="text-[#2a514d] text-sm text-center bg-[#f3f6f5] border border-[#c5d4d1] rounded-md py-2">
             {msg}
           </p>
         )}
@@ -116,8 +116,8 @@ export default function ResetPasswordInner() {
               disabled={submitting}
               className={`w-full p-2 rounded-md text-white transition ${
                 submitting
-                  ? "bg-slate-400 cursor-not-allowed"
-                  : "bg-slate-800 hover:bg-slate-700"
+                  ? "bg-[#2a514d]/40 cursor-not-allowed"
+                  : "bg-[#2a514d] hover:bg-[#1e3d3a]"
               }`}
             >
               {submitting ? "送出中…" : "確認重設密碼"}
@@ -131,7 +131,7 @@ export default function ResetPasswordInner() {
             onClick={() =>
               router.push(`/login?next=${encodeURIComponent(next)}`)
             }
-            className="text-slate-700 underline"
+            className="text-[#2a514d] underline"
           >
             回到登入
           </button>

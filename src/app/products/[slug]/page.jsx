@@ -10,7 +10,8 @@ import { productDetailGallerySources } from "@/lib/productCardImages";
 import { stripHtmlToText } from "@/lib/utils";
 import { fetchShippingSettings } from "@/lib/shippingDefaults";
 
-export const revalidate = 0;
+/** ISR：商品頁 60s 熱快取；庫存結帳仍走 /api/stock/check（no-store） */
+export const revalidate = 60;
 
 // 🌟 動態獲取網址：本地端會顯示 localhost，正式上線設定變數後自動轉為正式網址
 const getSiteUrl = () => {
@@ -101,8 +102,10 @@ export async function generateStaticParams() {
 
 // ===================== Metadata 動態生成與 SEO 優化 =====================
 export async function generateMetadata({ params }) {
-  const p = await fetchProductBySlug(params.slug);
-  const shipping = await fetchShippingSettings();
+  const [p, shipping] = await Promise.all([
+    fetchProductBySlug(params.slug),
+    fetchShippingSettings(),
+  ]);
   const siteName = "HOVER";
 
   if (!p) {
@@ -180,12 +183,18 @@ export async function generateMetadata({ params }) {
 }
 
 export default async function ProductPage({ params }) {
-  const shipping = await fetchShippingSettings();
   let woo = null;
+  let shipping;
   try {
-    woo = await fetchProductBySlug(params.slug);
+    const result = await Promise.all([
+      fetchProductBySlug(params.slug),
+      fetchShippingSettings(),
+    ]);
+    woo = result[0];
+    shipping = result[1];
   } catch {
     woo = null;
+    shipping = await fetchShippingSettings();
   }
 
   const defaultFallback = {

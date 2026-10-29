@@ -111,7 +111,7 @@ export const TERMS_SECTIONS: TermsSection[] = [
       "若您對商品、訂單、付款、配送、退貨或本網站服務有任何疑問，請先透過 HOVER 官方客服與我們聯繫，我們將盡力協助確認並處理。",
       "客服信箱：service@hoverofficial.com",
       "客服時間：MON.–FRI. 10:00–19:00",
-      "官方 LINE：@HOVER",
+      "官方 LINE：@330kefmm",
       "若因本服務條款或網路交易產生爭議，雙方應本於誠信原則協商解決。若仍有訴訟必要，依相關法律規定處理。",
     ],
   },

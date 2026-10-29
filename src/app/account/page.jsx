@@ -24,7 +24,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import HoverIcon from "@/components/hover/HoverIcon";
 import WishlistIcon from "@/components/hover/WishlistIcon";
-import { PasswordInput } from "@/components/hover/AuthField";
+import { BirthdaySelect, PasswordInput } from "@/components/hover/AuthField";
 import { useShippingSettings } from "@/lib/useShippingSettings";
 import {
   buildOrderDetailSummary,
@@ -912,8 +912,8 @@ function OrderDetail({
             </p>
           </div>
         ) : (
-          <p className="text-[12px] text-[#888]">
-            虛擬帳號資料讀取中，請稍後再點更新。
+          <p className="text-[12px] leading-relaxed text-[#888]">
+            尚無虛擬帳號資料。若您已在綠界付款頁點選「取得繳費帳號」，請點上方「更新付款狀態」重新載入；若關閉頁面時尚未取得帳號，請透過官方 LINE 聯繫客服協助，勿重複下單多筆。
           </p>
         )}
       </div>
@@ -1010,15 +1010,22 @@ function OrderDetail({
             showTotalDivider
             totalRowClassName="flex items-center justify-between"
           />
-
-          <button
-            type="button"
-            onClick={() => setShowOrderStatus((v) => !v)}
-            className="mt-6 flex h-[48px] w-full items-center justify-center border border-[#222] bg-white text-[14px] font-medium text-black transition-colors hover:bg-[#fafafa]"
-          >
-            {showOrderStatus ? "收合訂單狀態" : "查看訂單狀態"}
-          </button>
         </div>
+
+        {/* ATM 匯款資訊：待付款時預設展開，不必先點「查看訂單狀態」 */}
+        {(showAtmRemittance || showAtmPendingHint) && (
+          <section className="mt-6 overflow-hidden rounded-lg border border-[#e4e4e4] bg-white px-4 py-4">
+            <AtmRemittanceBlock side />
+          </section>
+        )}
+
+        <button
+          type="button"
+          onClick={() => setShowOrderStatus((v) => !v)}
+          className="mt-6 flex h-[48px] w-full items-center justify-center border border-[#222] bg-white text-[14px] font-medium text-black transition-colors hover:bg-[#fafafa]"
+        >
+          {showOrderStatus ? "收合訂單狀態" : "查看訂單狀態"}
+        </button>
 
         {showOrderStatus ? (
           <div className="mt-6 space-y-4">
@@ -1088,7 +1095,6 @@ function OrderDetail({
                   </InfoRow>
                   <InfoRow label="發票開立日期">{invoiceDate}</InfoRow>
                 </div>
-                <AtmRemittanceBlock compact />
               </div>
             </section>
           </div>
@@ -1369,7 +1375,9 @@ function AccountPageContent() {
   const [profileEditing, setProfileEditing] = useState(false);
   const [passwordEditing, setPasswordEditing] = useState(false);
   const [authProvider, setAuthProvider] = useState(null);
+  const [linkedProviders, setLinkedProviders] = useState([]);
   const [bindSuccessMessage, setBindSuccessMessage] = useState("");
+  const [bindErrorMessage, setBindErrorMessage] = useState("");
 
   const loadProfile = useCallback(async () => {
     setLoading(true);
@@ -1385,6 +1393,9 @@ function AccountPageContent() {
         setLoggedIn(true);
         setCustomer(nextCustomer);
         setAuthProvider(data.authProvider || null);
+        setLinkedProviders(
+          Array.isArray(data.linkedProviders) ? data.linkedProviders : [],
+        );
         setProfileForm({
           name: String(nextCustomer.display_name || "").trim(),
           phone: nextCustomer.phone || nextCustomer.billing_phone || "",
@@ -1396,11 +1407,13 @@ function AccountPageContent() {
         setCustomer(null);
         setMembership(null);
         setAuthProvider(null);
+        setLinkedProviders([]);
       }
     } catch {
       setError("讀取會員資料失敗，請稍後再試。");
       setLoggedIn(false);
       setAuthProvider(null);
+      setLinkedProviders([]);
     } finally {
       setLoading(false);
     }
@@ -1480,14 +1493,14 @@ function AccountPageContent() {
           window.alert(data?.message || "取消失敗，請稍後再試或聯繫客服。");
           return;
         }
-        await loadOrders();
+        await Promise.all([loadOrders(), loadProfile()]);
       } catch {
         window.alert("取消失敗，請稍後再試。");
       } finally {
         setCancellingOrderId(null);
       }
     },
-    [loadOrders],
+    [loadOrders, loadProfile],
   );
 
   const loadReferral = useCallback(async () => {
@@ -1539,10 +1552,29 @@ function AccountPageContent() {
   useEffect(() => {
     const tab = searchParams.get("tab");
     const bound = searchParams.get("bound");
+    const bindError = searchParams.get("bind_error");
     if (bound === "1") {
       setBindSuccessMessage("綁定成功！");
+      setBindErrorMessage("");
       const params = new URLSearchParams(searchParams.toString());
       params.delete("bound");
+      params.delete("bind_error");
+      const qs = params.toString();
+      router.replace(qs ? `/account?${qs}` : "/account", { scroll: false });
+      loadProfile();
+    }
+    if (bindError) {
+      const messages = {
+        social_taken: "此社群帳號已綁定其他會員，請改用該帳號登入。",
+        bind_login_required: "請重新登入後再綁定社群帳號。",
+        line_login_failed: "LINE 授權取消或失敗，請再試一次。",
+        facebook_login_failed: "Facebook 授權取消或失敗，請再試一次。",
+      };
+      setBindErrorMessage(
+        messages[bindError] || "社群綁定失敗，請稍後再試。",
+      );
+      const params = new URLSearchParams(searchParams.toString());
+      params.delete("bind_error");
       const qs = params.toString();
       router.replace(qs ? `/account?${qs}` : "/account", { scroll: false });
     }
@@ -1558,13 +1590,19 @@ function AccountPageContent() {
     if (!tab) {
       setActiveTab("profile");
     }
-  }, [searchParams, router]);
+  }, [searchParams, router, loadProfile]);
 
   useEffect(() => {
     if (!bindSuccessMessage) return;
     const timer = window.setTimeout(() => setBindSuccessMessage(""), 4000);
     return () => window.clearTimeout(timer);
   }, [bindSuccessMessage]);
+
+  useEffect(() => {
+    if (!bindErrorMessage) return;
+    const timer = window.setTimeout(() => setBindErrorMessage(""), 6000);
+    return () => window.clearTimeout(timer);
+  }, [bindErrorMessage]);
 
   useEffect(() => {
     if (loggedIn) {
@@ -1800,9 +1838,10 @@ function AccountPageContent() {
   }, [orders, searchQuery]);
 
   const orderStats = useMemo(() => {
-    const total = orders.length;
-    const completed = orders.filter((o) => {
-      const s = String(o.status || "").toLowerCase();
+    const isSpendCounting = (o) => {
+      const s = String(o?.status || "").toLowerCase();
+      // Align with membership spend: only paid/fulfilled statuses count.
+      // Cancelled / failed / refunded / pending must not inflate 累積消費總額.
       return (
         s === "completed" ||
         s === "processing" ||
@@ -1810,7 +1849,9 @@ function AccountPageContent() {
         s === "已完成" ||
         s === "處理中"
       );
-    }).length;
+    };
+    const total = orders.length;
+    const completed = orders.filter(isSpendCounting).length;
     const pending = orders.filter((o) => {
       const s = String(o.status || "").toLowerCase();
       return (
@@ -1820,10 +1861,12 @@ function AccountPageContent() {
         s === "waiting-payment"
       );
     }).length;
-    const totalSpent = orders.reduce(
-      (sum, o) => sum + (Number(o.total) || 0),
-      0,
-    );
+    const totalSpent = orders.reduce((sum, o) => {
+      if (!isSpendCounting(o)) return sum;
+      const gross = Number(o.total) || 0;
+      const refunded = Number(o.total_refunded) || 0;
+      return sum + Math.max(0, gross - refunded);
+    }, 0);
     return { total, completed, pending, totalSpent };
   }, [orders]);
 
@@ -1975,6 +2018,14 @@ function AccountPageContent() {
             {bindSuccessMessage}
           </p>
         ) : null}
+        {bindErrorMessage ? (
+          <p
+            role="alert"
+            className="mb-6 text-center text-[14px] font-medium text-red-700 sm:mb-8"
+          >
+            {bindErrorMessage}
+          </p>
+        ) : null}
 
         {/* Tab bar + logout */}
         <div className="mb-6 flex items-end justify-between gap-4 border-b border-[#ccc] sm:mb-8 sm:gap-10 md:gap-14">
@@ -2049,7 +2100,13 @@ function AccountPageContent() {
                     <div>
                       <p className="mb-1 text-[12px] text-[#888]">累積消費總額</p>
                       <p className="text-[16px] font-semibold sm:text-[17px]">
-                        {formatMoneyNT(orderStats.totalSpent)}
+                        {formatMoneyNT(
+                          // Prefer membership API (processing/completed, last 12m, net refunds).
+                          // Fallback: client stats that already exclude cancelled/failed.
+                          typeof membership?.totalSpent12m === "number"
+                            ? membership.totalSpent12m
+                            : orderStats.totalSpent,
+                        )}
                       </p>
                     </div>
                     <div>
@@ -2150,16 +2207,17 @@ function AccountPageContent() {
                                 設定完成後將無法修改
                               </p>
                             </div>
-                            <input
-                              type="date"
+                            <BirthdaySelect
                               value={birthdayInput}
-                              onChange={(e) => {
-                                setBirthdayInput(e.target.value);
+                              onChange={(v) => {
+                                setBirthdayInput(v);
                                 if (birthdayMessage) setBirthdayMessage("");
                               }}
-                              max={new Date().toISOString().slice(0, 10)}
-                              className="box-border min-h-[44px] w-full border-0 border-b border-[#bbb] bg-transparent px-0 py-2 text-[16px] text-black outline-none focus:border-black"
+                              selectClassName="box-border min-h-[44px] w-full appearance-none border-0 border-b border-[#bbb] bg-transparent px-0 py-2 text-[16px] text-black outline-none focus:border-black"
                             />
+                            <p className="mt-1 text-[12px] text-[#888]">
+                              須年滿 13 歲；年份可由近到遠完整選擇。
+                            </p>
                             {birthdayMessage && (
                               <p className="text-[12px] text-red-600">
                                 {birthdayMessage}
@@ -2214,6 +2272,58 @@ function AccountPageContent() {
                     )}
                   </div>
                   <div>
+                    <div className="mb-8">
+                      <p className="mb-3 text-[15px] font-semibold tracking-wide text-black sm:text-[16px]">
+                        社群帳號綁定
+                      </p>
+                      <p className="mb-4 text-[13px] leading-relaxed text-[#666]">
+                        已登入狀態下可直接綁定，不必再輸入手機與密碼。
+                      </p>
+                      <div className="space-y-3">
+                        {[
+                          {
+                            id: "line",
+                            label: "LINE",
+                            href: "/api/auth/line/start?from=account&next=%2Faccount",
+                          },
+                          {
+                            id: "facebook",
+                            label: "Facebook",
+                            href: "/api/auth/facebook/start?from=account&next=%2Faccount",
+                          },
+                        ].map((item) => {
+                          const linked = linkedProviders.includes(item.id);
+                          return (
+                            <div
+                              key={item.id}
+                              className="flex items-center justify-between gap-3 border-b border-[#eee] pb-3"
+                            >
+                              <div>
+                                <p className="text-[14px] font-medium text-black">
+                                  {item.label}
+                                </p>
+                                <p className="text-[12px] text-[#888]">
+                                  {linked ? "已綁定" : "尚未綁定"}
+                                </p>
+                              </div>
+                              {linked ? (
+                                <span className="text-[12px] font-medium text-[#2a514d]">
+                                  ✓
+                                </span>
+                              ) : (
+                                <a
+                                  href={item.href}
+                                  className="inline-flex min-h-[36px] items-center justify-center border border-[#2a514d] px-4 text-[12px] font-semibold tracking-[0.04em] text-[#2a514d] transition-opacity hover:opacity-80"
+                                >
+                                  綁定
+                                </a>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+
                     {authProvider ? (
                       <>
                         <p className="mb-4 text-[15px] font-semibold tracking-wide text-black sm:text-[16px]">
@@ -2539,7 +2649,11 @@ function AccountPageContent() {
                           </tr>
                         </thead>
                         <tbody>
-                          {filteredOrders.map((o, idx) => (
+                          {filteredOrders.map((o, idx) => {
+                            const unpaidAtm =
+                              isAtmPaymentOrder(o) &&
+                              getPaymentStatusLabel(o) === "待付款";
+                            return (
                             <tr
                               key={o.id}
                               onClick={() => setSelectedOrderId(o.id)}
@@ -2548,7 +2662,14 @@ function AccountPageContent() {
                                 idx % 2 === 1 ? "bg-[#fafafa]" : "bg-white",
                               )}
                             >
-                              <td className="px-3 py-4">{o.number || o.id}</td>
+                              <td className="px-3 py-4">
+                                <span className="block">{o.number || o.id}</span>
+                                {unpaidAtm ? (
+                                  <span className="mt-1 block text-[12px] font-medium text-[#2a514d]">
+                                    查看匯款帳戶
+                                  </span>
+                                ) : null}
+                              </td>
                               <td className="px-3 py-4">
                                 {formatOrderDate(o.date_created)}
                               </td>
@@ -2572,14 +2693,19 @@ function AccountPageContent() {
                                 />
                               </td>
                             </tr>
-                          ))}
+                            );
+                          })}
                         </tbody>
                       </table>
                     </div>
 
                     {/* Mobile list cards */}
                     <div className="space-y-0 divide-y divide-[#e8e8e8] border-y border-[#ddd] bg-white sm:hidden">
-                      {filteredOrders.map((o) => (
+                      {filteredOrders.map((o) => {
+                        const unpaidAtm =
+                          isAtmPaymentOrder(o) &&
+                          getPaymentStatusLabel(o) === "待付款";
+                        return (
                         <div
                           key={o.id}
                           className="flex w-full items-center justify-between gap-3 px-1 py-4 text-left"
@@ -2604,6 +2730,11 @@ function AccountPageContent() {
                             <p className="mt-1 text-[15px] font-medium">
                               {formatMoneyNT(Number(o.total))}
                             </p>
+                            {unpaidAtm ? (
+                              <p className="mt-1 text-[12px] font-medium text-[#2a514d]">
+                                查看匯款帳戶 →
+                              </p>
+                            ) : null}
                           </button>
                           <div className="flex shrink-0 flex-col items-end gap-2">
                             <OrderActionButton
@@ -2624,7 +2755,8 @@ function AccountPageContent() {
                             </button>
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </>
                 )}
@@ -2734,12 +2866,16 @@ function AccountPageContent() {
                   * 生日設定後無法修改
                 </span>
               </p>
-              <input
-                type="date"
-                value={modalBirthdayInput}
-                onChange={(e) => setModalBirthdayInput(e.target.value)}
-                className="w-full border border-[#c9cccf] rounded-md px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-[#008060] mb-6 font-medium text-[#202223]"
-              />
+              <div className="mb-2">
+                <BirthdaySelect
+                  value={modalBirthdayInput}
+                  onChange={setModalBirthdayInput}
+                  selectClassName="w-full appearance-none rounded-md border border-[#c9cccf] bg-white px-3 py-2.5 text-sm font-medium text-[#202223] outline-none focus:ring-2 focus:ring-[#2a514d]"
+                />
+              </div>
+              <p className="mb-6 text-[12px] text-[#6d7175]">
+                須年滿 13 歲；年份可由近到遠完整選擇（最早至 1920）。
+              </p>
               <div className="flex justify-end gap-3 pt-3 border-t border-[#ebebeb]">
                 <button
                   onClick={() => setShowBirthdayModal(false)}
@@ -2750,7 +2886,7 @@ function AccountPageContent() {
                 <button
                   onClick={handleModalSubmit}
                   disabled={birthdayLoading || !modalBirthdayInput}
-                  className="px-4 py-2 bg-[#008060] text-white rounded-md text-xs sm:text-sm font-bold hover:bg-[#006e52] shadow-sm disabled:opacity-50 flex-1 sm:flex-none"
+                  className="px-4 py-2 bg-[#2a514d] text-white rounded-md text-xs sm:text-sm font-bold hover:bg-[#1e3d3a] shadow-sm disabled:opacity-50 flex-1 sm:flex-none"
                 >
                   確認送出
                 </button>

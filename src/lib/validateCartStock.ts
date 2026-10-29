@@ -79,15 +79,22 @@ export async function checkCartStock(
     }
   }
 
+  const groupList = Array.from(groups.values());
+  const fetched = await Promise.all(
+    groupList.map(async (group) => {
+      const raw = await fetchProductOrVariation(
+        base,
+        auth,
+        group.productId,
+        group.variationId,
+      );
+      return { group, raw };
+    }),
+  );
+
   const results: StockCheckResult[] = [];
 
-  for (const group of Array.from(groups.values())) {
-    const raw = await fetchProductOrVariation(
-      base,
-      auth,
-      group.productId,
-      group.variationId,
-    );
+  for (const { group, raw } of fetched) {
     if (!raw) {
       return {
         ok: false,

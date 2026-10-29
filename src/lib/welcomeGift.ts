@@ -56,7 +56,7 @@ export type WelcomeGiftResult = {
 };
 
 /**
- * 若該手機尚未領過入會禮，標記 meta 並寄「歡迎加入 HOVER FRIENDS」信。
+ * 若該手機尚未領過入會禮，標記 meta 並寄「歡迎加入 HOVER」信。
  */
 export async function grantWelcomeGiftIfEligible(
   customerId: number,
