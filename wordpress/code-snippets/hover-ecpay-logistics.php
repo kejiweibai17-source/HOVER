@@ -8,7 +8,12 @@
  * 2. 店到店／交貨便代碼 → `_hel_CVSPaymentNo` + `_hel_CVSValidationNo`（後台側欄顯示）
  * 3. 後台側欄操作：取消訂單／標記已出貨／已到店／已取貨／退貨（同步前台按鈕）
  * 4. 鑑賞期 `_hover_arrived_at`：僅在消費者成功取件／宅配簽收（picked）寫入
- * 5. 貨態進入 arrived（已送達門市）→ 寄出已到貨通知（需啟用 hover-order-email-templates.php）
+ * 5. 貨態通知信（需啟用 hover-order-email-templates.php；真實綠界／RY 回呼與模擬按鈕皆走 hel_set_phase）：
+ *    - arrived   → 商品取貨通知
+ *    - picked    → 商品已取貨通知
+ *    - unclaimed → 商品逾期未取通知
+ * 6. 客服「退貨處理中」→ 寄退貨處理中通知（hoet_send_returning_notice）
+ * 7. 客服「退貨完成」→ 寄退貨完成通知（hoet_send_returned_notice）
  *
  * Code Snippets → Everywhere → 啟用（更新本檔即可；勿另開 hover-order-actions）
  */
@@ -294,12 +299,30 @@ function hel_set_phase(
         $order->update_meta_data('_hover_store_arrived_at', $at);
     }
 
+    if ($phase === 'unclaimed' && !(string) $order->get_meta('_hover_unclaimed_at')) {
+        $at = hel_parse_status_date($status_date);
+        if ($at === '') {
+            $at = wp_date('Y-m-d H:i:s');
+        }
+        $order->update_meta_data('_hover_unclaimed_at', $at);
+    }
+
     $order->save();
 
-    // 綠界回傳「已送達門市」才寄；同一訂單只寄一次（失敗可於下次貨態回呼重試）
+    // 綠界／RY 真實回呼與後台模擬皆由此寄信；同一類型只寄一次（失敗可於下次貨態回呼重試）
     if ($phase === 'arrived' && (string) $order->get_meta('_hover_arrived_notice_sent') !== '1') {
         if (function_exists('hoet_send_arrived_notice')) {
             hoet_send_arrived_notice($order);
+        }
+    }
+    if ($phase === 'picked' && (string) $order->get_meta('_hover_picked_notice_sent') !== '1') {
+        if (function_exists('hoet_send_picked_notice')) {
+            hoet_send_picked_notice($order);
+        }
+    }
+    if ($phase === 'unclaimed' && (string) $order->get_meta('_hover_unclaimed_notice_sent') !== '1') {
+        if (function_exists('hoet_send_unclaimed_notice')) {
+            hoet_send_unclaimed_notice($order);
         }
     }
 
@@ -563,7 +586,7 @@ function hel_render_phase_box($post_or_order): void
     if ($phase !== '') {
         echo '<p class="description"><code>_hel_LogisticsPhase</code> = <code>' . esc_html($phase) . '</code></p>';
     }
-    echo '<p class="description">鑑賞期自「已取貨／已簽收」起算（到店待取不算）。綠界測試環境多無法模擬貨態，可用下方按鈕測前端。</p>';
+    echo '<p class="description">鑑賞期自「已取貨／已簽收」起算（到店待取不算）。「已到店／已取貨／逾期未取」會寄通知信（與綠界真實回呼同一路徑）。綠界測試環境多無法模擬貨態，可用下方按鈕測信與前端。</p>';
 
     $id = $order->get_id();
     $btns = [
@@ -728,8 +751,19 @@ add_action('admin_post_hel_sim_phase', function () {
         $order->delete_meta_data('_hel_RtnMsg');
         $order->delete_meta_data('_hover_arrived_at');
         $order->delete_meta_data('_hover_store_arrived_at');
+        $order->delete_meta_data('_hover_unclaimed_at');
         $order->delete_meta_data('_hover_arrived_notice_sent');
         $order->delete_meta_data('_hover_arrived_notice_sent_at');
+        $order->delete_meta_data('_hover_picked_notice_sent');
+        $order->delete_meta_data('_hover_picked_notice_sent_at');
+        $order->delete_meta_data('_hover_unclaimed_notice_sent');
+        $order->delete_meta_data('_hover_unclaimed_notice_sent_at');
+        $order->delete_meta_data('_hover_returning_at');
+        $order->delete_meta_data('_hover_returning_notice_sent');
+        $order->delete_meta_data('_hover_returning_notice_sent_at');
+        $order->delete_meta_data('_hover_returned_at');
+        $order->delete_meta_data('_hover_returned_notice_sent');
+        $order->delete_meta_data('_hover_returned_notice_sent_at');
         $order->delete_meta_data('_hover_return_status');
         $order->save();
         // 標記已出貨會把 WC 改成 completed；前台 completed＝已出貨，故測試清除時一併回到處理中
@@ -797,15 +831,31 @@ add_action('admin_post_hel_order_ops', function () {
 
         case 'returning':
             $order->update_meta_data('_hover_return_status', 'returning');
+            if (!(string) $order->get_meta('_hover_returning_at')) {
+                $order->update_meta_data('_hover_returning_at', $now);
+            }
             $order->add_order_note('HOVER：退貨處理中（客服已受理）');
             $order->save();
+            if ((string) $order->get_meta('_hover_returning_notice_sent') !== '1'
+                && function_exists('hoet_send_returning_notice')
+            ) {
+                hoet_send_returning_notice($order);
+            }
             break;
 
         case 'returned':
             $order->update_meta_data('_hover_return_status', 'returned');
+            if (!(string) $order->get_meta('_hover_returned_at')) {
+                $order->update_meta_data('_hover_returned_at', $now);
+            }
             $order->update_status('refunded', 'HOVER：退貨完成');
             $order->add_order_note('HOVER：退貨完成');
             $order->save();
+            if ((string) $order->get_meta('_hover_returned_notice_sent') !== '1'
+                && function_exists('hoet_send_returned_notice')
+            ) {
+                hoet_send_returned_notice($order);
+            }
             break;
     }
 

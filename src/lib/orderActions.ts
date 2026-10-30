@@ -164,12 +164,17 @@ export function getOrderStatusLabelFromPhase(phase: OrderDisplayPhase, fallback 
 }
 
 export function getOrderStatusLabel(order: OrderLike): string {
+  // 退貨狀態優先於物流貨態（否則「退貨處理中」會被已取貨蓋掉）
+  const phase = resolveOrderDisplayPhase(order);
+  if (phase === "returning" || phase === "returned") {
+    return getOrderStatusLabelFromPhase(phase);
+  }
+
   const raw = String(order.logistics_phase || "").toLowerCase();
   if (raw === "arrived") return "已到店（待取）";
   if (raw === "picked") return "已取貨";
   if (raw === "unclaimed") return "逾期未取";
 
-  const phase = resolveOrderDisplayPhase(order);
   if (phase === "other") {
     return String(order.status || "—");
   }

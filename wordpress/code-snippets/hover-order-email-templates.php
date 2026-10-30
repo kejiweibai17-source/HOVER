@@ -15,6 +15,7 @@
  * 使用方式：
  * 1. Code Snippets → 貼上本檔 → Everywhere → 啟用
  * 2. 後台「新訂單／訂單保留／處理中／已取消／完成訂購」保持啟用即可
+ * 3. 需同時啟用 hover-ecpay-logistics.php（綠界／RY 貨態回呼觸發 8–10；退貨按鈕觸發 11–12）
  */
 
 if (!defined('ABSPATH')) {
@@ -1100,17 +1101,25 @@ function hoet_tpl_arrived(WC_Order $order): string
 }
 
 /**
- * 綠界貨態進入 arrived 時寄出（同一訂單只寄一次）
+ * 綠界貨態通知共用寄送（同一類型只寄一次）
+ *
+ * @param callable(WC_Order):string $tpl
  */
-function hoet_send_arrived_notice(WC_Order $order): bool
-{
-    if ((string) $order->get_meta('_hover_arrived_notice_sent') === '1') {
+function hoet_send_logistics_notice(
+    WC_Order $order,
+    string $sent_meta,
+    string $sent_at_meta,
+    string $subject,
+    callable $tpl,
+    string $note_label
+): bool {
+    if ((string) $order->get_meta($sent_meta) === '1') {
         return false;
     }
 
     $to = sanitize_email((string) $order->get_billing_email());
     if ($to === '' || !is_email($to)) {
-        $order->add_order_note('HOVER：到貨通知未寄出（無有效信箱）');
+        $order->add_order_note('HOVER：' . $note_label . '未寄出（無有效信箱）');
         $order->save();
         return false;
     }
@@ -1119,21 +1128,256 @@ function hoet_send_arrived_notice(WC_Order $order): bool
         return false;
     }
 
-    $subject = '商品取貨通知';
-    $html = hoet_tpl_arrived($order);
+    $html = $tpl($order);
     $headers = ['Content-Type: text/html; charset=UTF-8'];
 
     $sent = WC()->mailer()->send($to, $subject, $html, $headers);
     if (!$sent) {
         if (defined('WP_DEBUG') && WP_DEBUG) {
-            error_log('[HOVER] arrived notice failed for order ' . $order->get_id());
+            error_log('[HOVER] ' . $note_label . ' failed for order ' . $order->get_id());
         }
         return false;
     }
 
-    $order->update_meta_data('_hover_arrived_notice_sent', '1');
-    $order->update_meta_data('_hover_arrived_notice_sent_at', wp_date('Y-m-d H:i:s'));
-    $order->add_order_note('HOVER：已寄出到貨通知信（' . $to . '）');
+    $order->update_meta_data($sent_meta, '1');
+    $order->update_meta_data($sent_at_meta, wp_date('Y-m-d H:i:s'));
+    $order->add_order_note('HOVER：已寄出' . $note_label . '（' . $to . '）');
     $order->save();
     return true;
+}
+
+/** 綠界貨態進入 arrived 時寄出（同一訂單只寄一次） */
+function hoet_send_arrived_notice(WC_Order $order): bool
+{
+    return hoet_send_logistics_notice(
+        $order,
+        '_hover_arrived_notice_sent',
+        '_hover_arrived_notice_sent_at',
+        '商品取貨通知',
+        'hoet_tpl_arrived',
+        '到貨通知信'
+    );
+}
+
+/* -------------------------------------------------------------------------- */
+/* 9｜已取貨／已簽收通知（綠界貨態 picked）                                       */
+/* -------------------------------------------------------------------------- */
+
+function hoet_picked_date(WC_Order $order): string
+{
+    $raw = trim((string) $order->get_meta('_hover_arrived_at', true));
+    if ($raw === '') {
+        return '';
+    }
+    $ts = strtotime(str_replace('/', '-', $raw));
+    return $ts ? wp_date('Y/m/d H:i', $ts) : $raw;
+}
+
+function hoet_tpl_picked(WC_Order $order): string
+{
+    $name = hoet_customer_name($order);
+    $picked = hoet_picked_date($order);
+    $extra = [];
+    if ($picked !== '') {
+        $extra[] = [
+            hoet_is_cvs($order) ? '取貨時間' : '簽收時間',
+            $picked,
+        ];
+    }
+
+    $lead = hoet_is_cvs($order)
+        ? '您已於超商完成取貨。7 日鑑賞期自取貨日起算；若需退換，請於期限內透過官方客服聯繫。'
+        : '您的商品已配達簽收。7 日鑑賞期自簽收日起算；若需退換，請於期限內透過官方客服聯繫。';
+
+    $hint = '本通知僅供確認取件／簽收狀態。退換貨規範請見官網說明，並請保留商品完整包裝。';
+
+    $inner = '
+      <h1 style="margin:0 0 16px;font-size:20px;font-weight:700;color:#111;text-align:center;">商品已取貨通知</h1>
+      <p style="margin:0 0 12px;font-size:15px;line-height:1.8;">親愛的' . hoet_esc($name) . '，</p>
+      <p style="margin:0 0 8px;font-size:14px;line-height:1.8;color:#333;">' . hoet_esc($lead) . '</p>
+      ' . hoet_order_info_block($order, $extra) . '
+      ' . hoet_products_block($order, true) . '
+      ' . hoet_shipping_block($order, true) . '
+      <p style="margin:20px 0 0;font-size:13px;line-height:1.8;color:#555;">' . hoet_esc($hint) . '</p>
+      ' . hoet_link_btn('查看訂單', HOET_ACCOUNT_ORDERS_URL) . '
+    ';
+    return hoet_shell($inner);
+}
+
+function hoet_send_picked_notice(WC_Order $order): bool
+{
+    return hoet_send_logistics_notice(
+        $order,
+        '_hover_picked_notice_sent',
+        '_hover_picked_notice_sent_at',
+        '商品已取貨通知',
+        'hoet_tpl_picked',
+        '已取貨通知信'
+    );
+}
+
+/* -------------------------------------------------------------------------- */
+/* 10｜逾期未取通知（綠界貨態 unclaimed）                                        */
+/* -------------------------------------------------------------------------- */
+
+function hoet_unclaimed_date(WC_Order $order): string
+{
+    $raw = trim((string) $order->get_meta('_hover_unclaimed_at', true));
+    if ($raw === '') {
+        return '';
+    }
+    $ts = strtotime(str_replace('/', '-', $raw));
+    return $ts ? wp_date('Y/m/d H:i', $ts) : $raw;
+}
+
+function hoet_tpl_unclaimed(WC_Order $order): string
+{
+    $name = hoet_customer_name($order);
+    $when = hoet_unclaimed_date($order);
+    $arrived = hoet_store_arrived_date($order);
+    $extra = [];
+    if ($arrived !== '') {
+        $extra[] = ['到店時間', $arrived];
+    }
+    if ($when !== '') {
+        $extra[] = ['逾期時間', $when];
+    }
+
+    $lead = hoet_is_cvs($order)
+        ? '您訂購的商品因逾期未取，已依物流規定辦理退回。客服將視情況與您聯繫後續處理方式。'
+        : '您訂購的商品配送異常／未能完成收件，已依物流規定後續處理。客服將視情況與您聯繫。';
+
+    $hint = '若您對本通知有疑問，或希望重新安排配送，請透過官方客服與我們聯繫。';
+
+    $inner = '
+      <h1 style="margin:0 0 16px;font-size:20px;font-weight:700;color:#111;text-align:center;">商品逾期未取通知</h1>
+      <p style="margin:0 0 12px;font-size:15px;line-height:1.8;">親愛的' . hoet_esc($name) . '，</p>
+      <p style="margin:0 0 8px;font-size:14px;line-height:1.8;color:#333;">' . hoet_esc($lead) . '</p>
+      ' . hoet_order_info_block($order, $extra) . '
+      ' . hoet_products_block($order, true) . '
+      ' . hoet_shipping_block($order, true) . '
+      <p style="margin:20px 0 0;font-size:13px;line-height:1.8;color:#555;">' . hoet_esc($hint) . '</p>
+      ' . hoet_link_btn('查看訂單', HOET_ACCOUNT_ORDERS_URL) . '
+    ';
+    return hoet_shell($inner);
+}
+
+function hoet_send_unclaimed_notice(WC_Order $order): bool
+{
+    return hoet_send_logistics_notice(
+        $order,
+        '_hover_unclaimed_notice_sent',
+        '_hover_unclaimed_notice_sent_at',
+        '商品逾期未取通知',
+        'hoet_tpl_unclaimed',
+        '逾期未取通知信'
+    );
+}
+
+/* -------------------------------------------------------------------------- */
+/* 11｜退貨處理中通知（客服標記 returning）                                       */
+/* -------------------------------------------------------------------------- */
+
+function hoet_returning_date(WC_Order $order): string
+{
+    $raw = trim((string) $order->get_meta('_hover_returning_at', true));
+    if ($raw === '') {
+        return '';
+    }
+    $ts = strtotime(str_replace('/', '-', $raw));
+    return $ts ? wp_date('Y/m/d H:i', $ts) : $raw;
+}
+
+function hoet_tpl_returning(WC_Order $order): string
+{
+    $name = hoet_customer_name($order);
+    $when = hoet_returning_date($order);
+    $extra = [
+        ['訂單狀態', '退貨處理中'],
+    ];
+    if ($when !== '') {
+        $extra[] = ['受理時間', $when];
+    }
+
+    $lead = '我們已受理您的退貨申請，目前訂單狀態為「退貨處理中」。客服將依退貨規範協助後續寄回與退款流程。';
+    $hint = '請依客服指示完成退貨寄送；若有商品狀態或運費問題，歡迎透過官方 LINE 與我們聯繫。';
+
+    $inner = '
+      <h1 style="margin:0 0 16px;font-size:20px;font-weight:700;color:#111;text-align:center;">退貨處理中通知</h1>
+      <p style="margin:0 0 12px;font-size:15px;line-height:1.8;">親愛的' . hoet_esc($name) . '，</p>
+      <p style="margin:0 0 8px;font-size:14px;line-height:1.8;color:#333;">' . hoet_esc($lead) . '</p>
+      ' . hoet_order_info_block($order, $extra) . '
+      ' . hoet_products_block($order, true) . '
+      ' . hoet_shipping_block($order, true) . '
+      <p style="margin:20px 0 0;font-size:13px;line-height:1.8;color:#555;">' . hoet_esc($hint) . '</p>
+      <p style="margin:12px 0 0;font-size:13px;line-height:1.8;color:#555;">客服聯繫｜<a href="' . esc_url(HOET_LINE_URL) . '" style="color:' . HOET_GREEN . ';text-decoration:underline;">HOVER 官方 LINE</a></p>
+      ' . hoet_link_btn('查看訂單', HOET_ACCOUNT_ORDERS_URL) . '
+    ';
+    return hoet_shell($inner);
+}
+
+function hoet_send_returning_notice(WC_Order $order): bool
+{
+    return hoet_send_logistics_notice(
+        $order,
+        '_hover_returning_notice_sent',
+        '_hover_returning_notice_sent_at',
+        '退貨處理中通知',
+        'hoet_tpl_returning',
+        '退貨處理中通知信'
+    );
+}
+
+/* -------------------------------------------------------------------------- */
+/* 12｜退貨完成通知（客服標記 returned）                                          */
+/* -------------------------------------------------------------------------- */
+
+function hoet_returned_date(WC_Order $order): string
+{
+    $raw = trim((string) $order->get_meta('_hover_returned_at', true));
+    if ($raw === '') {
+        return '';
+    }
+    $ts = strtotime(str_replace('/', '-', $raw));
+    return $ts ? wp_date('Y/m/d H:i', $ts) : $raw;
+}
+
+function hoet_tpl_returned(WC_Order $order): string
+{
+    $name = hoet_customer_name($order);
+    $when = hoet_returned_date($order);
+    $extra = [
+        ['訂單狀態', '退貨完成'],
+    ];
+    if ($when !== '') {
+        $extra[] = ['完成時間', $when];
+    }
+
+    $lead = '您的退貨申請已處理完成，訂單狀態更新為「退貨完成」。退款將依付款方式與實際作業時程入帳，若有疑問歡迎聯繫客服。';
+    $hint = '退款入帳時間依銀行／信用卡／LINE Pay 等管道而異，通常約 3–14 個工作天。';
+
+    $inner = '
+      <h1 style="margin:0 0 16px;font-size:20px;font-weight:700;color:#111;text-align:center;">退貨完成通知</h1>
+      <p style="margin:0 0 12px;font-size:15px;line-height:1.8;">親愛的' . hoet_esc($name) . '，</p>
+      <p style="margin:0 0 8px;font-size:14px;line-height:1.8;color:#333;">' . hoet_esc($lead) . '</p>
+      ' . hoet_order_info_block($order, $extra) . '
+      ' . hoet_products_block($order, true) . '
+      ' . hoet_shipping_block($order, true) . '
+      <p style="margin:20px 0 0;font-size:13px;line-height:1.8;color:#555;">' . hoet_esc($hint) . '</p>
+      <p style="margin:12px 0 0;font-size:13px;line-height:1.8;color:#555;">客服聯繫｜<a href="' . esc_url(HOET_LINE_URL) . '" style="color:' . HOET_GREEN . ';text-decoration:underline;">HOVER 官方 LINE</a></p>
+      ' . hoet_link_btn('查看訂單', HOET_ACCOUNT_ORDERS_URL) . '
+    ';
+    return hoet_shell($inner);
+}
+
+function hoet_send_returned_notice(WC_Order $order): bool
+{
+    return hoet_send_logistics_notice(
+        $order,
+        '_hover_returned_notice_sent',
+        '_hover_returned_notice_sent_at',
+        '退貨完成通知',
+        'hoet_tpl_returned',
+        '退貨完成通知信'
+    );
 }
