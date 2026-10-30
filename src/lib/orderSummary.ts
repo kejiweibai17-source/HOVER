@@ -9,8 +9,15 @@ export type OrderSummaryDiscountRow = {
   amount: number;
 };
 
+/** 加購等「加項」列（正數金額，顯示在商品總金額下方） */
+export type OrderSummaryExtraRow = {
+  label: string;
+  amount: number;
+};
+
 export type OrderSummaryDisplay = {
   subtotal: number;
+  extraRows: OrderSummaryExtraRow[];
   discountRows: OrderSummaryDiscountRow[];
   shippingFee: number;
   freeShippingDiscount: number;
@@ -23,7 +30,10 @@ export function formatDiscountAmount(amount: number): string {
 }
 
 export function buildCartOrderSummary(params: {
+  /** 商品小計（不含加購） */
   subtotal: number;
+  /** 加購等加項列 */
+  extraRows?: OrderSummaryExtraRow[];
   memberDiscountAmount?: number;
   couponDiscount?: number;
   couponLabel?: string;
@@ -60,8 +70,16 @@ export function buildCartOrderSummary(params: {
       ? shippingFee
       : 0;
 
+  const extraRows = (params.extraRows || [])
+    .map((row) => ({
+      label: String(row.label || "").trim(),
+      amount: Math.max(0, Number(row.amount) || 0),
+    }))
+    .filter((row) => row.label && row.amount > 0);
+
   return {
     subtotal: Math.max(0, Number(params.subtotal) || 0),
+    extraRows,
     discountRows,
     shippingFee,
     freeShippingDiscount,
@@ -90,6 +108,7 @@ export function buildOrderDetailSummary(params: {
 
   return {
     subtotal,
+    extraRows: [],
     discountRows: params.discountRows,
     shippingFee,
     freeShippingDiscount,

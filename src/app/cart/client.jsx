@@ -42,7 +42,7 @@ import {
   normalizeMobileCarrier,
 } from "@/lib/invoicePreference";
 import { formatProductPrice } from "@/lib/utils";
-import { toCartThumbUrl } from "@/lib/listImageUrl";
+import CartThumbImg from "@/components/cart/CartThumbImg";
 import ConfirmDialog from "@/components/hover/ConfirmDialog";
 import {
   findPromotionVariant,
@@ -888,17 +888,15 @@ function getProductHref(it) {
 function CheckoutProductThumb({ item }) {
   const href = getProductHref(item);
   const raw = item.image || item.img || "/images/hover/product-1.jpg";
-  const imgSrc = toCartThumbUrl(raw);
   const alt = item.name || item.title || "商品";
 
   const thumb = (
     <div className="relative h-[68px] w-[52px] shrink-0 overflow-hidden bg-[#e8e6e2]">
-      <img
-        src={imgSrc}
+      <CartThumbImg
+        src={raw}
         alt={alt}
         width={52}
         height={68}
-        decoding="async"
         loading="eager"
         fetchPriority="high"
         className="h-full w-full object-cover"
@@ -1059,6 +1057,32 @@ function checkoutPromotionTitle(promotion, chosen) {
   return `${label}｜${name}`;
 }
 
+/** 金額明細「加購｜商品名」列（不含贈品 0 元） */
+function buildAddonSummaryRows(selectedPromotions = []) {
+  return selectedPromotions
+    .filter((promotion) => promotion?.type === "addon")
+    .map((promotion) => {
+      const qty = Math.max(1, Number(promotion.selectedQty) || 1);
+      const chosen =
+        findPromotionVariant(
+          promotion,
+          promotion.selectedProductId,
+          promotion.selectedVariationId,
+        ) || promotion.product;
+      const name =
+        productBaseName(chosen?.name) ||
+        productBaseName(promotion.product?.name) ||
+        "加購商品";
+      const amount =
+        Math.max(0, Number(promotion.purchasePrice) || 0) * qty;
+      return {
+        label: qty > 1 ? `加購｜${name} ×${qty}` : `加購｜${name}`,
+        amount,
+      };
+    })
+    .filter((row) => row.amount > 0);
+}
+
 function checkoutPromotionDetail(promotion, chosen, qty) {
   if (promotion.type === "gift") {
     if (isRandomColorGift(promotion)) return giftDetailLine(promotion);
@@ -1169,10 +1193,51 @@ function PromotionOfferCard({
   const regularPrice = Number(selectedVariant?.regularPrice) || 0;
   const showAddonChoice =
     promotion.type === "addon" && pool.length > 1 && !addonOutOfStock;
-  const thumb =
+  const displayProduct =
     promotion.type === "gift"
-      ? promotion.product?.image || pool[0]?.image
-      : selectedVariant?.image || promotion.product?.image;
+      ? pool.find((item) => item?.image) ||
+        selectedVariant ||
+        promotion.product
+      : selectedVariant || promotion.product;
+  const thumb =
+    displayProduct?.image ||
+    selectedVariant?.image ||
+    promotion.product?.image ||
+    pool.find((item) => item?.image)?.image ||
+    "";
+  const productName =
+    productBaseName(displayProduct?.name) ||
+    productBaseName(promotion.product?.name) ||
+    (promotion.type === "gift" ? "贈品" : "加購商品");
+  const productSlug =
+    displayProduct?.slug ||
+    selectedVariant?.slug ||
+    promotion.product?.slug ||
+    pool.find((item) => item?.slug)?.slug ||
+    "";
+  const productHref = productSlug ? `/products/${productSlug}` : null;
+  const campaignName = String(promotion.name || "").trim();
+  const showCampaign =
+    campaignName !== "" &&
+    campaignName !== productName &&
+    !campaignName.includes(productName);
+
+  const ProductTitle = ({ className = "" }) =>
+    productHref ? (
+      <Link
+        href={productHref}
+        className={`text-[13px] font-medium leading-snug text-black underline-offset-2 transition-opacity hover:opacity-70 hover:underline ${className}`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {productName}
+      </Link>
+    ) : (
+      <p
+        className={`text-[13px] font-medium leading-snug text-black ${className}`}
+      >
+        {productName}
+      </p>
+    );
 
   const colorSwatches = showAddonChoice ? (
     <div className="flex flex-wrap items-center justify-center gap-3">
@@ -1230,55 +1295,65 @@ function PromotionOfferCard({
     </div>
   ) : null;
 
+  const thumbNode = thumb ? (
+    <div className="h-16 w-12 shrink-0 overflow-hidden bg-[#f3f3f1]">
+      <CartThumbImg
+        src={thumb}
+        alt={productName}
+        width={48}
+        height={64}
+        loading="lazy"
+        className="h-full w-full object-cover"
+      />
+    </div>
+  ) : (
+    <div className="h-16 w-12 shrink-0 bg-[#f3f3f1]" aria-hidden />
+  );
+
   return (
     <div
       className={`flex items-center gap-3 border p-3 ${
         selected ? "border-[#2a514d] bg-[#f4f8f7]" : "border-[#ddd]"
       }`}
     >
-      <div className="h-16 w-12 shrink-0 overflow-hidden bg-[#f3f3f1]">
-        {thumb ? (
-          <img
-            src={toCartThumbUrl(thumb)}
-            alt=""
-            width={48}
-            height={64}
-            decoding="async"
-            loading="lazy"
-            className="h-full w-full object-cover"
-          />
-        ) : null}
-      </div>
+      {productHref ? (
+        <Link
+          href={productHref}
+          className="shrink-0 transition-opacity hover:opacity-80"
+          onClick={(e) => e.stopPropagation()}
+          aria-label={`查看 ${productName}`}
+        >
+          {thumbNode}
+        </Link>
+      ) : (
+        thumbNode
+      )}
       <div className="min-w-0 flex-1">
-        <p className="text-[13px] font-medium leading-snug text-black">
-          {promotion.name}
-        </p>
+        <ProductTitle />
+        {showCampaign ? (
+          <p className="mt-0.5 truncate text-[11px] text-[#888]">
+            {campaignName}
+          </p>
+        ) : null}
         {promotion.type === "gift" ? (
           <p className="mt-1 truncate text-[12px] text-[#666]">
             {giftDetailLine(promotion)}
           </p>
         ) : (
-          <>
-            <p className="mt-1 text-[12px]">
-              <span className="font-medium text-[#c90000]">
-                加購價 {currency(promotion.purchasePrice)}
-              </span>
-              {regularPrice > promotion.purchasePrice ? (
-                <span className="ml-1 text-[#999]">
-                  （原價{" "}
-                  <span className="line-through">
-                    {currency(regularPrice)}
-                  </span>
-                  ）
+          <p className="mt-1 text-[12px]">
+            <span className="font-medium text-[#c90000]">
+              加購價 {currency(promotion.purchasePrice)}
+            </span>
+            {regularPrice > promotion.purchasePrice ? (
+              <span className="ml-1 text-[#999]">
+                （原價{" "}
+                <span className="line-through">
+                  {currency(regularPrice)}
                 </span>
-              ) : null}
-            </p>
-            {!showAddonChoice ? (
-              <p className="mt-1 truncate text-[12px] text-[#666]">
-                {selectedVariant?.name || promotion.product?.name}
-              </p>
+                ）
+              </span>
             ) : null}
-          </>
+          </p>
         )}
         {giftOutOfStock || addonOutOfStock ? null : stockBlock ? (
           <p className="mt-1 text-[11px] text-[#c90000]">{stockBlock}</p>
@@ -1422,7 +1497,8 @@ function CartStep({
   const orderSummary = useMemo(
     () =>
       buildCartOrderSummary({
-        subtotal: pricing.subtotal,
+        subtotal: pricing.baseSubtotal ?? pricing.subtotal,
+        extraRows: buildAddonSummaryRows(selectedPromotions),
         memberDiscountAmount: pricing.memberDiscountAmount,
         couponDiscount: pricing.couponDiscount,
         shipMethod,
@@ -1430,7 +1506,7 @@ function CartStep({
         finalSubtotal: pricing.discountedSubtotal,
         total: pricing.total,
       }),
-    [pricing, shipMethod, shippingSettings],
+    [pricing, shipMethod, shippingSettings, selectedPromotions],
   );
 
   if (items.length === 0) {
@@ -1470,13 +1546,10 @@ function CartStep({
           return (
             <div key={it.id} className="flex items-start gap-3 py-4">
               <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden bg-[#f5f5f3]">
-                <img
-                  src={toCartThumbUrl(
-                    it.image || it.img || "/images/hover/product-1.jpg",
-                  )}
+                <CartThumbImg
+                  src={it.image || it.img || "/images/hover/product-1.jpg"}
                   width={72}
                   height={72}
-                  decoding="async"
                   loading="eager"
                   className="h-full w-full object-cover"
                   alt={it.name || it.title}
@@ -1693,7 +1766,8 @@ function CheckoutStep({
   const orderSummary = useMemo(
     () =>
       buildCartOrderSummary({
-        subtotal: checkoutPricing.subtotal,
+        subtotal: checkoutPricing.baseSubtotal ?? checkoutPricing.subtotal,
+        extraRows: buildAddonSummaryRows(selectedPromotions),
         memberDiscountAmount: checkoutPricing.memberDiscountAmount,
         couponDiscount: checkoutPricing.couponDiscount,
         couponLabel: appliedCoupon
@@ -1702,12 +1776,19 @@ function CheckoutStep({
         shipMethod,
         shippingSettings,
         finalSubtotal:
-          checkoutPricing.subtotal -
+          (checkoutPricing.baseSubtotal ?? checkoutPricing.subtotal) -
           (checkoutPricing.memberDiscountAmount || 0) -
-          (checkoutPricing.couponDiscount || 0),
+          (checkoutPricing.couponDiscount || 0) +
+          (checkoutPricing.promotionTotal || 0),
         total: checkoutPricing.total,
       }),
-    [checkoutPricing, shipMethod, shippingSettings, appliedCoupon],
+    [
+      checkoutPricing,
+      shipMethod,
+      shippingSettings,
+      appliedCoupon,
+      selectedPromotions,
+    ],
   );
 
   const loadMyCoupons = useCallback(async () => {

@@ -3,7 +3,7 @@ import { formatDiscountAmount } from "@/lib/orderSummary";
 
 /**
  * 購物袋／結帳／訂單明細共用金額列
- * 順序：商品總金額 → 折扣 → 運費 → 免運優惠 → 總金額
+ * 順序：商品總金額 → 加購 → 折扣 → 運費 → 免運優惠 → 總金額
  */
 export default function OrderSummaryRows({
   summary,
@@ -23,6 +23,10 @@ export default function OrderSummaryRows({
 }) {
   if (!summary) return null;
   const freeShipLabel = freeShipLabelClassName || labelClassName;
+  const extraRows = Array.isArray(summary.extraRows) ? summary.extraRows : [];
+  const discountRows = Array.isArray(summary.discountRows)
+    ? summary.discountRows
+    : [];
 
   return (
     <>
@@ -34,7 +38,16 @@ export default function OrderSummaryRows({
           </span>
         </div>
 
-        {summary.discountRows.map((row, i) => (
+        {extraRows.map((row, i) => (
+          <div key={`extra-${i}`} className={rowClassName}>
+            <span className={`min-w-0 ${labelClassName}`}>{row.label}</span>
+            <span className={`shrink-0 ${valueClassName}`}>
+              {formatProductPrice(row.amount)}
+            </span>
+          </div>
+        ))}
+
+        {discountRows.map((row, i) => (
           <div key={`disc-${i}`} className={rowClassName}>
             <span className={`min-w-0 ${discountLabelClassName}`}>
               {row.label}

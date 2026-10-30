@@ -4,6 +4,8 @@ export type PromotionProduct = {
   productId: number;
   variationId: number;
   name: string;
+  /** 父商品 slug（連到 /products/{slug}） */
+  slug?: string;
   sku: string;
   image: string;
   regularPrice: number;
@@ -69,6 +71,7 @@ function normalizeProduct(raw: unknown): PromotionProduct | null {
     productId,
     variationId: asInt(product.variationId),
     name: String(product.name || "活動商品"),
+    slug: String(product.slug || "").trim() || undefined,
     sku: String(product.sku || ""),
     image: String(product.image || ""),
     regularPrice: asInt(product.regularPrice),

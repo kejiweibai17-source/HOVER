@@ -217,11 +217,21 @@ function hvpr_product_payload(int $id): ?array
     }
     $variation_id = $product->is_type('variation') ? $product->get_id() : 0;
     $parent_id = $variation_id ? $product->get_parent_id() : $product->get_id();
+    $parent = $variation_id ? wc_get_product($parent_id) : $product;
     $image_id = $product->get_image_id();
-    if (!$image_id && $variation_id) {
-        $parent = wc_get_product($parent_id);
-        $image_id = $parent ? $parent->get_image_id() : 0;
+    if (!$image_id && $parent) {
+        $image_id = $parent->get_image_id();
     }
+    // 用原圖／較大尺寸，避免 thumbnail 缺檔造成前台死圖
+    $image_url = '';
+    if ($image_id) {
+        $image_url = (string) (wp_get_attachment_image_url($image_id, 'full')
+            ?: wp_get_attachment_image_url($image_id, 'woocommerce_single')
+            ?: wp_get_attachment_image_url($image_id, 'medium')
+            ?: wp_get_attachment_url($image_id)
+            ?: '');
+    }
+    $slug = $parent ? (string) $parent->get_slug() : (string) $product->get_slug();
     $manage_stock = $product->managing_stock();
     $stock_quantity = $manage_stock ? $product->get_stock_quantity() : null;
 
@@ -265,8 +275,9 @@ function hvpr_product_payload(int $id): ?array
         'productId'     => $parent_id,
         'variationId'   => $variation_id,
         'name'          => wp_strip_all_tags($product->get_name()),
+        'slug'          => $slug,
         'sku'           => (string) $product->get_sku(),
-        'image'         => $image_id ? wp_get_attachment_image_url($image_id, 'woocommerce_thumbnail') : '',
+        'image'         => $image_url,
         'regularPrice'  => (float) $product->get_regular_price(),
         'stockStatus'   => $product->get_stock_status(),
         'manageStock'   => $manage_stock,

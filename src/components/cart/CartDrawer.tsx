@@ -12,6 +12,7 @@ import {
   type CartItem,
 } from "@/lib/cartStore";
 import { toCartThumbUrl } from "@/lib/listImageUrl";
+import CartThumbImg from "@/components/cart/CartThumbImg";
 import { formatProductPrice } from "@/lib/utils";
 import {
   DEFAULT_SHIPPING,
@@ -216,13 +217,11 @@ export default function CartSheet() {
                           className="relative shrink-0 overflow-hidden bg-white"
                           style={{ width: 90, aspectRatio: "3/4" }}
                         >
-                          {/* eslint-disable-next-line @next/next/no-img-element -- Photon 小圖；img 比 next/image 更即時 */}
-                          <img
-                            src={toCartThumbUrl(it.image)}
+                          <CartThumbImg
+                            src={it.image}
                             alt={it.name || "Product Image"}
                             width={90}
                             height={120}
-                            decoding="async"
                             loading="eager"
                             fetchPriority="high"
                             className="h-full w-full object-cover"

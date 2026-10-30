@@ -223,6 +223,12 @@ export function toDirectWpImageUrl(
       return baseSrc;
     }
 
+    // 縮圖：勿硬拼可能不存在的 -600x750（TEST／新上架常沒生成該尺寸 → 404 死圖）
+    // 一律用原圖當 Photon 來源，由 ?w= 縮小即可
+    if (role === "thumb") {
+      return toFullUploadUrl(baseSrc);
+    }
+
     const sized = u.pathname.match(/-(\d+)x(\d+)(\.[a-z]+)$/i);
     if (sized) {
       const w = Number(sized[1]);
