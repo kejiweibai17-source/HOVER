@@ -33,6 +33,7 @@ import {
 import OrderSummaryRows from "@/components/order/OrderSummaryRows";
 import {
   getOrderStatusLabel as resolveOrderStatusLabel,
+  resolveOrderDisplayPhase,
   resolveOrderAction,
   getOrderActionLabel,
   getOrderActionHref,
@@ -868,9 +869,26 @@ function OrderDetail({
 
   const AtmRemittanceBlock = ({ compact = false, side = false }) => {
     if (!showAtmRemittance && !showAtmPendingHint) return null;
-    const tip = isUnpaid
-      ? "請於繳費期限內完成付款，逾期訂單將自動取消。"
-      : "付款已完成，我們將依訂單順序安排出貨。";
+    const displayPhase = resolveOrderDisplayPhase(order);
+    const logistics = String(order.logistics_phase || "").toLowerCase();
+    let tip = "付款已完成，我們將依訂單順序安排出貨。";
+    if (isUnpaid) {
+      tip = "請於繳費期限內完成付款，逾期訂單將自動取消。";
+    } else if (displayPhase === "returning") {
+      tip = "退貨申請處理中，客服將協助後續寄回與退款流程。";
+    } else if (displayPhase === "returned" || displayPhase === "refunded") {
+      tip = "本筆訂單退貨／退款已完成。";
+    } else if (displayPhase === "cancelled") {
+      tip = "本筆訂單已取消。";
+    } else if (logistics === "picked") {
+      tip = "商品已取貨／簽收完成，感謝您的訂購。";
+    } else if (logistics === "unclaimed") {
+      tip = "商品因逾期未取已依物流規定退回，客服將視情況與您聯繫。";
+    } else if (logistics === "arrived" || displayPhase === "arrived") {
+      tip = "商品已送達取貨門市，請於期限內完成取貨。";
+    } else if (logistics === "shipped" || displayPhase === "shipped") {
+      tip = "商品已出貨，請留意物流與取貨通知。";
+    }
 
     return (
       <div
@@ -1331,6 +1349,8 @@ function AccountPageContent() {
   const [orders, setOrders] = useState([]);
   const [ordersLoading, setOrdersLoading] = useState(false);
   const [ordersDebug, setOrdersDebug] = useState(null);
+  const [ordersPage, setOrdersPage] = useState(1);
+  const ORDERS_PER_PAGE = 10;
 
   const [referral, setReferral] = useState(null);
   const [referralLoading, setReferralLoading] = useState(false);
@@ -1836,6 +1856,20 @@ function AccountPageContent() {
         o.total.includes(q),
     );
   }, [orders, searchQuery]);
+
+  const ordersTotalPages = Math.max(
+    1,
+    Math.ceil(filteredOrders.length / ORDERS_PER_PAGE),
+  );
+  const safeOrdersPage = Math.min(ordersPage, ordersTotalPages);
+  const pagedOrders = useMemo(() => {
+    const start = (safeOrdersPage - 1) * ORDERS_PER_PAGE;
+    return filteredOrders.slice(start, start + ORDERS_PER_PAGE);
+  }, [filteredOrders, safeOrdersPage, ORDERS_PER_PAGE]);
+
+  useEffect(() => {
+    setOrdersPage(1);
+  }, [searchQuery, orders.length]);
 
   const orderStats = useMemo(() => {
     const isSpendCounting = (o) => {
@@ -2650,7 +2684,7 @@ function AccountPageContent() {
                           </tr>
                         </thead>
                         <tbody>
-                          {filteredOrders.map((o, idx) => {
+                          {pagedOrders.map((o, idx) => {
                             const unpaidAtm =
                               isAtmPaymentOrder(o) &&
                               getPaymentStatusLabel(o) === "待付款";
@@ -2702,7 +2736,7 @@ function AccountPageContent() {
 
                     {/* Mobile list cards */}
                     <div className="space-y-0 divide-y divide-[#e8e8e8] border-y border-[#ddd] bg-white sm:hidden">
-                      {filteredOrders.map((o) => {
+                      {pagedOrders.map((o) => {
                         const unpaidAtm =
                           isAtmPaymentOrder(o) &&
                           getPaymentStatusLabel(o) === "待付款";
@@ -2759,6 +2793,55 @@ function AccountPageContent() {
                         );
                       })}
                     </div>
+
+                    {ordersTotalPages > 1 ? (
+                      <div className="mt-6 flex flex-wrap items-center justify-center gap-2 sm:mt-8">
+                        <button
+                          type="button"
+                          disabled={safeOrdersPage <= 1}
+                          onClick={() =>
+                            setOrdersPage((p) => Math.max(1, p - 1))
+                          }
+                          className="inline-flex h-9 min-w-9 items-center justify-center border border-[#ddd] px-3 text-[13px] text-[#333] transition-colors hover:border-[#2a514d] hover:text-[#2a514d] disabled:cursor-not-allowed disabled:opacity-40"
+                          aria-label="上一頁"
+                        >
+                          <ChevronLeft size={16} />
+                        </button>
+                        {Array.from({ length: ordersTotalPages }, (_, i) => i + 1).map(
+                          (page) => (
+                            <button
+                              key={page}
+                              type="button"
+                              onClick={() => setOrdersPage(page)}
+                              className={cn(
+                                "inline-flex h-9 min-w-9 items-center justify-center border px-3 text-[13px] transition-colors",
+                                page === safeOrdersPage
+                                  ? "border-[#2a514d] bg-[#2a514d] text-white"
+                                  : "border-[#ddd] text-[#333] hover:border-[#2a514d] hover:text-[#2a514d]",
+                              )}
+                              aria-current={
+                                page === safeOrdersPage ? "page" : undefined
+                              }
+                            >
+                              {page}
+                            </button>
+                          ),
+                        )}
+                        <button
+                          type="button"
+                          disabled={safeOrdersPage >= ordersTotalPages}
+                          onClick={() =>
+                            setOrdersPage((p) =>
+                              Math.min(ordersTotalPages, p + 1),
+                            )
+                          }
+                          className="inline-flex h-9 min-w-9 items-center justify-center border border-[#ddd] px-3 text-[13px] text-[#333] transition-colors hover:border-[#2a514d] hover:text-[#2a514d] disabled:cursor-not-allowed disabled:opacity-40"
+                          aria-label="下一頁"
+                        >
+                          <ChevronRight size={16} />
+                        </button>
+                      </div>
+                    ) : null}
                   </>
                 )}
               </div>
