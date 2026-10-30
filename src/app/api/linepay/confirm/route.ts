@@ -119,7 +119,7 @@ export async function GET(req: Request) {
         const relateNumber =
           `UF${orderId}${Date.now().toString().slice(-6)}`.slice(0, 30);
 
-        await issueEcpayInvoice({
+        const issued = await issueEcpayInvoice({
           relateNumber,
           customerEmail:
             wcOrder.billing?.email || "service@hoverofficial.com",
@@ -138,7 +138,45 @@ export async function GET(req: Request) {
             },
           ],
         });
-        console.log(`✅ [綠界發票] 開立成功（${invoice.type}）`);
+        console.log(
+          `✅ [綠界發票] 開立成功（${invoice.type}｜${issued.invoiceNo}｜notify=${issued.notifySent}）`,
+        );
+        await fetch(
+          `${BASE.replace(/\/$/, "")}/wp-json/wc/v3/orders/${orderId}`,
+          {
+            method: "PUT",
+            headers: {
+              Authorization: auth!,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              meta_data: [
+                { key: "_hover_ecpay_invoice_no", value: issued.invoiceNo },
+                {
+                  key: "_hover_ecpay_invoice_relate",
+                  value: issued.relateNumber,
+                },
+              ],
+            }),
+          },
+        );
+        await fetch(
+          `${BASE.replace(/\/$/, "")}/wp-json/wc/v3/orders/${orderId}/notes`,
+          {
+            method: "POST",
+            headers: {
+              Authorization: auth!,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              note: `🧾 綠界電子發票開立成功（${invoice.type}｜發票號碼: ${issued.invoiceNo}${
+                issued.notifySent
+                  ? "｜開立通知已寄至帳單信箱"
+                  : `｜開立通知寄送失敗：${issued.notifyError || "未知"}`
+              }）`,
+            }),
+          },
+        );
       } catch (invErr) {
         console.error("❌ 綠界發票執行異常:", invErr);
       }

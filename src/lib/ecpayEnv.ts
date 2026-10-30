@@ -75,23 +75,21 @@ export function getEcpayInvoiceCredentials() {
   const payment = getEcpayPaymentCredentials();
 
   if (mode === "production") {
+    // 正式環境只用 PROD_*；勿吃未加前綴的 ECPAY_INVOICE_*（常殘留測試 2000132）
     return {
       mode,
       merchantId: pick(
         process.env.ECPAY_PROD_INVOICE_MERCHANT_ID,
-        process.env.ECPAY_INVOICE_MERCHANT_ID,
         process.env.ECPAY_PROD_MERCHANT_ID,
         payment.merchantId,
       ),
       hashKey: pick(
         process.env.ECPAY_PROD_INVOICE_HASH_KEY,
-        process.env.ECPAY_INVOICE_HASH_KEY,
         process.env.ECPAY_PROD_HASH_KEY,
         payment.hashKey,
       ),
       hashIv: pick(
         process.env.ECPAY_PROD_INVOICE_HASH_IV,
-        process.env.ECPAY_INVOICE_HASH_IV,
         process.env.ECPAY_PROD_HASH_IV,
         payment.hashIv,
       ),

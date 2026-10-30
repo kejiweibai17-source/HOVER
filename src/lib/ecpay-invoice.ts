@@ -50,11 +50,19 @@ function aesDecryptFromBase64(base64Cipher: string, key: string, iv: string) {
   return dec.toString("utf8");
 }
 
-export function getInvoiceIssueUrl() {
+function getInvoiceApiBase() {
   const { mode } = getEcpayInvoiceCredentials();
   return mode === "stage"
-    ? "https://einvoice-stage.ecpay.com.tw/B2CInvoice/Issue"
-    : "https://einvoice.ecpay.com.tw/B2CInvoice/Issue";
+    ? "https://einvoice-stage.ecpay.com.tw"
+    : "https://einvoice.ecpay.com.tw";
+}
+
+export function getInvoiceIssueUrl() {
+  return `${getInvoiceApiBase()}/B2CInvoice/Issue`;
+}
+
+function getInvoiceNotifyUrl() {
+  return `${getInvoiceApiBase()}/B2CInvoice/InvoiceNotify`;
 }
 
 export type InvoiceIssueItem = {
@@ -154,7 +162,19 @@ function buildIssueFields(
   return dataObj as Record<string, string | number | object>;
 }
 
-export async function issueEcpayInvoice(input: IssueInvoiceInput) {
+export type IssueInvoiceResult = {
+  invoiceNo: string;
+  invoiceDate?: string;
+  randomNumber?: string;
+  relateNumber: string;
+  notifySent: boolean;
+  notifyError?: string;
+};
+
+async function postEncryptedInvoiceApi(
+  url: string,
+  dataObj: Record<string, unknown>,
+) {
   const {
     merchantId: MerchantID,
     hashKey: HashKey,
@@ -163,26 +183,17 @@ export async function issueEcpayInvoice(input: IssueInvoiceInput) {
 
   if (!MerchantID || !HashKey || !HashIV) throw new Error("發票金鑰未設定");
 
-  const sum = input.items.reduce((s, it) => s + Number(it.ItemAmount), 0);
-  if (sum !== Number(input.salesAmount)) {
-    throw new Error("SalesAmount 必須等於 Items 合計");
-  }
-
-  const nowTs = Math.floor(Date.now() / 1000);
-  const dataObj = buildIssueFields(input);
-  dataObj.MerchantID = MerchantID;
-
-  const jsonStr = JSON.stringify(dataObj);
-  const urlEncodedJson = ecpayUrlEncode(jsonStr);
-  const base64Cipher = aesEncryptToBase64(urlEncodedJson, HashKey, HashIV);
-
   const payload = {
     MerchantID,
-    RqHeader: { Timestamp: nowTs },
-    Data: base64Cipher,
+    RqHeader: { Timestamp: Math.floor(Date.now() / 1000) },
+    Data: aesEncryptToBase64(
+      ecpayUrlEncode(JSON.stringify({ ...dataObj, MerchantID })),
+      HashKey,
+      HashIV,
+    ),
   };
 
-  const res = await fetch(getInvoiceIssueUrl(), {
+  const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -195,28 +206,92 @@ export async function issueEcpayInvoice(input: IssueInvoiceInput) {
   } catch {}
 
   if (!res.ok) throw new Error(`Invoice API HTTP ${res.status} :: ${raw}`);
-  if (result?.TransCode !== 1) throw new Error(`Invoice API 傳輸失敗 :: ${raw}`);
-
-  if (result.Data) {
-    try {
-      const decryptedStr = aesDecryptFromBase64(result.Data, HashKey, HashIV);
-      const decodedJsonStr = ecpayUrlDecode(decryptedStr);
-      const innerResult = JSON.parse(decodedJsonStr);
-
-      console.log("🔍 [綠界發票真實回傳解密]:", innerResult);
-
-      if (innerResult.RtnCode !== 1) {
-        throw new Error(
-          `綠界發票拒絕開立: [${innerResult.RtnCode}] ${innerResult.RtnMsg}`,
-        );
-      }
-    } catch (decErr: any) {
-      if (String(decErr?.message || "").includes("綠界發票拒絕開立")) {
-        throw decErr;
-      }
-      console.error("發票 Data 解密發生異常:", decErr);
-    }
+  if (result?.TransCode !== 1) {
+    throw new Error(
+      `Invoice API 傳輸失敗 :: [${result?.TransCode}] ${result?.TransMsg || raw}`,
+    );
   }
 
-  return result;
+  if (!result.Data) throw new Error(`Invoice API 無 Data :: ${raw}`);
+
+  const inner = JSON.parse(
+    ecpayUrlDecode(aesDecryptFromBase64(result.Data, HashKey, HashIV)),
+  );
+  return inner as Record<string, any>;
+}
+
+/** 開立後補寄／強制寄「發票開立」Email（後台通知未開時仍可用） */
+export async function notifyEcpayInvoiceOpen(input: {
+  invoiceNo: string;
+  customerEmail: string;
+  customerPhone?: string;
+}) {
+  const email = String(input.customerEmail || "").trim();
+  const phone = String(input.customerPhone || "").replace(/\s+/g, "");
+  if (!email && !phone) throw new Error("發票通知需 Email 或手機");
+
+  const dataObj: Record<string, string> = {
+    InvoiceNo: String(input.invoiceNo).trim(),
+    Notify: "E",
+    InvoiceTag: "I",
+    Notified: "C",
+  };
+  if (email) dataObj.NotifyMail = email;
+  if (phone) dataObj.Phone = phone.slice(0, 20);
+
+  const inner = await postEncryptedInvoiceApi(getInvoiceNotifyUrl(), dataObj);
+  if (inner.RtnCode !== 1) {
+    throw new Error(
+      `綠界發票通知失敗: [${inner.RtnCode}] ${inner.RtnMsg || ""}`,
+    );
+  }
+  return inner;
+}
+
+export async function issueEcpayInvoice(
+  input: IssueInvoiceInput,
+): Promise<IssueInvoiceResult> {
+  const sum = input.items.reduce((s, it) => s + Number(it.ItemAmount), 0);
+  if (sum !== Number(input.salesAmount)) {
+    throw new Error("SalesAmount 必須等於 Items 合計");
+  }
+
+  const dataObj = buildIssueFields(input);
+  const inner = await postEncryptedInvoiceApi(getInvoiceIssueUrl(), dataObj);
+
+  console.log("🔍 [綠界發票真實回傳解密]:", inner);
+
+  if (inner.RtnCode !== 1) {
+    throw new Error(
+      `綠界發票拒絕開立: [${inner.RtnCode}] ${inner.RtnMsg}`,
+    );
+  }
+
+  const invoiceNo = String(inner.InvoiceNo || "").trim();
+  if (!invoiceNo) throw new Error("綠界發票開立成功但未回傳 InvoiceNo");
+
+  let notifySent = false;
+  let notifyError: string | undefined;
+  try {
+    await notifyEcpayInvoiceOpen({
+      invoiceNo,
+      customerEmail: input.customerEmail,
+      customerPhone: input.customerPhone,
+    });
+    notifySent = true;
+  } catch (e) {
+    notifyError = e instanceof Error ? e.message : String(e);
+    console.error("⚠️ 發票開立通知寄送失敗:", notifyError);
+  }
+
+  return {
+    invoiceNo,
+    invoiceDate: inner.InvoiceDate ? String(inner.InvoiceDate) : undefined,
+    randomNumber: inner.RandomNumber
+      ? String(inner.RandomNumber)
+      : undefined,
+    relateNumber: input.relateNumber,
+    notifySent,
+    notifyError,
+  };
 }
