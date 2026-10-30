@@ -27,6 +27,7 @@ function ScrollToTopOnNav() {
 
 export default function ClientLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const isComingSoon = pathname === "/coming-soon";
   const hideAnnouncement =
     pathname === "/cart" ||
     (pathname.startsWith("/products/") && pathname !== "/products");
@@ -35,6 +36,10 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
     // once: true — 避免捲動進出視野反覆觸發動畫造成卡頓
     AOS.init({ duration: 800, once: true, disableMutationObserver: true });
   }, []);
+
+  if (isComingSoon) {
+    return <>{children}</>;
+  }
 
   return (
     <LenisWrapper>
