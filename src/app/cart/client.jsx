@@ -26,7 +26,11 @@ import {
 import { useCartStore } from "@/lib/cartStore";
 import { useAuthStore } from "@/lib/authStore";
 import { clearCheckoutSession } from "@/lib/checkoutSession";
-import { DEFAULT_SHIPPING, shippingFeeFor } from "@/lib/shippingDefaults";
+import {
+  DEFAULT_SHIPPING,
+  cartQualifiesForProductFreeShipping,
+  shippingFeeFor,
+} from "@/lib/shippingDefaults";
 import { useShippingSettings } from "@/lib/useShippingSettings";
 import { buildCartOrderSummary } from "@/lib/orderSummary";
 import OrderSummaryRows from "@/components/order/OrderSummaryRows";
@@ -482,12 +486,22 @@ function calcPricing(
   const finalSubtotal =
     Math.max(0, subtotalAfterMember - safeCouponDiscount) + safePromotionTotal;
   const freeShipThreshold = shippingSettings.freeShipThreshold || 2000;
-  const shipping = shippingFeeFor(finalSubtotal, shipMethod, {
-    ...shippingSettings,
-    freeShipThreshold,
-  });
+  // 僅含指定免運商品、且無加價購／贈品時免運
+  const productFreeShipping =
+    safePromotionTotal <= 0 && cartQualifiesForProductFreeShipping(items);
+  const shipping = shippingFeeFor(
+    finalSubtotal,
+    shipMethod,
+    {
+      ...shippingSettings,
+      freeShipThreshold,
+    },
+    { forceFree: productFreeShipping },
+  );
   const total = finalSubtotal + shipping;
-  const needForFreeShip = Math.max(0, freeShipThreshold - finalSubtotal);
+  const needForFreeShip = productFreeShipping
+    ? 0
+    : Math.max(0, freeShipThreshold - finalSubtotal);
 
   return {
     subtotal,
@@ -500,6 +514,7 @@ function calcPricing(
     total,
     needForFreeShip,
     freeShipThreshold,
+    productFreeShipping,
   };
 }
 
@@ -524,10 +539,16 @@ function buildCheckoutPricing(
     Math.max(0, subtotalAfterMember - safeCoupon) + promotionTotal;
   const freeShipThreshold =
     shippingSettings.freeShipThreshold || pricing.freeShipThreshold || 2000;
-  const shipping = shippingFeeFor(finalSubtotal, shipMethod, {
-    ...shippingSettings,
-    freeShipThreshold,
-  });
+  const productFreeShipping = Boolean(pricing.productFreeShipping);
+  const shipping = shippingFeeFor(
+    finalSubtotal,
+    shipMethod,
+    {
+      ...shippingSettings,
+      freeShipThreshold,
+    },
+    { forceFree: productFreeShipping },
+  );
 
   return {
     subtotal,
@@ -539,6 +560,7 @@ function buildCheckoutPricing(
     shipping,
     total: finalSubtotal + shipping,
     freeShipThreshold,
+    productFreeShipping,
     isFreeShipping: shipping === 0 && finalSubtotal > 0,
   };
 }
@@ -1428,6 +1450,7 @@ function CartStep({
 
   const reachedFreeShip =
     pricing.needForFreeShip === 0 && pricing.discountedSubtotal > 0;
+  const productFreeShipping = Boolean(pricing.productFreeShipping);
 
   return (
     <>
@@ -1558,7 +1581,7 @@ function CartStep({
 
         {reachedFreeShip ? (
           <div className="mt-4 flex h-10 items-center justify-center bg-[#edf4f3] text-[13px] text-[#2a514d]">
-            ✓ 已達免運門檻
+            {productFreeShipping ? "✓ 本商品免運費" : "✓ 已達免運門檻"}
           </div>
         ) : pricing.needForFreeShip > 0 ? (
           <p className="mt-4 text-center text-[12px] text-[#888]">
@@ -1881,12 +1904,19 @@ function CheckoutStep({
 
   const openEcpayCvsMap = (subType) => {
     saveStateBeforeMap();
-    const merchantID = process.env.NEXT_PUBLIC_ECPAY_MERCHANT_ID;
-    if (!merchantID) return alert("錯誤：讀取不到 ECPAY_MERCHANT_ID");
-    const isTest = merchantID === "2000132" || merchantID === "2000933";
-    const actionUrl = isTest
-      ? "https://logistics-stage.ecpay.com.tw/Express/map"
-      : "https://logistics.ecpay.com.tw/Express/map";
+    const mode = String(process.env.NEXT_PUBLIC_ECPAY_ENV || "stage")
+      .trim()
+      .toLowerCase();
+    const isProd = mode === "production" || mode === "prod" || mode === "live";
+    const merchantID = isProd
+      ? process.env.NEXT_PUBLIC_ECPAY_PROD_MERCHANT_ID ||
+        process.env.NEXT_PUBLIC_ECPAY_MERCHANT_ID
+      : process.env.NEXT_PUBLIC_ECPAY_STAGE_MERCHANT_ID ||
+        process.env.NEXT_PUBLIC_ECPAY_MERCHANT_ID;
+    if (!merchantID) return alert("錯誤：讀取不到綠界物流 MerchantID");
+    const actionUrl = isProd
+      ? "https://logistics.ecpay.com.tw/Express/map"
+      : "https://logistics-stage.ecpay.com.tw/Express/map";
     const form = document.createElement("form");
     form.method = "POST";
     form.action = actionUrl;
@@ -2122,6 +2152,20 @@ function CheckoutStep({
                   });
                 }}
                 label="全家超商僅取貨"
+              />
+              <HoverRadio
+                name="ship"
+                checked={shipMethod === "000"}
+                onChange={() => {
+                  setShipMethod("000");
+                  setAddr({
+                    ...addr,
+                    storeId: "",
+                    storeName: "",
+                    storeAddr: "",
+                  });
+                }}
+                label="宅配"
               />
             </div>
           </section>

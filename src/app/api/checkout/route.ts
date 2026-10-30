@@ -15,8 +15,17 @@ import {
   validateMasterCouponForMeta,
 } from "@/lib/masterCoupons";
 import { checkCartStock } from "@/lib/validateCartStock";
-import { fetchShippingSettings, shippingFeeFor } from "@/lib/shippingDefaults";
+import {
+  cartQualifiesForProductFreeShipping,
+  fetchShippingSettings,
+  shippingFeeFor,
+} from "@/lib/shippingDefaults";
 import { generateCheckMacValue, getEcpayDate } from "@/lib/ecpay";
+import {
+  assertEcpayPaymentConfigured,
+  getEcpayPaymentCheckoutUrl,
+  getEcpayPaymentCredentials,
+} from "@/lib/ecpayEnv";
 import {
   evaluatePromotions,
   findPromotionVariant,
@@ -40,10 +49,12 @@ const BASE = process.env.WC_API_BASE!;
 const CK = process.env.WC_CONSUMER_KEY!;
 const CS = process.env.WC_CONSUMER_SECRET!;
 
-const MERCHANT_ID = (process.env.ECPAY_MERCHANT_ID || "").trim();
-const HASH_KEY = (process.env.ECPAY_HASH_KEY || "").trim();
-const HASH_IV = (process.env.ECPAY_HASH_IV || "").trim();
-const ECPAY_URL = process.env.ECPAY_API_URL || "https://payment.ecpay.com.tw/Cashier/AioCheckOut/V5"; 
+const {
+  merchantId: MERCHANT_ID,
+  hashKey: HASH_KEY,
+  hashIv: HASH_IV,
+} = getEcpayPaymentCredentials();
+const ECPAY_URL = getEcpayPaymentCheckoutUrl(); 
 
 const LINEPAY_CHANNEL_ID = process.env.LINEPAY_CHANNEL_ID!;
 const LINEPAY_CHANNEL_SECRET = process.env.LINEPAY_CHANNEL_SECRET!;
@@ -279,8 +290,12 @@ function generateLinePaySignature(uri: string, requestBody: string, nonce: strin
 export async function POST(req: Request) {
   try {
     const auth = basicAuth();
-    if (!MERCHANT_ID || !HASH_KEY || !HASH_IV || !auth || !BASE) {
-      return NextResponse.json({ ok: false, message: "Server Config Error" }, { status: 500 });
+    const ecpayCfgErr = assertEcpayPaymentConfigured();
+    if (ecpayCfgErr || !auth || !BASE) {
+      return NextResponse.json(
+        { ok: false, message: ecpayCfgErr || "Server Config Error" },
+        { status: 500 },
+      );
     }
 
     const member = await getMemberSession();
@@ -617,10 +632,14 @@ export async function POST(req: Request) {
       Math.max(0, calculatedSubtotal - totalDiscount) + promotionTotal;
 
     const shippingSettings = await fetchShippingSettings({ cache: "no-store" });
+    const productFreeShipping =
+      promotionLines.length === 0 &&
+      cartQualifiesForProductFreeShipping(items || []);
     const realShippingCost = shippingFeeFor(
       discountedSubtotal,
       shipMethod,
       shippingSettings,
+      { forceFree: productFreeShipping },
     );
 
     const secureTotalAmount = discountedSubtotal + realShippingCost;
@@ -629,6 +648,17 @@ export async function POST(req: Request) {
     if (Math.abs(secureTotalAmount - Number(total)) > 1) {
       console.error(`[資安攔截] 數學驗算不符！前端金額:${total} / 後端計算金額:${secureTotalAmount}`);
       return NextResponse.json({ ok: false, message: "訂單金額驗證失敗，請重新整理頁面。" }, { status: 403 });
+    }
+
+    // ATM 金額限制須在建單前擋下，避免 Woo 留下無法付款的 pending 單
+    if (payMethod === "atm") {
+      const amountInt = Math.round(Number(secureTotalAmount) || 0);
+      if (amountInt < 16 || amountInt > 49999) {
+        return NextResponse.json(
+          { ok: false, message: "ATM 轉帳金額需為 16～49,999 元" },
+          { status: 400 },
+        );
+      }
     }
     // ============================================================================
 
@@ -992,13 +1022,6 @@ export async function POST(req: Request) {
       if (!choosePayment) {
         return NextResponse.json(
           { ok: false, message: "不支援的付款方式" },
-          { status: 400 },
-        );
-      }
-
-      if (choosePayment === "ATM" && (amountInt < 16 || amountInt > 49999)) {
-        return NextResponse.json(
-          { ok: false, message: "ATM 轉帳金額需為 16～49,999 元" },
           { status: 400 },
         );
       }

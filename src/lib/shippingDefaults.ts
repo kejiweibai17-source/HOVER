@@ -83,12 +83,49 @@ export function baseShippingFee(
   return settings.cvsFee || DEFAULT_SHIPPING.cvsFee;
 }
 
+/**
+ * 購物車「僅含」這些商品時免運（測試商品等）。
+ * 以 NEXT_PUBLIC_FREE_SHIPPING_PRODUCT_IDS 覆寫（逗號分隔 Woo product id）。
+ */
+const DEFAULT_FREE_SHIPPING_PRODUCT_IDS = [1819]; // test / NT.10
+
+export function getFreeShippingProductIds(): number[] {
+  const raw = String(
+    process.env.NEXT_PUBLIC_FREE_SHIPPING_PRODUCT_IDS ||
+      process.env.FREE_SHIPPING_PRODUCT_IDS ||
+      "",
+  ).trim();
+  if (!raw) return [...DEFAULT_FREE_SHIPPING_PRODUCT_IDS];
+  const ids = raw
+    .split(/[,，\s]+/)
+    .map((s) => Number(s))
+    .filter((n) => Number.isFinite(n) && n > 0)
+    .map((n) => Math.trunc(n));
+  return ids.length
+    ? Array.from(new Set(ids))
+    : DEFAULT_FREE_SHIPPING_PRODUCT_IDS.slice();
+}
+
+export function cartQualifiesForProductFreeShipping(
+  items: Array<{ wcProductId?: number | string; id?: number | string }> | null | undefined,
+): boolean {
+  if (!Array.isArray(items) || items.length === 0) return false;
+  const allowed = new Set(getFreeShippingProductIds());
+  if (allowed.size === 0) return false;
+  return items.every((it) => {
+    const pid = Number(it?.wcProductId);
+    return Number.isFinite(pid) && pid > 0 && allowed.has(pid);
+  });
+}
+
 /** shipMethod `000` = 宅配，其餘視為超商 */
 export function shippingFeeFor(
   subtotal: number,
   shipMethod: string,
   settings: ShippingSettings,
+  options?: { forceFree?: boolean },
 ): number {
+  if (options?.forceFree) return 0;
   const amount = Math.max(0, Number(subtotal) || 0);
   const threshold =
     settings.freeShipThreshold || DEFAULT_SHIPPING.freeShipThreshold;

@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import type { InvoicePreference } from "@/lib/invoicePreference";
 import { normalizeMobileCarrier } from "@/lib/invoicePreference";
+import { getEcpayInvoiceCredentials } from "@/lib/ecpayEnv";
 
 export type {
   InvoiceType,
@@ -50,15 +51,8 @@ function aesDecryptFromBase64(base64Cipher: string, key: string, iv: string) {
 }
 
 export function getInvoiceIssueUrl() {
-  const env = (
-    process.env.ECPAY_INVOICE_ENV ||
-    process.env.ECPAY_ENV ||
-    ""
-  )
-    .trim()
-    .toLowerCase();
-  const useStage = env === "stage" || env === "test" || env === "sandbox";
-  return useStage
+  const { mode } = getEcpayInvoiceCredentials();
+  return mode === "stage"
     ? "https://einvoice-stage.ecpay.com.tw/B2CInvoice/Issue"
     : "https://einvoice.ecpay.com.tw/B2CInvoice/Issue";
 }
@@ -161,21 +155,11 @@ function buildIssueFields(
 }
 
 export async function issueEcpayInvoice(input: IssueInvoiceInput) {
-  const MerchantID = (
-    process.env.ECPAY_INVOICE_MERCHANT_ID ||
-    process.env.ECPAY_MERCHANT_ID ||
-    ""
-  ).trim();
-  const HashKey = (
-    process.env.ECPAY_INVOICE_HASH_KEY ||
-    process.env.ECPAY_HASH_KEY ||
-    ""
-  ).trim();
-  const HashIV = (
-    process.env.ECPAY_INVOICE_HASH_IV ||
-    process.env.ECPAY_HASH_IV ||
-    ""
-  ).trim();
+  const {
+    merchantId: MerchantID,
+    hashKey: HashKey,
+    hashIv: HashIV,
+  } = getEcpayInvoiceCredentials();
 
   if (!MerchantID || !HashKey || !HashIV) throw new Error("發票金鑰未設定");
 

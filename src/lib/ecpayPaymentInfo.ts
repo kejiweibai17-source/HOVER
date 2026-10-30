@@ -1,4 +1,5 @@
 import { generateCheckMacValue } from "@/lib/ecpay";
+import { getEcpayPaymentCredentials } from "@/lib/ecpayEnv";
 
 function basicAuth() {
   const CK = process.env.WC_CONSUMER_KEY;
@@ -32,8 +33,7 @@ async function addOrderNote(
 }
 
 export function verifyEcpayMac(data: Record<string, string>) {
-  const hashKey = (process.env.ECPAY_HASH_KEY || "").trim();
-  const hashIv = (process.env.ECPAY_HASH_IV || "").trim();
+  const { hashKey, hashIv } = getEcpayPaymentCredentials();
   if (!hashKey || !hashIv) return false;
   const received = data.CheckMacValue || "";
   const computed = generateCheckMacValue(data, hashKey, hashIv);
