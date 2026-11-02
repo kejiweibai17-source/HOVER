@@ -36,6 +36,19 @@ function hover_trigger_cancelled_order_emails($order_id, $order = false): void
         return;
     }
 
+    if (!$order instanceof WC_Order) {
+        $order = wc_get_order($order_id);
+    }
+    if (!$order instanceof WC_Order) {
+        return;
+    }
+
+    // 同一訂單只寄一次（避免 ATM cron／多個 transition hook 重複）
+    if ($order->get_meta('_hover_cancelled_email_sent') === '1'
+        || $order->get_meta('_hover_atm_cancel_email_sent') === '1') {
+        return;
+    }
+
     $mailer = WC()->mailer();
     if (!$mailer) {
         return;
@@ -46,6 +59,7 @@ function hover_trigger_cancelled_order_emails($order_id, $order = false): void
         return;
     }
 
+    $triggered = false;
     foreach ($emails as $email) {
         if (!is_object($email) || !method_exists($email, 'trigger')) {
             continue;
@@ -68,11 +82,18 @@ function hover_trigger_cancelled_order_emails($order_id, $order = false): void
 
         try {
             $email->trigger($order_id, $order);
+            $triggered = true;
         } catch (Throwable $e) {
             if (defined('WP_DEBUG') && WP_DEBUG) {
                 error_log('[HOVER] cancelled email trigger failed (' . $id . '): ' . $e->getMessage());
             }
         }
+    }
+
+    if ($triggered) {
+        $order->update_meta_data('_hover_cancelled_email_sent', '1');
+        $order->update_meta_data('_hover_atm_cancel_email_sent', '1');
+        $order->save();
     }
 }
 

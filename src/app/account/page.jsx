@@ -38,6 +38,9 @@ import {
   getOrderActionLabel,
   getOrderActionHref,
   getOrderActionVariant,
+  getOrderCancelReasonLabel,
+  isAtmAutoCancelled,
+  isAtmUnpaidPastExpire,
   buildReturnLineUrl,
   buildContactCsUrl,
   buildReturnLineQrImageUrl,
@@ -98,6 +101,11 @@ function getOrderStatusLabel(orderOrStatus) {
   return resolveOrderStatusLabel({ status: orderOrStatus });
 }
 function getPaymentStatusLabel(order) {
+  const displayPhase = resolveOrderDisplayPhase(order);
+  // ATM 逾期／已取消：不再顯示「待付款」，避免仍出現取消申請與更新付款
+  if (displayPhase === "cancelled" || isAtmAutoCancelled(order) || isAtmUnpaidPastExpire(order)) {
+    return "未付款";
+  }
   const s = String(order?.status || "").toLowerCase();
   if (s === "pending" || s === "on-hold" || s === "waiting-payment" || s === "待付款")
     return "待付款";
@@ -524,10 +532,8 @@ function OrderLineCsModal({ order, open, onClose, intent = "return" }) {
   const bridgePath = isContact
     ? buildContactLineBridgePath(order)
     : buildReturnLineBridgePath(order);
-  const bridgeUrl =
-    typeof window !== "undefined"
-      ? `${window.location.origin}${bridgePath}`
-      : bridgePath;
+  // QR 固定掃正式網域落地頁 → 轉 LINE（避免建置中／預覽網域把掃碼導去官網首頁）
+  const bridgeUrl = `https://hoverofficial.com${bridgePath}`;
   const qrUrl = buildReturnLineQrImageUrl(bridgeUrl, 280);
   const title = isContact ? "聯繫客服" : "申請退貨";
   const hint = isContact
@@ -815,6 +821,13 @@ function OrderDetail({
   const orderStatusLabel = getOrderStatusLabel(order);
   const paymentStatusLabel = getPaymentStatusLabel(order);
   const paymentTitle = order.payment_method_title || "—";
+  const displayPhase = resolveOrderDisplayPhase(order);
+  const cancelReasonLabel = getOrderCancelReasonLabel(order);
+  const isCancelled =
+    displayPhase === "cancelled" ||
+    isAtmAutoCancelled(order) ||
+    isAtmUnpaidPastExpire(order);
+  const isAwaitingPayment = paymentStatusLabel === "待付款" && !isCancelled;
   const isUnpaid =
     paymentStatusLabel === "待付款" || paymentStatusLabel === "未付款";
   const paidAt = isUnpaid
@@ -835,7 +848,8 @@ function OrderDetail({
   const payInfo = getOrderPaymentInfo(order);
   const isAtm = isAtmPaymentOrder(order);
   const showAtmRemittance = isAtm && Boolean(payInfo.atm_account);
-  const showAtmPendingHint = isAtm && isUnpaid;
+  // 僅「仍待付款」顯示更新提示；已取消／逾期不顯示
+  const showAtmPendingHint = isAtm && isAwaitingPayment;
 
   const InfoRow = ({ label, children, className = "", valueClassName = "" }) => (
     <div className={cn("flex items-start justify-between gap-4 py-2.5", className)}>
@@ -869,17 +883,19 @@ function OrderDetail({
 
   const AtmRemittanceBlock = ({ compact = false, side = false }) => {
     if (!showAtmRemittance && !showAtmPendingHint) return null;
-    const displayPhase = resolveOrderDisplayPhase(order);
     const logistics = String(order.logistics_phase || "").toLowerCase();
     let tip = "付款已完成，我們將依訂單順序安排出貨。";
-    if (isUnpaid) {
+    if (isCancelled) {
+      tip =
+        cancelReasonLabel === "逾期未付款"
+          ? "因超過付款期限仍未完成付款，訂單已取消。"
+          : "本筆訂單已取消。";
+    } else if (isAwaitingPayment) {
       tip = "請於繳費期限內完成付款，逾期訂單將自動取消。";
     } else if (displayPhase === "returning") {
       tip = "退貨申請處理中，客服將協助後續寄回與退款流程。";
     } else if (displayPhase === "returned" || displayPhase === "refunded") {
       tip = "本筆訂單退貨／退款已完成。";
-    } else if (displayPhase === "cancelled") {
-      tip = "本筆訂單已取消。";
     } else if (logistics === "picked") {
       tip = "商品已取貨／簽收完成，感謝您的訂購。";
     } else if (logistics === "unclaimed") {
@@ -1060,6 +1076,9 @@ function OrderDetail({
                 <InfoRow label="訂單狀態">
                   <OrderStatusBadge label={orderStatusLabel} />
                 </InfoRow>
+                {isCancelled && cancelReasonLabel ? (
+                  <InfoRow label="取消原因">{cancelReasonLabel}</InfoRow>
+                ) : null}
                 <InfoRow label="付款狀態">
                   <PaymentStatusWithUpdate />
                 </InfoRow>
@@ -1138,6 +1157,11 @@ function OrderDetail({
             <div>
               <p className="mb-1 text-[12px] text-[#888]">訂單狀態</p>
               <OrderStatusBadge label={orderStatusLabel} />
+              {isCancelled && cancelReasonLabel ? (
+                <p className="mt-1 text-[12px] text-[#888]">
+                  取消原因：{cancelReasonLabel}
+                </p>
+              ) : null}
             </div>
             <div>
               <p className="mb-1 text-[12px] text-[#888]">付款狀態</p>

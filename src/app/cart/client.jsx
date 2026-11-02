@@ -2234,20 +2234,6 @@ function CheckoutStep({
                 }}
                 label="全家超商僅取貨"
               />
-              <HoverRadio
-                name="ship"
-                checked={shipMethod === "000"}
-                onChange={() => {
-                  setShipMethod("000");
-                  setAddr({
-                    ...addr,
-                    storeId: "",
-                    storeName: "",
-                    storeAddr: "",
-                  });
-                }}
-                label="宅配"
-              />
             </div>
           </section>
 
@@ -2973,7 +2959,8 @@ function CartContent() {
       const sContact = sessionStorage.getItem("checkout_contact");
       if (sContact) _contact = { ..._contact, ...JSON.parse(sContact) };
       const sShip = sessionStorage.getItem("checkout_shipMethod");
-      if (sShip) _ship = sShip;
+      // 已停用宅配：舊 session 的 000 改回超商預設
+      if (sShip && sShip !== "000") _ship = sShip;
       const sPay = sessionStorage.getItem("checkout_payMethod");
       if (sPay) _pay = sPay;
       const sStep = sessionStorage.getItem("checkout_step");
@@ -3026,7 +3013,7 @@ function CartContent() {
 
     setContact(_contact);
     setAddr(_addr);
-    setShipMethod(_ship);
+    setShipMethod(_ship === "000" ? "711" : _ship);
     setPayMethod(_pay);
     setStep(_step);
     setItems(_items);

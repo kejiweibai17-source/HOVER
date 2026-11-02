@@ -215,6 +215,13 @@ function hvpr_product_payload(int $id): ?array
     if (!$product) {
         return null;
     }
+    // 垃圾桶／不可購買 → 不當可售贈品／加購（避免前台顯示有庫存、結帳卻失敗）
+    $post_status = method_exists($product, 'get_status')
+        ? (string) $product->get_status()
+        : '';
+    if ($post_status === 'trash' || !$product->is_purchasable()) {
+        return null;
+    }
     $variation_id = $product->is_type('variation') ? $product->get_id() : 0;
     $parent_id = $variation_id ? $product->get_parent_id() : $product->get_id();
     $parent = $variation_id ? wc_get_product($parent_id) : $product;
@@ -290,13 +297,17 @@ function hvpr_product_payload(int $id): ?array
 
 function hvpr_payload_in_stock(array $product): bool
 {
-    return $product['stockStatus'] !== 'outofstock'
-        && (
-            !$product['manageStock']
-            || $product['stockQuantity'] === null
-            || $product['stockQuantity'] > 0
-            || $product['backorders'] !== 'no'
-        );
+    if (($product['stockStatus'] ?? '') === 'outofstock') {
+        return false;
+    }
+    // slug 含 __trashed 代表舊連結仍殘留，視為不可售
+    if (strpos((string) ($product['slug'] ?? ''), '__trashed') !== false) {
+        return false;
+    }
+    return !$product['manageStock']
+        || $product['stockQuantity'] === null
+        || $product['stockQuantity'] > 0
+        || $product['backorders'] !== 'no';
 }
 
 function hvpr_is_color_attribute(string $key, string $label = ''): bool

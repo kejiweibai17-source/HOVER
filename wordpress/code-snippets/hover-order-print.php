@@ -137,9 +137,27 @@ add_action('wp_ajax_hop_print', function () {
  * 4. 取資料
  * ──────────────────────────────────────────── */
 
+/** 判斷屬性鍵／標籤是否為「顏色」（滿額贈隨機出貨時規格不顯示實際色） */
+function hop_is_color_attr_key(string $key): bool
+{
+    $k = strtolower(trim($key));
+    if ($k === '') {
+        return false;
+    }
+    if (preg_match('/顏色|色系|color|colour/iu', $k)) {
+        return true;
+    }
+    // 常見實際色名（規格值被誤當屬性鍵時）
+    return (bool) preg_match(
+        '/^(黑|白|棕|紅|藍|綠|黃|灰|米|奶茶|酒紅|深藍|淺綠|淺奶茶|ivory|black|white|brown|navy)$/iu',
+        $k
+    );
+}
+
 /**
  * 取得商品列：[['name' => ..., 'spec' => '黑 / L', 'qty' => 1], ...]
  * 商品名稱取母商品名稱（與結帳顯示一致），規格取變體屬性，避免名稱裡重複帶尺寸顏色。
+ * 隨機出貨：名稱不含「隨機出貨」；規格統一「顏色隨機出貨」（滿額贈不加實際色／SKU）。
  */
 function hop_get_items(WC_Order $order): array
 {
@@ -162,6 +180,10 @@ function hop_get_items(WC_Order $order): array
 
         // 若名稱仍帶「 - 規格」後綴，去掉（Woo 常見寫法）
         $name = trim((string) preg_replace('/\s+[–—-]\s+.+$/u', '', $name));
+        // 「顏色隨機出貨／隨機出貨」統一改放規格欄，名稱不顯示
+        $name = trim((string) preg_replace('/\[?\s*顏色?隨機出貨\s*\]?/u', '', $name));
+        $name = trim((string) preg_replace('/\[?\s*隨機出貨\s*\]?/u', '', $name));
+        $name = trim((string) preg_replace('/\s{2,}/u', ' ', $name));
 
         $promo_type = trim((string) $item->get_meta('_hover_promotion_type', true));
         $promo_kind = trim((string) $item->get_meta('_hover_promotion_kind', true));
@@ -173,7 +195,7 @@ function hop_get_items(WC_Order $order): array
             true
         );
         if ($is_gift) {
-            $name = '[滿額贈]' . ($is_random ? '[顏色隨機出貨]' : '') . ' ' . $name;
+            $name = '[滿額贈] ' . $name;
         } elseif ($is_addon) {
             $name = '[加價購] ' . $name;
         }
@@ -185,6 +207,10 @@ function hop_get_items(WC_Order $order): array
                     continue;
                 }
                 $value = (string) $value;
+                // 滿額贈＋隨機出貨：規格不顯示實際顏色（改由「顏色隨機出貨」）
+                if ($is_gift && $is_random && hop_is_color_attr_key((string) $taxonomy)) {
+                    continue;
+                }
                 if (taxonomy_exists($taxonomy)) {
                     $term = get_term_by('slug', $value, $taxonomy);
                     $specs[] = ($term && !is_wp_error($term)) ? $term->name : $value;
@@ -196,19 +222,35 @@ function hop_get_items(WC_Order $order): array
 
         if (!$specs) {
             foreach ($item->get_formatted_meta_data('_', true) as $meta) {
+                $label = trim(wp_strip_all_tags((string) ($meta->display_key ?? '')));
                 $val = trim(wp_strip_all_tags((string) $meta->display_value));
-                if ($val !== '') {
-                    $specs[] = $val;
+                if ($val === '') {
+                    continue;
                 }
+                if ($is_gift && $is_random && hop_is_color_attr_key($label)) {
+                    continue;
+                }
+                if (preg_match('/隨機出貨|SKU/iu', $val)) {
+                    continue;
+                }
+                $specs[] = $val;
             }
         }
 
+        if ($is_gift && $is_random) {
+            // 再清一次：拿掉實際色名／SKU 字樣，避免漏網
+            $specs = array_values(array_filter($specs, static function ($s) {
+                $s = trim((string) $s);
+                if ($s === '' || hop_is_color_attr_key($s)) {
+                    return false;
+                }
+                return !preg_match('/SKU|隨機出貨/iu', $s);
+            }));
+        }
+
         if ($is_random) {
-            $sku = trim((string) $item->get_meta('_hover_fulfillment_sku', true));
-            if ($sku === '' && $product instanceof WC_Product) {
-                $sku = trim((string) $product->get_sku());
-            }
-            $specs[] = $sku !== '' ? '顏色隨機出貨／SKU ' . $sku : '顏色隨機出貨';
+            // 規格統一顯示「顏色隨機出貨」；滿額贈不附 SKU／實際色碼
+            $specs[] = '顏色隨機出貨';
         }
 
         $rows[] = [

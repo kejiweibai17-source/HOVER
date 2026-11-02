@@ -82,8 +82,50 @@ add_action('added_user_meta', 'hme_on_birthday_meta_saved', 20, 4);
 
 add_filter('woocommerce_coupon_is_valid', 'hme_validate_master_coupon', 20, 3);
 
-/** 關閉 Woo 預設「新帳號」信，避免註冊多出第 4 封 */
-add_filter('woocommerce_email_enabled_customer_new_account', '__return_false');
+/**
+ * 關閉 Woo／WP「已建立你的 HOVER 帳號」通知信（使用者詳細資料副本）。
+ * 涵蓋：一般註冊／社群建檔／後台建客／REST 建客。
+ * 註冊只需：①入會歡迎信（Next.js）②信箱驗證信（Next.js）。
+ */
+add_filter('woocommerce_email_enabled_customer_new_account', '__return_false', 99);
+add_filter('woocommerce_email_recipient_customer_new_account', '__return_empty_string', 99);
+add_filter('woocommerce_email_classes', function ($emails) {
+    if (isset($emails['WC_Email_Customer_New_Account'])) {
+        $emails['WC_Email_Customer_New_Account']->enabled = 'no';
+    }
+    return $emails;
+}, 99);
+add_action('woocommerce_email', function ($mailer) {
+    $email = $mailer->emails['WC_Email_Customer_New_Account'] ?? null;
+    if (!$email) {
+        return;
+    }
+    $email->enabled = 'no';
+    remove_action('woocommerce_created_customer_notification', [$email, 'trigger'], 10);
+    remove_action('woocommerce_created_customer', [$email, 'trigger'], 10);
+}, 100);
+add_action('init', function () {
+    // 持久關閉後台「新帳號」開關
+    $opt = get_option('woocommerce_customer_new_account_settings', []);
+    if (!is_array($opt)) {
+        $opt = [];
+    }
+    if (($opt['enabled'] ?? '') !== 'no') {
+        $opt['enabled'] = 'no';
+        update_option('woocommerce_customer_new_account_settings', $opt);
+    }
+    // 卸掉 mailer 層觸發（WC_Emails::customer_new_account）
+    if (function_exists('WC') && WC()->mailer()) {
+        remove_action('woocommerce_created_customer', [WC()->mailer(), 'customer_new_account'], 10);
+    }
+}, 20);
+// WP 核心「新使用者通知」不寄給顧客（管理員通知可保留）
+add_filter('wp_send_new_user_notification_to_user', '__return_false');
+add_filter('wp_new_user_notification_email', function ($email) {
+    $email['to'] = '';
+    $email['message'] = '';
+    return $email;
+}, 99);
 
 /**
  * 前台註冊／會員中心經 WooCommerce REST 寫入時，生日禮改由 Next.js 寄送。

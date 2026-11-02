@@ -5,6 +5,11 @@ import { getServerSession } from "next-auth";
 import jwt from "jsonwebtoken"; // 💡 新增：用來解析 LINE 登入的 Token
 import { authOptions } from "@/lib/auth-options";
 import { formatShippingMethodLabel } from "@/lib/utils";
+import {
+  isAtmUnpaidPastExpire,
+  isAtmAutoCancelled,
+  type OrderLike,
+} from "@/lib/orderActions";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -36,6 +41,58 @@ function extractPaymentDetails(metaData: any[]) {
   });
 
   return Object.keys(info).length > 0 ? info : undefined;
+}
+
+/**
+ * 會員中心讀取訂單時：若 ATM 已逾期仍為待付款，補同步為 cancelled。
+ * （對齊 cron／取消信，避免信已寄出但按鈕仍可申請取消）
+ */
+async function syncAtmExpiredOrderIfNeeded(
+  order: any,
+  authHeader: string,
+): Promise<any> {
+  const status = String(order?.status || "").toLowerCase();
+  if (status === "cancelled" || status === "canceled") return order;
+  if (["processing", "completed", "refunded", "paid"].includes(status)) {
+    return order;
+  }
+
+  const like: OrderLike = {
+    status: order?.status,
+    date_paid: order?.date_paid ?? null,
+    payment_method: order?.payment_method,
+    payment_method_title: order?.payment_method_title,
+    payment_info: extractPaymentDetails(order?.meta_data || []),
+    meta_data: order?.meta_data,
+  };
+
+  if (!isAtmUnpaidPastExpire(like) && !isAtmAutoCancelled(like)) {
+    return order;
+  }
+
+  try {
+    const res = await fetch(`${BASE}/wp-json/wc/v3/orders/${order.id}`, {
+      method: "PUT",
+      headers: {
+        Authorization: authHeader,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        status: "cancelled",
+        meta_data: [
+          { key: "_hover_atm_auto_cancelled", value: "1" },
+          { key: "_hover_atm_auto_cancelled_at", value: new Date().toISOString() },
+          { key: "_hover_cancelled_by", value: "atm_expire_cron" },
+          { key: "_hover_cancel_reason", value: "atm_expire_unpaid" },
+        ],
+      }),
+      cache: "no-store",
+    });
+    if (!res.ok) return order;
+    return await res.json();
+  } catch {
+    return order;
+  }
 }
 
 function extractMetaValue(metaData: any[], keys: string[]): string {
@@ -227,7 +284,11 @@ export async function GET() {
 
     debugInfo.resolved_customer_id = customerId;
 
-    const ordersRaw = await fetchAllUserOrders(auth, customerId, normalizedEmail, debugInfo);
+    const ordersFetched = await fetchAllUserOrders(auth, customerId, normalizedEmail, debugInfo);
+    // ATM 逾期待付款：讀取時補同步 cancelled（與取消信／後台狀態一致）
+    const ordersRaw = await Promise.all(
+      (ordersFetched || []).map((o: any) => syncAtmExpiredOrderIfNeeded(o, auth)),
+    );
     const productIds = Array.from(
       new Set(
         ordersRaw.flatMap((order: any) =>
@@ -266,6 +327,7 @@ export async function GET() {
       total: o.total,
       total_refunded: o.total_refunded || "0",
       currency: o.currency,
+      payment_method: o.payment_method || "",
       payment_method_title: o.payment_method_title || "標準支付",
       customer_note: o.customer_note || "",
       billing: o.billing || {},

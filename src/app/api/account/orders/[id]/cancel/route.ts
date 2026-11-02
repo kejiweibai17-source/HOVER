@@ -29,18 +29,40 @@ function basicAuth() {
 
 import { isOrderCustomerCancellable, type OrderLike } from "@/lib/orderActions";
 
+function metaPick(
+  meta: Array<{ key?: string; value?: unknown }> | undefined,
+  keys: string[],
+): string {
+  if (!Array.isArray(meta)) return "";
+  const wanted = keys.map((k) => k.toLowerCase());
+  for (const item of meta) {
+    const key = String(item?.key || "").toLowerCase();
+    if (!wanted.includes(key)) continue;
+    const val = Array.isArray(item.value) ? item.value[0] : item.value;
+    const str = String(val ?? "").trim();
+    if (str) return str;
+  }
+  return "";
+}
+
 function canCustomerCancel(order: any): boolean {
+  const meta = order?.meta_data;
   const payload: OrderLike = {
     status: order?.status,
     date_paid: order?.date_paid ?? null,
-    meta_data: order?.meta_data,
-    logistics_phase: order?.meta_data?.find(
-      (m: { key?: string; value?: unknown }) => m?.key === "_hel_LogisticsPhase",
-    )?.value as string | undefined,
-    return_status: order?.meta_data?.find(
-      (m: { key?: string; value?: unknown }) =>
-        m?.key === "_hover_return_status",
-    )?.value as string | undefined,
+    payment_method: order?.payment_method,
+    payment_method_title: order?.payment_method_title,
+    payment_info: {
+      expire_date: metaPick(meta, [
+        "_ExpireDate",
+        "ExpireDate",
+        "_ecpay_atm_expire_date",
+      ]),
+      atm_account: metaPick(meta, ["_vAccount", "vAccount", "_ecpay_atm_vaccount"]),
+    },
+    meta_data: meta,
+    logistics_phase: metaPick(meta, ["_hel_LogisticsPhase", "hel_LogisticsPhase"]),
+    return_status: metaPick(meta, ["_hover_return_status", "hover_return_status"]),
   };
   return isOrderCustomerCancellable(payload);
 }

@@ -9,6 +9,7 @@
  *
  * 特色：
  * - 選圖後「強制」跳出 16:9 裁切框（無法跳過），裁切後自動另存新圖
+ * - 媒體庫可多選：選 1 張→裁切；選多張→批次永久刪除
  * - 支援排序、啟用/停用、替代文字
  *
  * REST API（給 Next.js）：
@@ -515,13 +516,15 @@ function hbss_admin_footer_script(): void
                 return;
             }
 
+            var CROP_BTN = '下一步：裁切 16:9';
+
             var frame = wp.media({
-                button: { text: '下一步：裁切 16:9', close: false },
+                button: { text: CROP_BTN, close: false },
                 states: [
                     new wp.media.controller.Library({
-                        title: '選擇圖片（將強制裁切為 16:9，建議 1600×900 以上）',
+                        title: '選擇圖片（將強制裁切為 16:9，建議 1600×900 以上）｜可多選後批次刪除',
                         library: wp.media.query({ type: 'image' }),
-                        multiple: false,
+                        multiple: true,
                         date: false,
                         suggestedWidth: 1600,
                         suggestedHeight: 900
@@ -530,7 +533,98 @@ function hbss_admin_footer_script(): void
                 ]
             });
 
+            function selectionCount(){
+                var st = frame.state();
+                if (!st || st.id === 'cropper') return 0;
+                var sel = st.get('selection');
+                return sel ? sel.length : 0;
+            }
+
+            function updateSelectButton(){
+                var n = selectionCount();
+                var $btn = frame.$el.find('.media-button-select');
+                if (!$btn.length) return;
+                if (n > 1) {
+                    $btn.text('永久刪除所選（' + n + '）');
+                } else {
+                    $btn.text(CROP_BTN);
+                }
+            }
+
+            function bindSelectionWatch(){
+                var st = frame.state();
+                if (!st || !st.get('selection')) return;
+                var sel = st.get('selection');
+                sel.off('.hbssBulk');
+                sel.on('add.hbssBulk remove.hbssBulk reset.hbssBulk', updateSelectButton);
+                updateSelectButton();
+            }
+
+            function bulkDeleteSelected(){
+                var st = frame.state();
+                var sel = st && st.get('selection');
+                if (!sel || sel.length < 2) return false;
+
+                var models = sel.toArray();
+                var n = models.length;
+                if (!window.confirm('確定永久刪除選取的 ' + n + ' 張圖片？\n此操作無法復原。')) {
+                    return true;
+                }
+
+                var done = 0;
+                var fail = 0;
+                var $btn = frame.$el.find('.media-button-select');
+                $btn.prop('disabled', true).text('刪除中…');
+
+                function finishOne(){
+                    if (done + fail < n) return;
+                    sel.reset();
+                    try {
+                        var browser = frame.content.get();
+                        if (browser && browser.collection && browser.collection.props) {
+                            browser.collection.props.set({ ignore: (+new Date()) });
+                        } else if (st.get('library')) {
+                            st.get('library').more();
+                            st.get('library').fetch();
+                        }
+                    } catch (e) {}
+                    $btn.prop('disabled', false);
+                    updateSelectButton();
+                    window.alert(
+                        fail
+                            ? ('已刪除 ' + done + ' 張，失敗 ' + fail + ' 張。')
+                            : ('已永久刪除 ' + done + ' 張圖片。')
+                    );
+                }
+
+                models.forEach(function(att){
+                    if (!att || !att.destroy) {
+                        fail++;
+                        finishOne();
+                        return;
+                    }
+                    att.destroy({ wait: true })
+                        .done(function(){ done++; finishOne(); })
+                        .fail(function(){ fail++; finishOne(); });
+                });
+                return true;
+            }
+
+            frame.on('open', bindSelectionWatch);
+            frame.on('ready', bindSelectionWatch);
+            frame.on('content:activate:browse', bindSelectionWatch);
+
             frame.on('select', function(){
+                if (selectionCount() > 1) {
+                    bulkDeleteSelected();
+                    return;
+                }
+                // 單選：進入裁切（取第一張）
+                var sel = frame.state().get('selection');
+                if (sel && sel.length > 1) {
+                    var first = sel.first();
+                    sel.reset([first]);
+                }
                 frame.setState('cropper');
             });
 

@@ -105,22 +105,33 @@ export async function checkCartStock(
 
     const stock = parseWooStock(raw);
     const maxQty = getMaxOrderQty(stock);
+    const status = String(raw?.status || "").toLowerCase();
+    const trashedOrUnpurchasable =
+      status === "trash" || raw?.purchasable === false;
     const ok =
-      maxQty === null
+      !trashedOrUnpurchasable &&
+      (maxQty === null
         ? group.qty > 0
-        : group.qty > 0 && group.qty <= maxQty;
+        : group.qty > 0 && group.qty <= maxQty);
 
     results.push({
       productId: group.productId,
       variationId: group.variationId,
       name: group.name,
       stock,
-      maxQty,
+      maxQty: trashedOrUnpurchasable ? 0 : maxQty,
       requestedQty: group.qty,
       ok,
     });
 
     if (!ok) {
+      if (trashedOrUnpurchasable) {
+        return {
+          ok: false,
+          message: `「${group.name}」已下架或無法購買，請重新選擇加購／贈品規格。`,
+          results,
+        };
+      }
       if (maxQty === 0) {
         return {
           ok: false,

@@ -122,12 +122,6 @@ function hover_atm_expire_cancel_run(): array
             continue;
         }
 
-        // 避免重複取消
-        if ($order->get_meta('_hover_atm_auto_cancelled') === '1') {
-            $out['skipped']++;
-            continue;
-        }
-
         $expire_ts = hover_atm_expire_parse_timestamp($order);
         if ($expire_ts <= 0) {
             $out['skipped']++;
@@ -136,6 +130,14 @@ function hover_atm_expire_cancel_run(): array
 
         // 尚未到期
         if ($now < $expire_ts) {
+            $out['skipped']++;
+            continue;
+        }
+
+        // 已標自動取消但仍是待付款 → 補做狀態同步（避免只寄信／寫 meta 卻未 cancelled）
+        $already_marked = $order->get_meta('_hover_atm_auto_cancelled') === '1'
+            || trim((string) $order->get_meta('_hover_cancelled_by', true)) === 'atm_expire_cron';
+        if ($already_marked && in_array($order->get_status(), ['cancelled', 'canceled'], true)) {
             $out['skipped']++;
             continue;
         }
@@ -233,7 +235,7 @@ function hover_atm_expire_parse_timestamp(WC_Order $order): int
 }
 
 /**
- * 取消訂單並寄信
+ * 取消訂單並寄信（先改狀態，成功後再寫 meta；信只在真正 cancelled 後寄）
  */
 function hover_atm_expire_cancel_order(WC_Order $order, int $expire_ts): bool
 {
@@ -250,23 +252,33 @@ function hover_atm_expire_cancel_order(WC_Order $order, int $expire_ts): bool
         $expire_label
     );
 
+    // 先寫取消原因 meta（取消信模板依此判斷「逾期未付款」），再改狀態寄信
     $order->update_meta_data('_hover_atm_auto_cancelled', '1');
     $order->update_meta_data('_hover_atm_auto_cancelled_at', gmdate('c'));
     $order->update_meta_data('_hover_cancelled_by', 'atm_expire_cron');
+    $order->update_meta_data('_hover_cancel_reason', 'atm_expire_unpaid');
     $order->save();
 
-    // update_status(..., true) 會觸發 woocommerce_order_status_*_notification
-    // 若已啟用 hover-cancelled-order-email.php，pending→cancelled 會自動寄信
-    $order->update_status('cancelled', $note, true);
+    // manual=false：讓 WC／cancelled-order-email 走通知 hook
+    $order->update_status('cancelled', $note, false);
 
     $fresh = wc_get_order($order_id);
     if (!$fresh || !in_array($fresh->get_status(), ['cancelled', 'canceled'], true)) {
+        if (defined('WP_DEBUG') && WP_DEBUG) {
+            error_log('[HOVER ATM expire] update_status failed for order #' . $order_id);
+        }
+        // meta 已寫入但狀態未改：下次 cron／會員中心讀取會補同步，不在此寄信
         return false;
     }
 
-    // 僅在未載入取消信補丁時手動觸發（避免重複寄信）
-    if (!function_exists('hover_trigger_cancelled_order_emails')) {
-        hover_atm_expire_trigger_cancelled_emails($order_id);
+    // 取消信：優先靠 hook；未安裝補丁時才手動寄
+    if ($fresh->get_meta('_hover_atm_cancel_email_sent') !== '1'
+        && $fresh->get_meta('_hover_cancelled_email_sent') !== '1') {
+        if (!function_exists('hover_trigger_cancelled_order_emails')) {
+            hover_atm_expire_trigger_cancelled_emails($order_id);
+            $fresh->update_meta_data('_hover_atm_cancel_email_sent', '1');
+            $fresh->save();
+        }
     }
 
     return true;

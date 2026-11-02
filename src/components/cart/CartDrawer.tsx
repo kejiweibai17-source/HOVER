@@ -28,7 +28,7 @@ const currency = (n: number) => formatProductPrice(n);
  * 購物袋尚未選配送方式：
  * - 免運門檻與結帳一致：以「應付商品金額」判斷（此抽屜尚無折扣碼／會員折，即商品小計）
  * - 指定免運商品（如測試商品）單獨在車內時視為免運
- * - 未達免運時不預估單一運費進總計，避免與結帳（宅配／超商費率不同）不一致
+ * - 目前僅超商取貨：未滿免運時顯示超商運費參考（不計入總計）
  */
 function calcBagSummary(items: CartItem[], shippingSettings: ShippingSettings) {
   const subtotal = items.reduce(
@@ -37,8 +37,6 @@ function calcBagSummary(items: CartItem[], shippingSettings: ShippingSettings) {
   );
   const threshold =
     shippingSettings.freeShipThreshold || DEFAULT_SHIPPING.freeShipThreshold;
-  const homeFee =
-    shippingSettings.homeDeliveryFee || DEFAULT_SHIPPING.homeDeliveryFee;
   const cvsFee = shippingSettings.cvsFee || DEFAULT_SHIPPING.cvsFee;
   const productFreeShipping = cartQualifiesForProductFreeShipping(items);
   const reachedFreeShip =
@@ -50,7 +48,6 @@ function calcBagSummary(items: CartItem[], shippingSettings: ShippingSettings) {
   return {
     subtotal,
     threshold,
-    homeFee,
     cvsFee,
     productFreeShipping,
     reachedFreeShip,
@@ -92,7 +89,6 @@ export default function CartSheet() {
   const {
     subtotal,
     threshold,
-    homeFee,
     cvsFee,
     productFreeShipping,
     reachedFreeShip,
@@ -302,15 +298,9 @@ export default function CartSheet() {
                       {reachedFreeShip ? (
                         <span className="font-medium text-[#2a514d]">免運</span>
                       ) : (
-                        <>
-                          <span className="block text-[#666]">
-                            結帳時依配送方式計算
-                          </span>
-                          <span className="mt-0.5 block text-[12px] text-[#888]">
-                            未滿免運：宅配 {currency(homeFee)}／超商{" "}
-                            {currency(cvsFee)}
-                          </span>
-                        </>
+                        <span className="text-[#666]">
+                          {currency(cvsFee)}
+                        </span>
                       )}
                     </div>
                   </div>

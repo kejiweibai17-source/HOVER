@@ -39,6 +39,11 @@ export function isConstructionPassthrough(pathname: string): boolean {
     return true;
   }
 
+  // 申請退貨／聯繫客服 QR：落地後轉官方 LINE（建置中也必須可掃）
+  if (pathname === "/return-line") {
+    return true;
+  }
+
   // 伺服器對伺服器回呼（訪客無 Cookie）
   if (
     pathname.startsWith("/api/ecpay") ||
