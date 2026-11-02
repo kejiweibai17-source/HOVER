@@ -122,7 +122,8 @@ function HeroMedia({ slide, isActive, dragging }) {
     <motion.div
       className="absolute inset-0"
       animate={{
-        scale: isActive && !dragging ? 1.06 : 1,
+        // 輕微 Ken Burns；過大 scale 會把 Photon 圖再放大變糊
+        scale: isActive && !dragging ? 1.03 : 1,
       }}
       transition={
         isActive && !dragging
@@ -141,24 +142,21 @@ function HeroMedia({ slide, isActive, dragging }) {
         fill
         priority={isActive}
         sizes="100vw"
-        className={`object-cover object-top ${
-          hasSeparateMobile ? "hidden md:block" : ""
-        }`}
+        className="object-cover object-top hidden md:block"
         draggable={false}
       />
-      {hasSeparateMobile ? (
-        <OptimizedImage
-          src={mobileUrl}
-          fullSrc={mobileUrl}
-          role="banner"
-          alt={mobileAlt}
-          fill
-          priority={isActive}
-          sizes="100vw"
-          className="object-cover object-top md:hidden"
-          draggable={false}
-        />
-      ) : null}
+      {/* 手機改抓較小寬度，避免下載 2K 橫幅拖慢 LCP */}
+      <OptimizedImage
+        src={hasSeparateMobile ? mobileUrl : desktopUrl}
+        fullSrc={hasSeparateMobile ? mobileUrl : desktopUrl}
+        role="bannerMobile"
+        alt={hasSeparateMobile ? mobileAlt : desktopAlt}
+        fill
+        priority={isActive}
+        sizes="100vw"
+        className="object-cover object-top md:hidden"
+        draggable={false}
+      />
     </motion.div>
   );
 }

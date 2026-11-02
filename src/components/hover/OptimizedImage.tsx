@@ -12,7 +12,7 @@ import {
 
 type Props = Omit<ImageProps, "src" | "onError"> & {
   src: string;
-  /** card=列表／首頁商品；pdp=商品大圖；banner=橫幅；thumb=極小 */
+  /** card=列表；pdp=商品大圖；banner=桌機橫幅；bannerMobile=手機橫幅；thumb=極小 */
   role?: ImageRole;
   /** 已知的原圖（縮圖 404 時回退） */
   fullSrc?: string;

@@ -5,49 +5,60 @@
  * 商品圖統一 3:4。避開舊的 4:5（600×750）與 1:1（300×300）裁切檔僅作來源參考。
  */
 
-export type ImageRole = "card" | "pdp" | "banner" | "thumb";
+export type ImageRole = "card" | "pdp" | "banner" | "bannerMobile" | "thumb";
 
+/**
+ * Photon 輸出寬度：對齊常見 Retina 顯示，但仍由 CDN 出 WebP（不走 Vercel Image）。
+ * 勿再喂 600px 小檔給全螢幕／半寬大圖，否則會被放大變糊。
+ */
 const ROLE_MAX: Record<ImageRole, number> = {
   /** 購物車側欄／結帳縮圖（約 90px ×2） */
   thumb: 240,
-  /** 列表卡約 22vw；600 足夠 2x */
-  card: 600,
-  pdp: 1024,
-  banner: 1400,
+  /** 列表約 22–50vw @2x → 800 足夠清晰，仍遠小於原圖 */
+  card: 800,
+  /** PDP 主圖約 50vw @2x */
+  pdp: 1600,
+  /** 桌機 Hero／分類橫幅 100vw @1.5–2x */
+  banner: 2048,
+  /** 手機 Hero（另圖或同圖縮小），避免手機下載 2K */
+  bannerMobile: 1080,
 };
 
 const ROLE_QUALITY: Record<ImageRole, number> = {
   thumb: 70,
-  card: 72,
-  pdp: 78,
-  banner: 78,
+  card: 78,
+  pdp: 82,
+  banner: 84,
+  bannerMobile: 80,
 };
 
 /**
- * 依角色嘗試的 WP 尺寸後綴。
- * 本站實際常有 -600x750（約 200KB PNG），少有 -600x800／-768x1024；
- * 優先順序避免先打 404 再 fallback。
+ * 依角色嘗試的 WP 尺寸後綴（僅 Photon／原圖皆失敗時的本機 fallback）。
+ * PDP／Banner 優先較大尺寸，避免先吃到 600 寬再被放大。
  */
 const ROLE_SUFFIXES: Record<ImageRole, string[]> = {
-  // 縮圖仍優先 3:4 來源，交由 Photon 縮小（避免 150 方圖被 object-cover 裁怪）
-  thumb: ["-600x750", "-300x300", "-150x150"],
-  card: ["-600x750", "-600x800", "-768x1024", "-900x1200", "-1024x1024"],
+  thumb: ["-600x800", "-600x750", "-300x300", "-150x150"],
+  card: ["-800x1067", "-600x800", "-900x1200", "-600x750", "-768x1024"],
   pdp: [
-    "-600x750",
-    "-600x800",
-    "-768x1024",
     "-900x1200",
+    "-800x1067",
+    "-768x1024",
+    "-600x800",
     "-1024x1024",
-    "-768x768",
+    "-600x750",
   ],
   banner: [
+    "-2048x1152",
+    "-1920x1080",
     "-1536x864",
     "-1024x576",
     "-768x432",
-    "-1024x1024",
-    "-768x768",
-    "-300x169",
-    "-300x300",
+  ],
+  bannerMobile: [
+    "-1080x1920",
+    "-768x1024",
+    "-1024x576",
+    "-768x432",
   ],
 };
 
@@ -174,21 +185,21 @@ export function pickWpSizeUrl(
             "woocommerce_single",
             "medium_large",
             "large",
+            "full",
             "medium",
             "woocommerce_thumbnail",
             "thumbnail",
-            "full",
           ]
         : role === "pdp"
           ? [
-              "woocommerce_single",
+              "full",
               "large",
+              "woocommerce_single",
               "medium_large",
               "medium",
-              "full",
               "woocommerce_thumbnail",
             ]
-          : ["large", "medium_large", "medium", "full"];
+          : ["full", "large", "medium_large", "medium"];
 
   for (const key of order) {
     const url = sizes[key];
@@ -207,51 +218,29 @@ export function toDirectWpImageUrl(
   if (!src || typeof src !== "string") return src;
 
   try {
-    const baseSrc =
-      role === "banner" ? src : unwrapNonProductRatioUrl(src, role);
+    const isBanner = role === "banner" || role === "bannerMobile";
+    const baseSrc = isBanner ? src : unwrapNonProductRatioUrl(src, role);
     const u = new URL(baseSrc);
 
     if (isPhotonHost(u.hostname)) {
-      return stripPhotonUrl(baseSrc) || baseSrc;
+      return toFullUploadUrl(stripPhotonUrl(baseSrc) || baseSrc);
     }
 
     if (!u.pathname.includes("/wp-content/uploads/")) {
       return baseSrc;
     }
 
-    if (role === "banner") {
-      return baseSrc;
-    }
-
-    // 縮圖：勿硬拼可能不存在的 -600x750（TEST／新上架常沒生成該尺寸 → 404 死圖）
-    // 一律用原圖當 Photon 來源，由 ?w= 縮小即可
-    if (role === "thumb") {
-      return toFullUploadUrl(baseSrc);
-    }
-
-    const sized = u.pathname.match(/-(\d+)x(\d+)(\.[a-z]+)$/i);
-    if (sized) {
-      const w = Number(sized[1]);
-      const h = Number(sized[2]);
-      const maxSide = Math.max(w, h);
-      // 非方圖且夠大：保留當 Photon 來源（由 ?w= 縮小），勿改成 150 方圖
-      if (maxSide >= 400 && !isNearRatio(w, h, 1, 1)) {
-        return baseSrc;
-      }
-      u.pathname = u.pathname.replace(/-\d+x\d+(\.[a-z]+)$/i, "$1");
-    }
-
-    const suffix = ROLE_SUFFIXES[role][0];
-    u.pathname = withSuffix(u.pathname, suffix);
-    return u.toString();
+    // 一律以「原圖」當 Photon 來源，再由 ?w= 縮到角色寬度。
+    // 若喂 -600x750 小檔，Photon 無法憑空變清晰。
+    return toFullUploadUrl(baseSrc);
   } catch {
     return src;
   }
 }
 
 /**
- * 經 Jetpack Photon 輸出較小 WebP／縮圖（CDN）。
- * Bluehost 原圖 PNG 600×750 ≈ 220KB；Photon ≈ 8–15KB。
+ * 經 Jetpack Photon 輸出 WebP／縮圖（CDN）。
+ * 來源用原圖、輸出依 ROLE_MAX，避免小檔被放大變糊。
  */
 export function viaPhoton(src: string, role: ImageRole = "card"): string {
   if (!src || photonDisabled()) return src;
@@ -306,7 +295,9 @@ export function toListImageUrl(src: string, maxEdge = 300): string {
         ? "card"
         : maxEdge <= 900
           ? "pdp"
-          : "banner";
+          : maxEdge <= 1200
+            ? "bannerMobile"
+            : "banner";
   return toOptimizedImageUrl(src, role);
 }
 

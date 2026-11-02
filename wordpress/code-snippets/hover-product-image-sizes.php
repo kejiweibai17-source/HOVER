@@ -25,20 +25,20 @@ if (defined('HOVER_IMAGE_SIZES_LOADED')) {
 }
 define('HOVER_IMAGE_SIZES_LOADED', true);
 
-/** WooCommerce 列表縮圖 → 3:4 */
+/** WooCommerce 列表縮圖 → 3:4（Retina 列表約需 800 寬） */
 add_filter('woocommerce_get_image_size_thumbnail', function ($size) {
     return [
-        'width'  => 600,
-        'height' => 800,
+        'width'  => 800,
+        'height' => 1067,
         'crop'   => 1,
     ];
 });
 
-/** WooCommerce 單品主圖 → 3:4 */
+/** WooCommerce 單品主圖 → 3:4（PDP 半寬 Retina） */
 add_filter('woocommerce_get_image_size_single', function ($size) {
     return [
-        'width'  => 900,
-        'height' => 1200,
+        'width'  => 1200,
+        'height' => 1600,
         'crop'   => 1,
     ];
 });
@@ -54,7 +54,7 @@ add_filter('pre_option_woocommerce_thumbnail_cropping_custom_height', function (
     return '4';
 });
 add_filter('pre_option_woocommerce_thumbnail_image_width', function () {
-    return '600';
+    return '800';
 });
 
 function hover_attachment_size_urls(int $attachment_id): array

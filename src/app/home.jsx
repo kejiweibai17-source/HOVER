@@ -214,7 +214,7 @@ function BrandStorySection({ slides }) {
               <OptimizedImage
                 src={slide.src}
                 fullSrc={slide.src}
-                role="banner"
+                role="pdp"
                 alt={slide.alt || "HOVER brand story"}
                 fill
                 draggable={false}
@@ -253,10 +253,10 @@ function CategoryGrid({ tiles }) {
           <OptimizedImage
             src={cat.image}
             fullSrc={cat.image}
-            role="banner"
+            role="card"
             alt={cat.alt || cat.label}
             fill
-            className="object-cover transition-transform duration-700 group-hover:scale-105"
+            className="object-cover transition-transform duration-700 group-hover:scale-[1.03]"
             sizes="(max-width: 768px) 50vw, 25vw"
           />
 
