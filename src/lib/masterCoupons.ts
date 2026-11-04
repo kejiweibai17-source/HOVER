@@ -4,6 +4,7 @@
  */
 import {
   computeMembership,
+  filterOrdersForMembership,
   HOVER_MEMBERSHIP_META,
   HOVER_TIER,
   mapWcOrdersToLite,
@@ -377,9 +378,13 @@ export async function fetchCustomerMembership(
       `${root}/wp-json/wc/v3/orders?customer=${customerId}&status=processing,completed&per_page=100&after=${encodeURIComponent(twelveMonthsAgo.toISOString())}`,
       { headers: { Authorization: auth }, cache: "no-store" },
     );
-    const orders: WcOrderLite[] = oRes.ok
+    const rawOrders: WcOrderLite[] = oRes.ok
       ? mapWcOrdersToLite(await oRes.json())
       : [];
+    const orders = filterOrdersForMembership(
+      rawOrders,
+      meta as { key: string; value: unknown }[],
+    );
     const membership = computeMembership(
       orders,
       meta as { key: string; value: unknown }[],

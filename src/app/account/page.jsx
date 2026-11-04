@@ -11,6 +11,7 @@ import Image from "next/image";
 import { Link } from "next-view-transitions";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useWishlistStore } from "@/lib/wishlistStore";
+import { taipeiParts } from "@/lib/taipeiTime";
 import {
   formatProductPrice,
   formatShippingMethodLabel,
@@ -84,15 +85,10 @@ function formatMoneyDot(n) {
 }
 function formatOrderDate(value, withTime = false) {
   if (!value) return "—";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "—";
-  const y = d.getFullYear();
-  const m = d.getMonth() + 1;
-  const day = d.getDate();
-  if (!withTime) return `${y}/${m}/${day}`;
-  const hh = String(d.getHours()).padStart(2, "0");
-  const mm = String(d.getMinutes()).padStart(2, "0");
-  return `${y}/${String(m).padStart(2, "0")}/${String(day).padStart(2, "0")} ${hh}:${mm}`;
+  const p = taipeiParts(value);
+  if (!p) return "—";
+  if (!withTime) return `${p.y}/${Number(p.m)}/${Number(p.d)}`;
+  return `${p.y}/${p.m}/${p.d} ${p.hh}:${p.mm}`;
 }
 function getOrderStatusLabel(orderOrStatus) {
   if (orderOrStatus && typeof orderOrStatus === "object") {
@@ -1422,6 +1418,8 @@ function AccountPageContent() {
   const [linkedProviders, setLinkedProviders] = useState([]);
   const [bindSuccessMessage, setBindSuccessMessage] = useState("");
   const [bindErrorMessage, setBindErrorMessage] = useState("");
+  const [verifyResendLoading, setVerifyResendLoading] = useState(false);
+  const [verifyResendMessage, setVerifyResendMessage] = useState("");
 
   const loadProfile = useCallback(async () => {
     setLoading(true);
@@ -2227,9 +2225,69 @@ function AccountPageContent() {
                       value={customer?.email || "—"}
                       readOnly
                     />
-                    <p className="-mt-3 mb-5 text-[12px] leading-relaxed text-[#888] sm:-mt-2 sm:mb-6">
-                      必填，用於接收訂單及優惠券通知
-                    </p>
+                    {customer?.email_verified === false ? (
+                      <div className="-mt-3 mb-5 space-y-2 sm:-mt-2 sm:mb-6">
+                        <p className="text-[12px] leading-relaxed text-[#c90000]">
+                          信箱尚未驗證。不影響登入與購物，建議完成驗證以確保收得到訂單通知。
+                        </p>
+                        <button
+                          type="button"
+                          disabled={
+                            verifyResendLoading || !String(customer?.email || "").trim()
+                          }
+                          onClick={async () => {
+                            const email = String(customer?.email || "").trim();
+                            if (!email || verifyResendLoading) return;
+                            setVerifyResendLoading(true);
+                            setVerifyResendMessage("");
+                            try {
+                              const res = await fetch(
+                                "/api/auth/resend-verification",
+                                {
+                                  method: "POST",
+                                  headers: {
+                                    "Content-Type": "application/json",
+                                  },
+                                  body: JSON.stringify({ email }),
+                                },
+                              );
+                              const data = await res.json().catch(() => ({}));
+                              if (!res.ok || !data?.ok) {
+                                setVerifyResendMessage(
+                                  data?.message ||
+                                    "重新寄送失敗，請稍後再試。",
+                                );
+                              } else {
+                                setVerifyResendMessage(
+                                  data?.message ||
+                                    "驗證信已寄出，請至信箱查收。",
+                                );
+                              }
+                            } catch {
+                              setVerifyResendMessage(
+                                "重新寄送失敗，請稍後再試。",
+                              );
+                            } finally {
+                              setVerifyResendLoading(false);
+                            }
+                          }}
+                          className="text-[13px] font-medium text-[#2a514d] underline underline-offset-2 hover:opacity-70 disabled:opacity-50"
+                        >
+                          {verifyResendLoading
+                            ? "寄送中…"
+                            : "重新寄送驗證信"}
+                        </button>
+                        {verifyResendMessage ? (
+                          <p className="text-[12px] leading-relaxed text-[#555]">
+                            {verifyResendMessage}
+                          </p>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <p className="-mt-3 mb-5 text-[12px] leading-relaxed text-[#888] sm:-mt-2 sm:mb-6">
+                        必填，用於接收訂單及優惠券通知
+                      </p>
+                    )}
                     {customer?.birthday ? (
                       <HoverUnderlineField
                         label="生日"

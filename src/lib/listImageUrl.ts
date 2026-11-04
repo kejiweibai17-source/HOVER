@@ -18,18 +18,18 @@ const ROLE_MAX: Record<ImageRole, number> = {
   card: 800,
   /** PDP 主圖約 50vw @2x */
   pdp: 1600,
-  /** 桌機 Hero／分類橫幅 100vw @1.5–2x */
-  banner: 2048,
-  /** 手機 Hero（另圖或同圖縮小），避免手機下載 2K */
-  bannerMobile: 1080,
+  /** 桌機 Hero／分類橫幅 100vw @2x（Retina 更清晰） */
+  banner: 2560,
+  /** 手機 Hero（另圖或同圖縮小） */
+  bannerMobile: 1280,
 };
 
 const ROLE_QUALITY: Record<ImageRole, number> = {
   thumb: 70,
   card: 78,
   pdp: 82,
-  banner: 84,
-  bannerMobile: 80,
+  banner: 90,
+  bannerMobile: 88,
 };
 
 /**

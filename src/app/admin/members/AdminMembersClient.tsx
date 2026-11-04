@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, Fragment } from "react";
 import { LineChart, BarChart } from "@mui/x-charts";
 import { formatProductPrice } from "@/lib/utils";
+import { formatTaipei, taipeiParts } from "@/lib/taipeiTime";
 
 type AdminCustomer = {
   id: number;
@@ -60,12 +61,9 @@ function MemberAnalytics({
   const monthTotalsMap: Record<string, number> = {};
 
   orders.forEach((o) => {
-    const d = new Date(o.date_created);
-    if (isNaN(d.getTime())) return;
-    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(
-      2,
-      "0"
-    )}`;
+    const tp = taipeiParts(o.date_created);
+    if (!tp) return;
+    const key = `${tp.y}-${tp.m}`;
     if (!monthLabels.includes(key)) monthLabels.push(key);
     monthTotalsMap[key] = (monthTotalsMap[key] || 0) + (o.total || 0);
   });
@@ -285,7 +283,7 @@ export default function AdminMembersClient() {
               <tr key={o.id} className="border-t last:border-b">
                 <td className="px-3 py-1 align-top">#{o.number}</td>
                 <td className="px-3 py-1 align-top">
-                  {new Date(o.date_created).toLocaleString("zh-TW")}
+                  {formatTaipei(o.date_created, true)}
                 </td>
                 <td className="px-3 py-1 align-top">{o.status}</td>
                 <td className="px-3 py-1 align-top text-right">
@@ -463,9 +461,7 @@ export default function AdminMembersClient() {
 
                       <td className="px-4 py-2 align-middle text-xs text-slate-500">
                         {c.lastOrderDate
-                          ? new Date(c.lastOrderDate).toLocaleDateString(
-                              "zh-TW"
-                            )
+                          ? formatTaipei(c.lastOrderDate) || "—"
                           : "—"}
                       </td>
                     </tr>

@@ -12,8 +12,8 @@ import {
   resolveHeroImageUrl,
 } from "@/lib/heroDefaults";
 
-const SWIPE_THRESHOLD = 52;
-const AXIS_LOCK_PX = 8;
+const SWIPE_THRESHOLD = 48;
+const VELOCITY_THRESHOLD = 450;
 const EASE = [0.22, 1, 0.36, 1];
 const SLIDE_SPRING = {
   type: "spring",
@@ -119,21 +119,7 @@ function HeroMedia({ slide, isActive, dragging }) {
   );
 
   return (
-    <motion.div
-      className="absolute inset-0"
-      animate={{
-        // 輕微 Ken Burns；過大 scale 會把 Photon 圖再放大變糊
-        scale: isActive && !dragging ? 1.03 : 1,
-      }}
-      transition={
-        isActive && !dragging
-          ? {
-              duration: 6,
-              ease: "linear",
-            }
-          : { duration: 0.8, ease: EASE }
-      }
-    >
+    <div className="absolute inset-0">
       <OptimizedImage
         src={desktopUrl}
         fullSrc={desktopUrl}
@@ -145,7 +131,6 @@ function HeroMedia({ slide, isActive, dragging }) {
         className="object-cover object-top hidden md:block"
         draggable={false}
       />
-      {/* 手機改抓較小寬度，避免下載 2K 橫幅拖慢 LCP */}
       <OptimizedImage
         src={hasSeparateMobile ? mobileUrl : desktopUrl}
         fullSrc={hasSeparateMobile ? mobileUrl : desktopUrl}
@@ -157,7 +142,7 @@ function HeroMedia({ slide, isActive, dragging }) {
         className="object-cover object-top md:hidden"
         draggable={false}
       />
-    </motion.div>
+    </div>
   );
 }
 
@@ -178,10 +163,6 @@ export default function HoverHero({ initialHero = null }) {
   const [dragging, setDragging] = useState(false);
 
   const x = useMotionValue(0);
-  const touchStartX = useRef(0);
-  const touchStartY = useRef(0);
-  const touchDelta = useRef(0);
-  const axisLock = useRef(null); // null | "x" | "y"
   const draggingRef = useRef(false);
   const suppressClickRef = useRef(false);
   const indexRef = useRef(0);
@@ -307,155 +288,43 @@ export default function HoverHero({ initialHero = null }) {
     return () => window.clearInterval(timer);
   }, [count, hero?.autoplayMs, go]);
 
-  const handleMouseDragStart = useCallback(
-    (clientX, target) => {
-      if (count <= 1 || !viewportWidth) return;
-      if (target?.closest?.("a, button")) return;
+  const dragConstraints =
+    count > 1 && viewportWidth > 0
+      ? { left: -((count - 1) * viewportWidth), right: 0 }
+      : { left: 0, right: 0 };
 
-      pauseAutoplay();
-      draggingRef.current = true;
-      axisLock.current = "x";
-      setDragging(true);
-      touchStartX.current = clientX;
-      touchDelta.current = 0;
-    },
-    [count, viewportWidth, pauseAutoplay],
-  );
+  const handleDragStart = useCallback(() => {
+    if (count <= 1) return;
+    pauseAutoplay();
+    draggingRef.current = true;
+    setDragging(true);
+  }, [count, pauseAutoplay]);
 
-  const handleMouseDragMove = useCallback(
-    (clientX) => {
-      if (!draggingRef.current || !viewportWidth) return;
-      const dx = clientX - touchStartX.current;
-      touchDelta.current = dx;
-      const base = -indexRef.current * viewportWidth;
-      x.set(base + dx);
-    },
-    [viewportWidth, x],
-  );
-
-  const handleMouseDragEnd = useCallback(() => {
-    if (!draggingRef.current) return;
-    draggingRef.current = false;
-    axisLock.current = null;
-    setDragging(false);
-
-    if (touchDelta.current < -SWIPE_THRESHOLD) {
-      go(1);
-    } else if (touchDelta.current > SWIPE_THRESHOLD) {
-      go(-1);
-    } else {
-      snapTo(indexRef.current);
-    }
-
-    touchDelta.current = 0;
-  }, [go, snapTo]);
-
-  /* 桌面拖曳 */
-  useEffect(() => {
-    const el = viewportRef.current;
-    if (!el) return undefined;
-
-    const onMouseDown = (e) => {
-      if (e.button !== 0) return;
-      handleMouseDragStart(e.clientX, e.target);
-    };
-    const onMouseMove = (e) => handleMouseDragMove(e.clientX);
-    const onMouseUp = () => handleMouseDragEnd();
-
-    el.addEventListener("mousedown", onMouseDown);
-    window.addEventListener("mousemove", onMouseMove);
-    window.addEventListener("mouseup", onMouseUp);
-
-    return () => {
-      el.removeEventListener("mousedown", onMouseDown);
-      window.removeEventListener("mousemove", onMouseMove);
-      window.removeEventListener("mouseup", onMouseUp);
-    };
-  }, [handleMouseDragStart, handleMouseDragMove, handleMouseDragEnd]);
-
-  /* 手機滑動：先判軸向，僅水平手勢才 preventDefault，垂直捲動不受影響 */
-  useEffect(() => {
-    const el = viewportRef.current;
-    if (!el || count <= 1) return undefined;
-
-    const onTouchStart = (e) => {
-      if (e.touches.length !== 1) return;
-      if (e.target?.closest?.("button")) return;
-
-      const t = e.touches[0];
-      touchStartX.current = t.clientX;
-      touchStartY.current = t.clientY;
-      touchDelta.current = 0;
-      axisLock.current = null;
+  const handleDragEnd = useCallback(
+    (_event, info) => {
+      if (!draggingRef.current) return;
       draggingRef.current = false;
       setDragging(false);
-    };
 
-    const onTouchMove = (e) => {
-      if (e.touches.length !== 1 || !viewportWidth) return;
-      if (axisLock.current === "y") return;
+      const { offset, velocity } = info;
+      const moved = Math.abs(offset.x) > 8 || Math.abs(velocity.x) > 80;
+      if (moved) suppressClickRef.current = true;
 
-      const t = e.touches[0];
-      const dx = t.clientX - touchStartX.current;
-      const dy = t.clientY - touchStartY.current;
+      const goNext =
+        offset.x < -SWIPE_THRESHOLD || velocity.x < -VELOCITY_THRESHOLD;
+      const goPrev =
+        offset.x > SWIPE_THRESHOLD || velocity.x > VELOCITY_THRESHOLD;
 
-      if (axisLock.current === null) {
-        if (Math.abs(dx) < AXIS_LOCK_PX && Math.abs(dy) < AXIS_LOCK_PX) {
-          return;
-        }
-        axisLock.current = Math.abs(dx) > Math.abs(dy) ? "x" : "y";
-        if (axisLock.current === "y") {
-          draggingRef.current = false;
-          setDragging(false);
-          return;
-        }
-        pauseAutoplay();
-        draggingRef.current = true;
-        setDragging(true);
+      if (goNext) {
+        go(1);
+      } else if (goPrev) {
+        go(-1);
+      } else {
+        snapTo(indexRef.current);
       }
-
-      if (axisLock.current !== "x") return;
-      if (e.cancelable) e.preventDefault();
-
-      touchDelta.current = dx;
-      const base = -indexRef.current * viewportWidth;
-      x.set(base + dx);
-    };
-
-    const onTouchEnd = () => {
-      if (axisLock.current === "x" && draggingRef.current) {
-        draggingRef.current = false;
-        setDragging(false);
-
-        if (Math.abs(touchDelta.current) > AXIS_LOCK_PX) {
-          suppressClickRef.current = true;
-        }
-
-        if (touchDelta.current < -SWIPE_THRESHOLD) {
-          go(1);
-        } else if (touchDelta.current > SWIPE_THRESHOLD) {
-          go(-1);
-        } else {
-          snapTo(indexRef.current);
-        }
-      }
-
-      axisLock.current = null;
-      touchDelta.current = 0;
-    };
-
-    el.addEventListener("touchstart", onTouchStart, { passive: true });
-    el.addEventListener("touchmove", onTouchMove, { passive: false });
-    el.addEventListener("touchend", onTouchEnd, { passive: true });
-    el.addEventListener("touchcancel", onTouchEnd, { passive: true });
-
-    return () => {
-      el.removeEventListener("touchstart", onTouchStart);
-      el.removeEventListener("touchmove", onTouchMove);
-      el.removeEventListener("touchend", onTouchEnd);
-      el.removeEventListener("touchcancel", onTouchEnd);
-    };
-  }, [count, viewportWidth, pauseAutoplay, go, snapTo, x]);
+    },
+    [go, snapTo],
+  );
 
   if (!hero) return <HeroSkeleton />;
   if (!count) return null;
@@ -464,7 +333,7 @@ export default function HoverHero({ initialHero = null }) {
     <section className="relative w-full overflow-hidden bg-black">
       <div
         ref={viewportRef}
-        className={`relative h-[85vh] min-h-[560px] w-full touch-pan-y overflow-hidden select-none [&_img]:pointer-events-none md:h-[calc(100dvh-var(--hover-header-height,116px))] md:min-h-0 ${
+        className={`relative h-[85vh] min-h-[560px] w-full overflow-hidden select-none [&_img]:pointer-events-none md:h-[calc(100dvh-var(--hover-header-height,116px))] md:min-h-0 ${
           count > 1
             ? dragging
               ? "cursor-grabbing"
@@ -480,8 +349,15 @@ export default function HoverHero({ initialHero = null }) {
         onDragStart={(e) => e.preventDefault()}
       >
         <motion.div
-          className="flex h-full will-change-transform"
+          className="flex h-full touch-pan-y will-change-transform"
           style={{ x, width: `${count * 100}%` }}
+          drag={count > 1 && viewportWidth > 0 ? "x" : false}
+          dragDirectionLock
+          dragConstraints={dragConstraints}
+          dragElastic={0.16}
+          dragMomentum={false}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
         >
           {slides.map((slide, slideIndex) => {
             const isActive = slideIndex === index;

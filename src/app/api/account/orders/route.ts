@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth";
 import jwt from "jsonwebtoken"; // 💡 新增：用來解析 LINE 登入的 Token
 import { authOptions } from "@/lib/auth-options";
 import { formatShippingMethodLabel } from "@/lib/utils";
+import { wcGmtToIso } from "@/lib/taipeiTime";
 import {
   isAtmUnpaidPastExpire,
   isAtmAutoCancelled,
@@ -322,8 +323,12 @@ export async function GET() {
       id: o.id,
       number: o.number,
       status: o.status,
-      date_created: o.date_created,
-      date_paid: o.date_paid || o.date_completed || null,
+      // 一律輸出帶 Z 的 UTC，前端再轉台灣時間
+      date_created: wcGmtToIso(o.date_created_gmt, o.date_created),
+      date_paid:
+        wcGmtToIso(o.date_paid_gmt, o.date_paid) ||
+        wcGmtToIso(o.date_completed_gmt, o.date_completed) ||
+        null,
       total: o.total,
       total_refunded: o.total_refunded || "0",
       currency: o.currency,

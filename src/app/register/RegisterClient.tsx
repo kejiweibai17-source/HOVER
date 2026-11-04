@@ -90,12 +90,12 @@ export default function RegisterPage() {
         <div className="w-full max-w-[380px] text-center">
           <h2 className="mb-4 text-[22px] font-bold text-black">🎉 註冊成功！</h2>
           <p className="mb-8 text-[14px] leading-[1.8] text-[#555]">
-            我們已寄出一封{" "}
+            帳號已建立，我們已寄出一封{" "}
             <span className="font-semibold text-black">信箱驗證信</span> 到：
             <br />
             <span className="font-medium text-[#2a514d]">{email}</span>
             <br />
-            請至信箱點擊驗證連結，完成後即可登入。
+            您現在即可登入購物；建議至信箱完成驗證，也可之後在會員中心重寄。
           </p>
           <button
             onClick={() => router.push(`/login?next=${encodeURIComponent(next)}`)}

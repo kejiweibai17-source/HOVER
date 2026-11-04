@@ -6,6 +6,7 @@ import type { WashingInstructions } from "./washingInstructions";
 import { extractWashingInstructionsFromWooProduct } from "./washingInstructions";
 import type { ColorSibling, ProductColor } from "./productColors";
 import {
+  alignColorLabel,
   buildColorsFromSiblings,
   ensureCurrentColorInList,
   extractColorSwatchesFromWooProduct,
@@ -13,6 +14,7 @@ import {
   extractProductSizes,
   guessColorHex,
   guessColorLabelFromSlug,
+  resolveSwatchHex,
 } from "./productColors";
 import type { ColorGalleries } from "./variationGallery";
 import {
@@ -156,26 +158,35 @@ const mapWoo = (p: any): WooProduct => {
         }))
         .filter((row: ColorSibling) => row.id > 0 && row.slug && row.color)
     : [];
-  const siblingColors = buildColorsFromSiblings(colorSiblings, colorSwatches);
   const attrColors = extractProductColors({
     attributes,
     hover_color_swatches: colorSwatches,
   });
+  const siblingColors = buildColorsFromSiblings(colorSiblings, colorSwatches);
   const colorGroup = String(p?.hover_color_group || "").trim();
+  const slug = String(p?.slug || "");
+  const nameCandidates = [
+    ...Object.keys(colorSwatches),
+    ...attrColors.map((c) => c.label),
+    ...siblingColors.map((c) => c.label),
+  ];
+  // 色名以後台色票／屬性為準（奶茶→淺奶茶、紅→酒紅）
   const productColor =
-    String(p?.hover_product_color || "").trim() ||
-    guessColorLabelFromSlug(String(p?.slug || "")) ||
-    (siblingColors.find((c) => c.slug === String(p?.slug || ""))?.label ?? "") ||
-    (attrColors.length === 1 ? attrColors[0].label : "");
+    siblingColors.find((c) => c.slug === slug)?.label ||
+    alignColorLabel(String(p?.hover_product_color || "").trim(), nameCandidates) ||
+    alignColorLabel(guessColorLabelFromSlug(slug), nameCandidates) ||
+    (attrColors.length === 1 ? attrColors[0].label : "") ||
+    String(p?.hover_product_color || "").trim();
   // 有同款群組時以色票跳轉清單為準；並保證目前商品一定在清單內
   const colors =
     siblingColors.length > 0
       ? ensureCurrentColorInList(siblingColors, {
           id: p?.id,
-          slug: String(p?.slug || ""),
+          slug,
           color: productColor,
           hex: productColor
-            ? colorSwatches[productColor] || guessColorHex(productColor)
+            ? resolveSwatchHex(productColor, colorSwatches) ||
+              guessColorHex(productColor)
             : undefined,
           image: images[0]?.src,
         })

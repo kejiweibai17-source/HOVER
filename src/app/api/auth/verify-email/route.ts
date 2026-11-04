@@ -102,7 +102,7 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json(
-      { ok: true, message: "信箱驗證完成，您現在可以登入了。" },
+      { ok: true, message: "信箱驗證完成，感謝您。" },
       { headers: { "Cache-Control": "no-store, no-cache, must-revalidate" } }
     );
   } catch (e) {

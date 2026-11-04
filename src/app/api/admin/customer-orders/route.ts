@@ -2,6 +2,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
+import { wcGmtToIso } from "@/lib/taipeiTime";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -120,7 +121,7 @@ export async function GET(req: Request) {
       status: o.status,
       total: parseFloat(o.total || "0"),
       currency: o.currency,
-      date_created: o.date_created,
+      date_created: wcGmtToIso(o.date_created_gmt, o.date_created),
       payment_method_title: o.payment_method_title || "標準支付",
       customer_note: o.customer_note || "",
       payment_info: extractPaymentDetails(o.meta_data || []),

@@ -52,7 +52,6 @@ export default function LoginClient() {
   const authError = search.get("error");
 
   const [username, setUsername] = useState("");
-  const [verifyEmail, setVerifyEmail] = useState("");
   const [password, setPassword] = useState("");
   const [turnstileToken, setTurnstileToken] = useState("");
   const [error, setError] = useState("");
@@ -68,8 +67,6 @@ export default function LoginClient() {
   const [googleLoading, setGoogleLoading] = useState(false);
   const [fbLoading, setFbLoading] = useState(false);
   const [lineLoading, setLineLoading] = useState(false);
-  const [needsVerify, setNeedsVerify] = useState(false);
-  const [resendLoading, setResendLoading] = useState(false);
 
   /* auto-redirect if already logged in */
   useEffect(() => {
@@ -92,7 +89,6 @@ export default function LoginClient() {
     if (loading || googleLoading || fbLoading || lineLoading) return;
     setError("");
     setSuccess("");
-    setNeedsVerify(false);
     setLoading(true);
     try {
       const res = await fetch("/api/auth/login", {
@@ -106,57 +102,16 @@ export default function LoginClient() {
         setSuccess("登入成功，正在跳轉...");
         setTimeout(() => router.replace(next), 500);
       } else {
-        const code = String(data?.code || "");
-        if (code === "email_not_verified") {
-          setNeedsVerify(true);
-          setVerifyEmail(String(data?.email || "").trim());
-          setError(
-            data?.message ||
-              "此帳號尚未完成信箱驗證，請先至信箱點擊驗證連結後再登入。",
-          );
-        } else {
-          setNeedsVerify(false);
-          setVerifyEmail("");
-          setError(
-            String(data?.message || "")
-              .replace(/<[^>]*>/g, "")
-              .trim() || "登入失敗，請確認手機號碼與密碼。",
-          );
-        }
+        setError(
+          String(data?.message || "")
+            .replace(/<[^>]*>/g, "")
+            .trim() || "登入失敗，請確認手機號碼與密碼。",
+        );
       }
     } catch {
       setError("登入過程發生錯誤，請稍後再試。");
     } finally {
       setLoading(false);
-    }
-  }
-
-  async function handleResendVerification() {
-    const target = (verifyEmail || username).trim();
-    if (resendLoading || !target) return;
-    setResendLoading(true);
-    setSuccess("");
-    try {
-      const res = await fetch("/api/auth/resend-verification", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          verifyEmail
-            ? { email: verifyEmail }
-            : { phone: username.trim() },
-        ),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok || !data.ok) {
-        setError(data.message || "重新寄送失敗，請稍後再試。");
-      } else {
-        setError("");
-        setSuccess(data.message || "驗證信已寄出，請至信箱查收。");
-      }
-    } catch {
-      setError("重新寄送失敗，請稍後再試。");
-    } finally {
-      setResendLoading(false);
     }
   }
 
@@ -244,19 +199,7 @@ export default function LoginClient() {
 
           {/* Error / Success */}
           {error && (
-            <div className="mb-5 space-y-2">
-              <p className="text-[13px] text-[#c90000]">{error}</p>
-              {needsVerify ? (
-                <button
-                  type="button"
-                  onClick={handleResendVerification}
-                  disabled={resendLoading || !(verifyEmail || username).trim()}
-                  className="text-[13px] font-medium text-[#2a514d] underline underline-offset-2 hover:opacity-70 disabled:opacity-50"
-                >
-                  {resendLoading ? "寄送中…" : "重新寄送驗證信"}
-                </button>
-              ) : null}
-            </div>
+            <p className="mb-5 text-[13px] text-[#c90000]">{error}</p>
           )}
           {success && (
             <p className="mb-5 text-[13px] text-[#2a514d]">{success}</p>

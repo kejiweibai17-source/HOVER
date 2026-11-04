@@ -39,6 +39,7 @@ async function assertAdmin(noCache: Record<string, string>) {
 }
 
 import { computeMembership, tierLabel, type WcOrderLite } from "@/lib/membership";
+import { wcGmtToIso } from "@/lib/taipeiTime";
 
 function getMetaValue(meta: any[], key: string): any {
   return meta?.find((m) => m.key === key)?.value;
@@ -79,7 +80,7 @@ async function fetchOrdersSummaryForCustomerOrEmail(
         return {
           totalSpent,
           ordersCount: batch.length,
-          lastOrderDate: batch[0]?.date_created || null,
+          lastOrderDate: wcGmtToIso(batch[0]?.date_created_gmt, batch[0]?.date_created),
         };
       }
     }
@@ -119,7 +120,7 @@ async function fetchOrdersSummaryForCustomerOrEmail(
     return {
       totalSpent,
       ordersCount: matched.length,
-      lastOrderDate: matched[0]?.date_created || null,
+      lastOrderDate: wcGmtToIso(matched[0]?.date_created_gmt, matched[0]?.date_created),
     };
   } catch {
     return { totalSpent: 0, ordersCount: 0, lastOrderDate: null };

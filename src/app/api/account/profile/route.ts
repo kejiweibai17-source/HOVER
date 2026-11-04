@@ -7,6 +7,7 @@ import { authOptions } from "@/lib/auth-options";
 import {
   buildExclusiveMetaUpdates,
   computeMembership,
+  filterOrdersForMembership,
   mapWcOrdersToLite,
   netOrderTotal,
 } from "@/lib/membership";
@@ -395,6 +396,12 @@ export async function GET() {
       }
     }
 
+    // 帳號 baseline 之後才計入等級（刪帳重註冊同信箱不會沿用舊訂單消費）
+    ordersForCalc = filterOrdersForMembership(
+      ordersForCalc,
+      customer?.meta_data || [],
+    );
+
     totalSpent12m = ordersForCalc.reduce(
       (sum, o) => sum + netOrderTotal({ total: o.total, totalRefunded: o.total_refunded, date_created: o.date_created }),
       0,
@@ -442,8 +449,9 @@ export async function GET() {
       upgradeGift: membership.welcomeGift,
     };
 
-    // 解析生日
+    // 解析生日、信箱驗證狀態
     let birthday = null;
+    let emailVerified = true;
     if (customer?.meta_data && Array.isArray(customer.meta_data)) {
       const bdMeta = customer.meta_data.find(
         (m: any) =>
@@ -452,6 +460,13 @@ export async function GET() {
           m.key === "_billing_birth_date"
       );
       if (bdMeta?.value) birthday = bdMeta.value;
+      const verifyMeta = customer.meta_data.find(
+        (m: any) => m?.key === "email_verified",
+      );
+      // 僅明確為 "0" 視為未驗證；缺 meta 視為已驗證（舊帳／社群）
+      if (verifyMeta && String(verifyMeta.value) === "0") {
+        emailVerified = false;
+      }
     }
 
     const customerPayload = customer?.id
@@ -464,6 +479,7 @@ export async function GET() {
         display_name: resolveDisplayName(customer, session?.user?.name),
         avatar_url: resolveAvatarUrl(customer, session?.user?.image),
         birthday: birthday,
+        email_verified: emailVerified,
         phone: customer?.billing?.phone || "",
         billing_phone: customer?.billing?.phone || "",
         billing_address: [

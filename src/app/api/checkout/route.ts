@@ -69,6 +69,8 @@ interface CartItem {
   name?: string;
   id?: string | number;
   onSale?: boolean;
+  /** 購物車規格（例：{ 顏色: "酒紅", 尺寸: "M" }），寫入訂單 meta 供信件顯示 */
+  options?: Record<string, string>;
 }
 interface ContactInfo { email: string; }
 interface AddressInfo { firstName: string; lastName: string; line1: string; phone: string; storeId?: string; storeName?: string; storeAddr?: string; }
@@ -99,13 +101,110 @@ type PromotionOrderLine = {
   title: string;
   name?: string;
   sku?: string;
+  sizeLabel?: string;
+  colorLabel?: string;
 };
+
+type LineSpec = { size: string; color: string };
+
+function pickOptionValue(
+  options: Record<string, string> | undefined,
+  pattern: RegExp,
+): string {
+  if (!options || typeof options !== "object") return "";
+  for (const [key, value] of Object.entries(options)) {
+    const text = String(value || "").trim();
+    if (text && pattern.test(String(key || ""))) return text;
+  }
+  return "";
+}
+
+/** 從品名尾段推測規格（例：「經典 T - M, 酒紅」） */
+function parseSpecFromTitle(title: string): LineSpec {
+  const raw = String(title || "").trim();
+  const match = raw.match(/\s[-–—]\s*(.+)$/);
+  if (!match) return { size: "", color: "" };
+  const parts = match[1]
+    .split(/[,，_／/|｜]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length >= 2) return { size: parts[0], color: parts[1] };
+  if (parts.length === 1) {
+    if (/^(XXS|XS|S|M|L|XL|XXL|2XL|3XL|F|\d+)$/i.test(parts[0])) {
+      return { size: parts[0], color: "" };
+    }
+    return { size: "", color: parts[0] };
+  }
+  return { size: "", color: "" };
+}
+
+function extractSpecFromWcProduct(product: any): LineSpec {
+  let size = "";
+  let color = "";
+  const attrs = Array.isArray(product?.attributes) ? product.attributes : [];
+  for (const attr of attrs) {
+    const name = String(attr?.name || attr?.slug || "");
+    const option = String(
+      attr?.option ||
+        (Array.isArray(attr?.options) ? attr.options[0] : "") ||
+        "",
+    ).trim();
+    if (!option) continue;
+    if (!size && /尺寸|size/i.test(name)) size = option;
+    if (!color && /顏色|color|colour/i.test(name)) color = option;
+  }
+  const meta = Array.isArray(product?.meta_data) ? product.meta_data : [];
+  if (!color) {
+    const hoverColor = meta.find(
+      (entry: any) => String(entry?.key || "") === "hover_product_color",
+    )?.value;
+    const text = String(hoverColor || "").trim();
+    if (text) color = text;
+  }
+  return { size, color };
+}
+
+function resolveLineSpec(input: {
+  options?: Record<string, string>;
+  title?: string;
+  wcSize?: string;
+  wcColor?: string;
+  sizeLabel?: string;
+  colorLabel?: string;
+}): LineSpec {
+  const fromTitle = parseSpecFromTitle(String(input.title || ""));
+  const size =
+    pickOptionValue(input.options, /尺寸|size/i) ||
+    String(input.sizeLabel || "").trim() ||
+    String(input.wcSize || "").trim() ||
+    fromTitle.size;
+  const color =
+    pickOptionValue(input.options, /顏色|color|colour/i) ||
+    String(input.colorLabel || "").trim() ||
+    String(input.wcColor || "").trim() ||
+    fromTitle.color;
+  return { size, color };
+}
+
+/** 訂單 line item 可見 meta（信件 hoet_item_options 讀 尺寸／顏色） */
+function buildVariantDisplayMeta(spec: LineSpec): Array<{ key: string; value: string }> {
+  const meta: Array<{ key: string; value: string }> = [];
+  if (spec.size) {
+    meta.push({ key: "尺寸", value: spec.size });
+    meta.push({ key: "_hover_size", value: spec.size });
+  }
+  if (spec.color) {
+    meta.push({ key: "顏色", value: spec.color });
+    meta.push({ key: "_hover_color", value: spec.color });
+  }
+  return meta;
+}
 
 async function fetchProductPricing(
   auth: string,
   productId: number,
   variationId?: number,
-): Promise<{ price: number; onSale: boolean } | null> {
+): Promise<{ price: number; onSale: boolean; size: string; color: string } | null> {
   try {
     const root = BASE.replace(/\/$/, "");
     const url =
@@ -120,7 +219,29 @@ async function fetchProductPricing(
     const product = await res.json();
     const price = Number(product?.price);
     if (!Number.isFinite(price) || price < 0) return null;
-    return { price, onSale: Boolean(product?.on_sale) };
+    const spec = extractSpecFromWcProduct(product);
+    // 變體常只有尺寸屬性；顏色在父商品 hover_product_color
+    if (!spec.color && variationId && variationId > 0) {
+      try {
+        const parentRes = await fetch(
+          `${root}/wp-json/wc/v3/products/${productId}`,
+          { headers: { Authorization: auth }, cache: "no-store" },
+        );
+        if (parentRes.ok) {
+          const parent = await parentRes.json();
+          const parentSpec = extractSpecFromWcProduct(parent);
+          if (parentSpec.color) spec.color = parentSpec.color;
+        }
+      } catch {
+        // ignore parent lookup failures
+      }
+    }
+    return {
+      price,
+      onSale: Boolean(product?.on_sale),
+      size: spec.size,
+      color: spec.color,
+    };
   } catch {
     return null;
   }
@@ -333,6 +454,7 @@ export async function POST(req: Request) {
       unit: number;
       qty: number;
       line: number;
+      spec: LineSpec;
     }> = [];
     for (const item of items) {
       // 確保至少有傳入 ID
@@ -367,7 +489,13 @@ export async function POST(req: Request) {
       const lineTotal = unit * qty;
       calculatedSubtotal += lineTotal;
       if (!current.onSale) regularSubtotal += lineTotal;
-      resolvedBaseLines.push({ item, unit, qty, line: lineTotal });
+      const spec = resolveLineSpec({
+        options: item.options,
+        title: item.title || item.name || "",
+        wcSize: current.size,
+        wcColor: current.color,
+      });
+      resolvedBaseLines.push({ item, unit, qty, line: lineTotal, spec });
     }
 
     const requestedPromotions = Array.isArray(body.promotions)
@@ -444,6 +572,8 @@ export async function POST(req: Request) {
         let wcVariationId = promotion.product.variationId || undefined;
         let title = promotion.product.name;
         let sku = String(promotion.product.sku || "");
+        let sizeLabel = String(promotion.product.sizeLabel || "").trim();
+        let colorLabel = String(promotion.product.colorLabel || "").trim();
 
         if (promotion.type === "gift" && promotion.randomColor) {
           const picked = pickRandomGiftVariation(
@@ -468,6 +598,8 @@ export async function POST(req: Request) {
             promotionProductBaseName(promotionPool(promotion)[0]?.name) ||
             "滿額贈品";
           sku = String(picked.sku || "");
+          sizeLabel = String(picked.sizeLabel || "").trim();
+          colorLabel = String(picked.colorLabel || "").trim();
         } else if (promotion.type === "addon") {
           const chosen = findPromotionVariant(
             promotion,
@@ -490,6 +622,8 @@ export async function POST(req: Request) {
           wcVariationId = chosen.variationId || undefined;
           title = chosen.name;
           sku = String(chosen.sku || "");
+          sizeLabel = String(chosen.sizeLabel || "").trim();
+          colorLabel = String(chosen.colorLabel || "").trim();
         }
 
         promotionLines.push({
@@ -500,6 +634,8 @@ export async function POST(req: Request) {
           wcVariationId,
           title,
           sku,
+          sizeLabel,
+          colorLabel,
         });
       }
     }
@@ -803,7 +939,8 @@ export async function POST(req: Request) {
           shipping_lines: [{ method_id: methodId, method_title: shippingTitle, total: String(realShippingCost) }],
           fee_lines,
           line_items: [
-            ...resolvedBaseLines.map(({ item: it, qty, line }) => {
+            ...resolvedBaseLines.map(({ item: it, qty, line, spec }) => {
+              const meta = buildVariantDisplayMeta(spec);
               return {
                 product_id: Number(it.wcProductId || it.id),
                 ...(it.wcVariationId
@@ -813,6 +950,7 @@ export async function POST(req: Request) {
                 // 鎖定站內購物車單價，與綠界／發票金額一致
                 subtotal: String(line),
                 total: String(line),
+                ...(meta.length ? { meta_data: meta } : {}),
               };
             }),
             ...promotionLines.map((line) => {
@@ -820,6 +958,11 @@ export async function POST(req: Request) {
               const isGift = line.promotion.type === "gift";
               const typeLabel = isGift ? "滿額贈" : "加價購";
               const sku = String(line.sku || line.promotion.product?.sku || "").trim();
+              const spec = resolveLineSpec({
+                title: line.title,
+                sizeLabel: line.sizeLabel,
+                colorLabel: line.colorLabel,
+              });
               const meta: Array<{ key: string; value: string }> = [
                 {
                   key: "_hover_promotion_type",
@@ -849,6 +992,7 @@ export async function POST(req: Request) {
                   key: "成交單價",
                   value: isGift ? "NT$0" : `NT$${line.price}`,
                 },
+                ...buildVariantDisplayMeta(spec),
               ];
               if (sku) {
                 meta.push({ key: "_hover_fulfillment_sku", value: sku });

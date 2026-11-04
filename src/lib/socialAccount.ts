@@ -8,6 +8,7 @@
 
 import type { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { membershipBaselineMeta } from "@/lib/membership";
 
 export type SocialProvider = "google" | "facebook" | "line";
 
@@ -206,6 +207,7 @@ export async function upsertSocialCustomer(input: UpsertSocialInput) {
       meta_data: [
         ...metaBase,
         { key: "email_verified", value: realEmail ? "1" : "0" },
+        membershipBaselineMeta(),
       ],
     }),
     cache: "no-store",

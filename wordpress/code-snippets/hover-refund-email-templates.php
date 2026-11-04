@@ -17,6 +17,9 @@
  * 覆寫 WC「已退款訂單」／部分退款（customer_refunded_order /
  * customer_partially_refunded_order）。
  *
+ * 全額一次退清：以剩餘應退金額判定；退清後只寄「退款已完成」，
+ * 不因免運／贈品未退數量誤寄「部分退款」。
+ *
  * 強制情境（選用）：訂單 meta `_hover_refund_fulfillment`
  *   = pre_ship | received（客服可覆寫自動判斷）
  *
@@ -587,11 +590,57 @@ add_filter('woocommerce_mail_content', function ($content) {
 }, 1000);
 
 /**
+ * 一次退清剩餘金額 → 視為全部退款。
+ * WC 預設：金額已退完但仍有「未退數量的 0 元項目／贈品」時，會誤判成部分退款，
+ * 導致後台輸入全額退費卻寄出「部分退款」信。
+ */
+function hret_order_amount_fully_refunded(WC_Order $order): bool
+{
+    return (float) $order->get_remaining_refund_amount() <= 0.00001;
+}
+
+add_filter('woocommerce_order_is_partially_refunded', function ($is_partial, $order_id, $refund_id) {
+    $order = wc_get_order($order_id);
+    if (!$order instanceof WC_Order) {
+        return $is_partial;
+    }
+    if (hret_order_amount_fully_refunded($order)) {
+        return false;
+    }
+    return $is_partial;
+}, 10, 3);
+
+/** 雙保險：金額已退清時，直接關掉部分退款信 */
+add_filter('woocommerce_email_enabled_customer_partially_refunded_order', function ($enabled, $order) {
+    if ($order instanceof WC_Order && hret_order_amount_fully_refunded($order)) {
+        return false;
+    }
+    return $enabled;
+}, 10, 2);
+
+add_filter('woocommerce_email_enabled_customer_refunded_order', function ($enabled, $order) {
+    // 同一封 WC_Email_Customer_Refunded_Order 用 partial_refund 旗標區分；
+    // 金額已退清時，若誤以 partial 觸發則擋下，改由 fully_refunded 路徑寄出。
+    if (!$order instanceof WC_Order || !hret_order_amount_fully_refunded($order)) {
+        return $enabled;
+    }
+    $email = $GLOBALS['hret_sending_email'] ?? ($GLOBALS['hoet_sending_email'] ?? null);
+    if (is_object($email) && !empty($email->partial_refund)) {
+        return false;
+    }
+    return $enabled;
+}, 10, 2);
+
+/**
  * 退款完成後寫備註，方便客服核對信件情境
  */
 add_action('woocommerce_order_partially_refunded', function ($order_id, $refund_id) {
     $order = wc_get_order($order_id);
     if (!$order instanceof WC_Order) {
+        return;
+    }
+    // 金額已退清卻仍進到 partial hook（舊版 WC／其他外掛）→ 不寫部分退款備註
+    if (hret_order_amount_fully_refunded($order)) {
         return;
     }
     $ctx = hret_fulfillment_context($order);

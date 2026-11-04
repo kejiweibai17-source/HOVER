@@ -11,6 +11,7 @@ import {
   recordAuthFailure,
 } from "@/lib/authRateLimit";
 import { verifyTurnstileToken } from "@/lib/turnstile";
+import { membershipBaselineMeta } from "@/lib/membership";
 import { mailFooterHtml, mailFooterText, mailFromHeader, mailReplyTo } from "@/lib/mailFrom";
 
 export const runtime = "nodejs";
@@ -234,8 +235,11 @@ export async function POST(req: Request) {
     const ambassadorOk =
       ambassadorId ? await ensureAmbassadorExists(ambassadorId) : false;
 
-    // 1) 建立 WooCommerce customer，預設 email 未驗證
-    const meta_data: any[] = [{ key: "email_verified", value: "0" }];
+    // 1) 建立 WooCommerce customer，預設 email 未驗證；會員等級從此刻起算
+    const meta_data: any[] = [
+      { key: "email_verified", value: "0" },
+      membershipBaselineMeta(),
+    ];
     if (birthday) {
       meta_data.push(
         { key: "birthday", value: birthday },

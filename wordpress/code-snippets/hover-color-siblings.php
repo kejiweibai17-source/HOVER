@@ -9,7 +9,7 @@
  * 1. 新增 snippet，貼上本檔 → 儲存
  * 2. Run：Everywhere → 啟用
  * 3. 同款各色商品填入相同「顏色群組代碼」（例如 classic-embroidered-tshirt）
- * 4. 「本商品顏色」填 白／黑／紅／粉（可留空，會試著從顏色屬性推斷）
+ * 4. 「本商品顏色」請填與「顏色色票設定」相同的完整名稱（可留空，會從顏色屬性推斷並對齊）
  *
  * Meta：
  *   hover_color_group   （字串，同款共用）
@@ -43,14 +43,15 @@ function hccs_guess_hex(string $label): string
         '粉' => '#ffe0f4', '粉色' => '#ffe0f4', '粉紅' => '#ffe0f4',
         '藍' => '#9ab3d4', '藍色' => '#9ab3d4',
         '軍綠' => '#4a5d3f', '綠' => '#4a7c59', '綠色' => '#4a7c59',
-        '米色' => '#e8dcc8', '米' => '#e8dcc8',
-        '卡其' => '#c4b896',
+        '米色' => '#e8dcc8', '米' => '#e8dcc8', '米白' => '#e8dfd0',
+        '奶茶' => '#d2c0a8', '象牙' => '#d2c0a8', '象牙白' => '#d2c0a8', 'ivory' => '#d2c0a8',
+        '卡其' => '#c4b896', '杏' => '#e8d5b7', '駝' => '#c19a6b',
         '灰' => '#888888', '灰色' => '#888888',
         '黃' => '#f5d547', '黃色' => '#f5d547',
         '橘' => '#e67e22', '橘色' => '#e67e22',
         '紫' => '#7b5ea7', '紫色' => '#7b5ea7',
         '棕' => '#8b5a2b', '棕色' => '#8b5a2b',
-        '深藍' => '#1a3a5c', '海軍藍' => '#1a3a5c',
+        '深藍' => '#1a3a5c', '海軍藍' => '#1a3a5c', '藏青' => '#1a2744',
     ];
     $key = trim($label);
     if (isset($map[$key])) {
@@ -74,13 +75,32 @@ function hccs_resolve_hex(string $label, int $product_id = 0): string
     if ($product_id > 0 && function_exists('hcsw_get_resolved_swatches_for_product')) {
         $swatches = hcsw_get_resolved_swatches_for_product($product_id);
         if (is_array($swatches)) {
+            $aligned = function_exists('hccs_align_color_label')
+                ? hccs_align_color_label($label, array_map('strval', array_keys($swatches)))
+                : $label;
+            if ($aligned !== '' && !empty($swatches[$aligned])) {
+                return (string) $swatches[$aligned];
+            }
             if (!empty($swatches[$label])) {
                 return (string) $swatches[$label];
             }
             foreach ($swatches as $key => $hex) {
-                if (mb_strtolower(trim((string) $key)) === mb_strtolower($label)) {
+                $key = trim((string) $key);
+                if ($key === '') {
+                    continue;
+                }
+                if (function_exists('mb_strtolower')) {
+                    if (mb_strtolower($key) === mb_strtolower($label)) {
+                        return (string) $hex;
+                    }
+                } elseif (strtolower($key) === strtolower($label)) {
                     return (string) $hex;
                 }
+            }
+            // 同款分色商品通常只有一個顏色屬性；本商品顏色名稱若與屬性詞不一致，仍沿用該色票
+            $values = array_values(array_filter(array_map('strval', $swatches)));
+            if (count($values) === 1 && $values[0] !== '' && strtolower($values[0]) !== '#cccccc') {
+                return $values[0];
             }
         }
     }
@@ -138,14 +158,25 @@ function hccs_color_from_slug(string $slug): string
     $map = [
         'white' => '白',
         'whit'  => '白',
+        'wh'    => '白',
         'black' => '黑',
+        'bk'    => '黑',
         'red'   => '紅',
+        'rd'    => '紅',
         'pink'  => '粉',
+        'pk'    => '粉',
+        'navy'  => '深藍',
+        'nv'    => '深藍',
         'blue'  => '藍',
         'green' => '綠',
+        'gr'    => '綠',
+        'brown' => '棕',
+        'br'    => '棕',
+        'ivory' => '奶茶',
+        'iv'    => '奶茶',
+        'beige' => '奶茶',
         'gray'  => '灰',
         'grey'  => '灰',
-        'beige' => '米',
     ];
     foreach ($map as $key => $label) {
         if (preg_match('/(?:^|[-_])' . preg_quote($key, '/') . '(?:$|[-_])/', $slug)) {
@@ -156,20 +187,112 @@ function hccs_color_from_slug(string $slug): string
 }
 endif;
 
+if (!function_exists('hccs_get_product_color_options')) :
+/** @return string[] 顏色屬性選項（以後台色票名稱為準） */
+function hccs_get_product_color_options($product): array
+{
+    if (!$product || !is_object($product) || !method_exists($product, 'get_attributes')) {
+        return [];
+    }
+    $options = [];
+    foreach ($product->get_attributes() as $attribute) {
+        if (!is_object($attribute) || !method_exists($attribute, 'get_name')) {
+            continue;
+        }
+        if (!hccs_is_color_attr_name((string) $attribute->get_name())) {
+            continue;
+        }
+        if (method_exists($attribute, 'is_taxonomy') && $attribute->is_taxonomy()) {
+            foreach ((array) $attribute->get_options() as $term_id) {
+                $term = get_term((int) $term_id);
+                if ($term && !is_wp_error($term) && $term->name !== '') {
+                    $options[] = (string) $term->name;
+                }
+            }
+        } else {
+            foreach ((array) $attribute->get_options() as $opt) {
+                $opt = trim((string) $opt);
+                if ($opt !== '') {
+                    $options[] = $opt;
+                }
+            }
+        }
+    }
+    return array_values(array_unique($options));
+}
+endif;
+
+if (!function_exists('hccs_align_color_label')) :
+/**
+ * 短名對齊完整色票名（奶茶→淺奶茶、紅→酒紅）。
+ *
+ * @param string   $label
+ * @param string[] $candidates
+ */
+function hccs_align_color_label(string $label, array $candidates): string
+{
+    $label = trim($label);
+    if ($label === '' || !$candidates) {
+        return $label;
+    }
+    if (in_array($label, $candidates, true)) {
+        return $label;
+    }
+    $lower = function_exists('mb_strtolower') ? mb_strtolower($label) : strtolower($label);
+    foreach ($candidates as $opt) {
+        $opt = trim((string) $opt);
+        if ($opt === '') {
+            continue;
+        }
+        $opt_lower = function_exists('mb_strtolower') ? mb_strtolower($opt) : strtolower($opt);
+        if ($opt_lower === $lower) {
+            return $opt;
+        }
+    }
+    $matches = [];
+    foreach ($candidates as $opt) {
+        $opt = trim((string) $opt);
+        if ($opt === '') {
+            continue;
+        }
+        if (
+            (function_exists('mb_strpos') && (mb_strpos($opt, $label) !== false || mb_strpos($label, $opt) !== false))
+            || (!function_exists('mb_strpos') && (strpos($opt, $label) !== false || strpos($label, $opt) !== false))
+        ) {
+            $matches[] = $opt;
+        }
+    }
+    $matches = array_values(array_unique($matches));
+    if (count($matches) === 1) {
+        return $matches[0];
+    }
+    if (count($matches) > 1) {
+        usort($matches, static function ($a, $b) {
+            $la = function_exists('mb_strlen') ? mb_strlen($a) : strlen($a);
+            $lb = function_exists('mb_strlen') ? mb_strlen($b) : strlen($b);
+            if ($la === $lb) {
+                return strcmp($a, $b);
+            }
+            return $lb <=> $la; // 最長優先：紅→酒紅
+        });
+        return $matches[0];
+    }
+    return $label;
+}
+endif;
+
 if (!function_exists('hccs_infer_product_color')) :
 function hccs_infer_product_color(int $product_id): string
 {
     $saved = trim((string) get_post_meta($product_id, HCCS_COLOR_META, true));
-    if ($saved !== '') {
+    $product = function_exists('wc_get_product') ? wc_get_product($product_id) : null;
+    if (!$product) {
         return $saved;
     }
 
-    $product = function_exists('wc_get_product') ? wc_get_product($product_id) : null;
-    if (!$product) {
-        return '';
-    }
+    $options = hccs_get_product_color_options($product);
 
-    // 1) 預設表單值的顏色
+    // 1) 預設表單值的顏色（屬性完整名優先）
     foreach ((array) $product->get_default_attributes() as $attr_key => $option) {
         $option = trim((string) $option);
         if ($option === '') {
@@ -180,18 +303,17 @@ function hccs_infer_product_color(int $product_id): string
             $name = substr($name, strlen('attribute_'));
         }
         if (hccs_is_color_attr_name($name) || hccs_is_color_attr_name(urldecode($name))) {
-            // taxonomy 可能存 slug，轉成名稱
             if (taxonomy_exists($name)) {
                 $term = get_term_by('slug', $option, $name);
                 if ($term && !is_wp_error($term)) {
-                    return $term->name;
+                    return hccs_align_color_label($term->name, $options) ?: $term->name;
                 }
             }
-            return $option;
+            return hccs_align_color_label($option, $options) ?: $option;
         }
     }
 
-    // 2) 所有變體若共用同一顏色 → 用該色（即使屬性仍勾了多色）
+    // 2) 所有變體若共用同一顏色 → 用該色
     if ($product->is_type('variable')) {
         $shared = null;
         $children = $product->get_children();
@@ -229,49 +351,26 @@ function hccs_infer_product_color(int $product_id): string
             }
         }
         if (is_string($shared) && $shared !== '') {
-            return $shared;
+            return hccs_align_color_label($shared, $options) ?: $shared;
         }
     }
 
     // 3) 屬性只剩單一顏色
-    foreach ($product->get_attributes() as $attribute) {
-        if (!is_object($attribute) || !method_exists($attribute, 'get_name')) {
-            continue;
-        }
-        if (!hccs_is_color_attr_name((string) $attribute->get_name())) {
-            continue;
-        }
-        $options = [];
-        if (method_exists($attribute, 'get_options')) {
-            $raw = $attribute->get_options();
-            if (method_exists($attribute, 'is_taxonomy') && $attribute->is_taxonomy()) {
-                foreach ((array) $raw as $term_id) {
-                    $term = get_term((int) $term_id);
-                    if ($term && !is_wp_error($term)) {
-                        $options[] = $term->name;
-                    }
-                }
-            } else {
-                foreach ((array) $raw as $opt) {
-                    $opt = trim((string) $opt);
-                    if ($opt !== '') {
-                        $options[] = $opt;
-                    }
-                }
-            }
-        }
-        $options = array_values(array_unique(array_filter($options)));
-        if (count($options) === 1) {
-            return $options[0];
-        }
+    if (count($options) === 1) {
+        return $options[0];
     }
 
-    // 4) slug 後綴（classic-...-white）
+    // 4) 「本商品顏色」短名對齊到色票完整名（奶茶→淺奶茶、紅→酒紅）
+    if ($saved !== '') {
+        return hccs_align_color_label($saved, $options) ?: $saved;
+    }
+
+    // 5) slug 後綴，同樣對齊
     $post = get_post($product_id);
     if ($post) {
         $from_slug = hccs_color_from_slug((string) $post->post_name);
         if ($from_slug !== '') {
-            return $from_slug;
+            return hccs_align_color_label($from_slug, $options) ?: $from_slug;
         }
     }
 
@@ -398,7 +497,7 @@ function hccs_render_metabox($post): void
                     esc_html($inferred)
                 );
             } else {
-                esc_html_e('建議與色票名稱一致（白／黑／紅／粉）。', 'hover');
+                esc_html_e('請與「顏色色票設定」名稱完全一致（例如：淺奶茶／酒紅）。', 'hover');
             }
             ?>
         </span>

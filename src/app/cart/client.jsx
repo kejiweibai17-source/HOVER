@@ -33,6 +33,7 @@ import {
 } from "@/lib/shippingDefaults";
 import { useShippingSettings } from "@/lib/useShippingSettings";
 import { buildCartOrderSummary } from "@/lib/orderSummary";
+import { guessColorHex } from "@/lib/productColors";
 import OrderSummaryRows from "@/components/order/OrderSummaryRows";
 import {
   isValidLoveCode,
@@ -925,38 +926,7 @@ function parsePoolOptionKey(key) {
 }
 
 function colorSwatchHex(label = "") {
-  const key = String(label).trim().toLowerCase();
-  const map = {
-    黑: "#1a1a1a",
-    黑色: "#1a1a1a",
-    白: "#ffffff",
-    白色: "#ffffff",
-    灰: "#9ca3af",
-    灰色: "#9ca3af",
-    米: "#e8dfd0",
-    米白: "#e8dfd0",
-    棕: "#8b5e3c",
-    棕色: "#8b5e3c",
-    藍: "#1e3a5f",
-    藍色: "#1e3a5f",
-    深藍: "#0f2744",
-    藏青: "#1a2744",
-    綠: "#2a514d",
-    綠色: "#2a514d",
-    紅: "#b91c1c",
-    紅色: "#b91c1c",
-    粉: "#f9a8d4",
-    粉色: "#f9a8d4",
-    卡其: "#c3b091",
-    杏: "#e8d5b7",
-    駝: "#c19a6b",
-  };
-  for (const [name, hex] of Object.entries(map)) {
-    if (key.includes(name.toLowerCase()) || String(label).includes(name)) {
-      return hex;
-    }
-  }
-  return "#d4d4d4";
+  return guessColorHex(label);
 }
 
 const COLOR_WORD_RE = /色|黑|白|灰|米|棕|藍|綠|紅|粉|卡其|杏|駝|Navy|navy|Brown|brown/;
@@ -2092,6 +2062,8 @@ function CheckoutStep({
         price: it.price,
         title: it.name || it.title,
         onSale: Boolean(it.onSale),
+        // 尺寸／顏色寫入訂單 meta，完成信件才能穩定顯示
+        options: it.options || undefined,
       })),
       promotions: selectedPromotions.map((promotion) => ({
         id: promotion.id,

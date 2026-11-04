@@ -16,6 +16,45 @@ export type ColorSibling = {
   image?: string;
 };
 
+/**
+ * 將短名對齊到後台色票／屬性完整名稱（奶茶→淺奶茶、紅→酒紅）。
+ * 有多個候選時取最長且唯一的包含關係匹配。
+ */
+export function alignColorLabel(
+  label: string,
+  candidates: Array<string | null | undefined> = [],
+): string {
+  const raw = String(label || "").trim();
+  if (!raw) return "";
+
+  const options = Array.from(
+    new Set(
+      candidates
+        .map((c) => String(c || "").trim())
+        .filter(Boolean),
+    ),
+  );
+  if (!options.length) return raw;
+
+  if (options.includes(raw)) return raw;
+
+  const lower = raw.toLowerCase();
+  const exactCi = options.find((o) => o.toLowerCase() === lower);
+  if (exactCi) return exactCi;
+
+  const contains = options.filter(
+    (o) => o.includes(raw) || raw.includes(o),
+  );
+  if (contains.length === 1) return contains[0];
+  if (contains.length > 1) {
+    contains.sort((a, b) => b.length - a.length || a.localeCompare(b, "zh-Hant"));
+    // 最短短名對到最長完整名（紅→酒紅、奶茶→淺奶茶）
+    return contains[0];
+  }
+
+  return raw;
+}
+
 /** 同款多色獨立商品 → 色票清單（優先於變體顏色） */
 export function buildColorsFromSiblings(
   siblings: ColorSibling[] | undefined | null,
@@ -23,19 +62,23 @@ export function buildColorsFromSiblings(
 ): ProductColor[] {
   if (!Array.isArray(siblings) || siblings.length === 0) return [];
 
+  const candidates = Object.keys(swatches || {});
   const seen = new Set<string>();
   const out: ProductColor[] = [];
   for (const row of siblings) {
-    const label = String(row?.color || "").trim();
+    const rawLabel = String(row?.color || "").trim();
+    const label = alignColorLabel(rawLabel, candidates) || rawLabel;
     const slug = String(row?.slug || "").trim();
     if (!label || !slug || seen.has(label)) continue;
     seen.add(label);
+    const rawHex = String(row.hex || "").trim();
+    const fromSwatch = resolveSwatchHex(label, swatches);
+    // 對齊後若色票表有完整名，優先用後台色碼（避免短名猜成亮紅）
+    const fromSibling =
+      !fromSwatch && !isUnknownSwatchHex(rawHex) ? rawHex : "";
     out.push({
       label,
-      hex:
-        resolveSwatchHex(label, swatches) ||
-        String(row.hex || "").trim() ||
-        guessColorHex(label),
+      hex: fromSwatch || fromSibling || guessColorHex(label),
       slug,
       productId: Number(row.id) || undefined,
       image: String(row.image || "").trim() || undefined,
@@ -44,16 +87,20 @@ export function buildColorsFromSiblings(
   return out;
 }
 
-/** 從 slug 猜顏色（classic-...-white → 白） */
+/** 從 slug 猜顏色（classic-...-white / -wh / -iv → 白／奶茶） */
 export function guessColorLabelFromSlug(slug: string): string {
   const s = String(slug || "").toLowerCase();
   const map: Array<[RegExp, string]> = [
-    [/(?:^|[-_])white(?:$|[-_])/, "白"],
-    [/(?:^|[-_])black(?:$|[-_])/, "黑"],
-    [/(?:^|[-_])red(?:$|[-_])/, "紅"],
-    [/(?:^|[-_])pink(?:$|[-_])/, "粉"],
-    [/(?:^|[-_])blue(?:$|[-_])/, "藍"],
-    [/(?:^|[-_])green(?:$|[-_])/, "綠"],
+    [/(?:^|[-_])(?:white|whit|wh)(?:$|[-_])/, "白"],
+    [/(?:^|[-_])(?:black|bk)(?:$|[-_])/, "黑"],
+    [/(?:^|[-_])(?:red|rd)(?:$|[-_])/, "紅"],
+    [/(?:^|[-_])(?:pink|pk)(?:$|[-_])/, "粉"],
+    [/(?:^|[-_])(?:navy|nv|深蓝)(?:$|[-_])/, "深藍"],
+    [/(?:^|[-_])(?:blue)(?:$|[-_])/, "藍"],
+    [/(?:^|[-_])(?:green|gr)(?:$|[-_])/, "綠"],
+    [/(?:^|[-_])(?:brown|br)(?:$|[-_])/, "棕"],
+    [/(?:^|[-_])(?:ivory|iv|beige|奶茶)(?:$|[-_])/, "奶茶"],
+    [/(?:^|[-_])(?:gray|grey)(?:$|[-_])/, "灰"],
   ];
   for (const [re, label] of map) {
     if (re.test(s)) return label;
@@ -84,10 +131,11 @@ export function ensureCurrentColorInList(
     guessColorLabelFromSlug(slug) ||
     "本色";
   const withoutDupLabel = colors.filter((c) => c.label !== label);
+  const currentHex = String(current.hex || "").trim();
   return [
     {
       label,
-      hex: current.hex || guessColorHex(label),
+      hex: (!isUnknownSwatchHex(currentHex) ? currentHex : "") || guessColorHex(label),
       slug,
       productId: current.id ? Number(current.id) : undefined,
       image: current.image,
@@ -120,7 +168,14 @@ const COLOR_NAME_HINTS: Record<string, string> = {
   綠色: "#4a7c59",
   米色: "#e8dcc8",
   米: "#e8dcc8",
+  米白: "#e8dfd0",
+  奶茶: "#d2c0a8",
+  象牙: "#d2c0a8",
+  象牙白: "#d2c0a8",
+  ivory: "#d2c0a8",
   卡其: "#c4b896",
+  杏: "#e8d5b7",
+  駝: "#c19a6b",
   灰: "#888888",
   灰色: "#888888",
   深灰: "#555555",
@@ -135,7 +190,13 @@ const COLOR_NAME_HINTS: Record<string, string> = {
   棕色: "#8b5a2b",
   深藍: "#1a3a5c",
   海軍藍: "#1a3a5c",
+  藏青: "#1a2744",
 };
+
+/** 後端推斷失敗時會回 #cccccc；前台視為「未知」再猜一次 */
+function isUnknownSwatchHex(hex: string): boolean {
+  return !hex || /^#c{3,8}$/i.test(hex.trim());
+}
 
 const COLOR_ATTR_NAMES = new Set([
   "顏色",
@@ -196,7 +257,7 @@ export function guessColorHex(label: string): string {
 }
 
 /** 從色票表找色碼：精確 → trim → 不分大小寫 */
-function resolveSwatchHex(
+export function resolveSwatchHex(
   label: string,
   swatches: Record<string, string>,
 ): string | null {
@@ -234,9 +295,13 @@ export function extractProductColors(product: {
     return product.colors.map((c) => {
       const label = String(c.label || "").trim();
       const fromSwatch = resolveSwatchHex(label, swatches);
+      const existing = String(c.hex || "").trim();
       return {
         label,
-        hex: fromSwatch || c.hex || guessColorHex(label),
+        hex:
+          fromSwatch ||
+          (!isUnknownSwatchHex(existing) ? existing : "") ||
+          guessColorHex(label),
       };
     });
   }

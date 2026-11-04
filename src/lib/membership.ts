@@ -2,6 +2,7 @@
  * HOVER 會員制度 — HOVER FRIENDS / HOVER EXCLUSIVE
  * 對齊 /membership 頁面規則
  */
+import { wcGmtToIso } from "@/lib/taipeiTime";
 
 export const HOVER_TIER = {
   FRIENDS: "HOVER_FRIENDS",
@@ -64,7 +65,32 @@ const META = {
   exclusiveSince: "hover_exclusive_since",
   exclusiveExpires: "hover_exclusive_expires",
   exclusivePeriodSpend: "hover_exclusive_period_spend",
+  /** 帳號建立／重註冊時間：此時間前的訂單不計入會員等級（避免刪帳後同信箱沿用舊消費） */
+  membershipBaseline: "hover_membership_baseline",
 } as const;
+
+/** 新註冊時寫入；之後會員等級只計算此時間之後的訂單 */
+export function membershipBaselineMeta(
+  at: Date = new Date(),
+): { key: string; value: string } {
+  return { key: META.membershipBaseline, value: at.toISOString() };
+}
+
+/** 依帳號 baseline 過濾訂單；無 baseline 的舊帳不加限制 */
+export function filterOrdersForMembership<T extends { date_created?: string }>(
+  orders: T[],
+  metaInput: { key: string; value: unknown }[] = [],
+): T[] {
+  const meta = parseMeta(metaInput);
+  const raw = String(meta[META.membershipBaseline] || "").trim();
+  if (!raw) return orders;
+  const baselineMs = new Date(raw).getTime();
+  if (!Number.isFinite(baselineMs)) return orders;
+  return (orders || []).filter((o) => {
+    const t = new Date(String(o.date_created || "")).getTime();
+    return Number.isFinite(t) && t >= baselineMs;
+  });
+}
 
 export function tierLabel(tierId: HoverTierId): string {
   return tierId === HOVER_TIER.EXCLUSIVE ? "臻享會員" : "品牌好友";
@@ -108,7 +134,7 @@ export function mapWcOrdersToLite(orders: any[]): WcOrderLite[] {
   return (orders || []).map((o) => ({
     total: parseFloat(o.total) || 0,
     totalRefunded: parseFloat(o.total_refunded) || 0,
-    date_created: o.date_created,
+    date_created: wcGmtToIso(o.date_created_gmt, o.date_created) || o.date_created,
     status: o.status,
   }));
 }

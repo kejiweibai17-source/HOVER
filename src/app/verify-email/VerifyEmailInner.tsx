@@ -32,7 +32,7 @@ export default function VerifyEmailInner() {
 
         if (res.ok && data?.ok) {
           setStatus("ok");
-          setMsg(data.message || "信箱驗證完成，您現在可以登入了。");
+          setMsg(data.message || "信箱驗證完成，感謝您。");
         } else {
           setStatus("error");
           setMsg(data?.message || "驗證失敗，請稍後再試。");

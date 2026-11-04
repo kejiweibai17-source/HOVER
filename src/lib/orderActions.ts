@@ -15,6 +15,8 @@ export { HOVER_LINE_OA, HOVER_LINE_OA_ID };
 /** 鑑賞期（天）— 以消費者實際取貨／簽收日起算（不是貨到超商門市日） */
 export const RETURN_WINDOW_DAYS = 7;
 
+import { formatTaipei } from "@/lib/taipeiTime";
+
 export type OrderActionKind = "cancel" | "return" | "contact";
 
 export type OrderDisplayPhase =
@@ -400,16 +402,7 @@ function formatReturnNt(value: string | number | null | undefined): string {
 
 function formatReturnYmd(value?: string | null): string {
   if (!value) return "";
-  try {
-    const d = new Date(value);
-    if (Number.isNaN(d.getTime())) return "";
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}/${m}/${day}`;
-  } catch {
-    return "";
-  }
+  return formatTaipei(value, false);
 }
 
 /** 規格：尺寸 / 顏色（略過活動 meta，避免帶入錯誤欄位） */

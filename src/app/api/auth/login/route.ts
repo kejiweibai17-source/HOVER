@@ -26,9 +26,6 @@ const JWT_MAX_AGE_SECONDS = process.env.JWT_MAX_AGE_SECONDS
   ? Number(process.env.JWT_MAX_AGE_SECONDS)
   : 7 * 24 * 60 * 60;
 
-const UNVERIFIED_MESSAGE =
-  "此帳號尚未完成信箱驗證，請先至信箱點擊驗證連結後再登入。";
-
 function cookieOpts() {
   return {
     httpOnly: true,
@@ -50,14 +47,6 @@ function stripHtml(input: unknown) {
     .replace(/<[^>]*>/g, "")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function isUnverifiedCustomer(customer: any) {
-  const meta: any[] = Array.isArray(customer?.meta_data)
-    ? customer.meta_data
-    : [];
-  const verifyMeta = meta.find((m) => m?.key === "email_verified");
-  return Boolean(verifyMeta && String(verifyMeta.value) === "0");
 }
 
 async function findCustomerByLogin(login: string) {
@@ -265,7 +254,6 @@ export async function POST(req: Request) {
     if (!auth.ok && authLogin !== usernameRaw) {
       auth = await authenticateWithWordPress(usernameRaw, password);
     }
-    const unverified = isUnverifiedCustomer(customer);
 
     if (!auth.ok) {
       const fail = recordAuthFailure({
@@ -273,25 +261,6 @@ export async function POST(req: Request) {
         action: "login",
         identifier: usernameRaw,
       });
-      if (unverified) {
-        const res = NextResponse.json(
-          {
-            message: UNVERIFIED_MESSAGE,
-            code: "email_not_verified",
-            email:
-              String(customer?.email || "").trim().toLowerCase() || undefined,
-          },
-          { status: 403 },
-        );
-        if (fail.cookieValue) {
-          res.cookies.set(
-            "hover_auth_rl",
-            fail.cookieValue,
-            authRateLimitCookieOptions(),
-          );
-        }
-        return res;
-      }
 
       const res = NextResponse.json(
         {
@@ -321,33 +290,12 @@ export async function POST(req: Request) {
         "HOVER 會員",
     ).trim();
 
-    // 擋未驗證帳號
-    if (unverified) {
-      return NextResponse.json(
-        {
-          message: UNVERIFIED_MESSAGE,
-          code: "email_not_verified",
-          email: email || undefined,
-        },
-        { status: 403 },
-      );
-    }
-
+    // 方案 B：未驗證信箱仍可登入／購物；僅會員中心提示補驗證
     if (!customer && email) {
       try {
         customer = await findCustomerByLogin(email);
-        if (isUnverifiedCustomer(customer)) {
-          return NextResponse.json(
-            {
-              message: UNVERIFIED_MESSAGE,
-              code: "email_not_verified",
-              email,
-            },
-            { status: 403 },
-          );
-        }
       } catch (e) {
-        console.error("check email_verified error:", e);
+        console.error("find customer after auth error:", e);
       }
     }
 
