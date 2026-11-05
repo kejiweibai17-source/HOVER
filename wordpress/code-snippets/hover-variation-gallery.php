@@ -196,7 +196,7 @@ add_action('woocommerce_product_after_variable_attributes', function ($loop, $va
     $csv = implode(',', $ids);
     ?>
     <div class="hcvg-variation-panel form-row form-row-full" data-loop="<?php echo esc_attr((string) $loop); ?>" data-variation-id="<?php echo esc_attr((string) $variation_id); ?>">
-        <label>HOVER 變體圖庫 <span class="description">（可多張；點「新增圖片」會加在後面，不會蓋掉已選）</span></label>
+        <label>HOVER 變體圖庫 <span class="description">（可多張；拖曳縮圖調整順序；點「新增圖片」會加在後面，不會蓋掉已選）</span></label>
         <input type="hidden" class="hcvg-gallery-ids" name="hcvg_gallery[<?php echo esc_attr((string) $variation_id); ?>]" value="<?php echo esc_attr($csv); ?>">
         <div class="hcvg-gallery-list">
             <?php foreach ($images as $image) : ?>
@@ -207,7 +207,7 @@ add_action('woocommerce_product_after_variable_attributes', function ($loop, $va
             <?php endforeach; ?>
         </div>
         <button type="button" class="button hcvg-add-images">新增圖片</button>
-        <p class="description" style="margin:8px 0 0">改完按「更新」即可。每個尺寸各自獨立，不會套到其他尺寸。</p>
+        <p class="description" style="margin:8px 0 0">拖曳可改順序，改完按「更新」。每個尺寸各自獨立，不會套到其他尺寸。</p>
     </div>
     <?php
 }, 10, 3);
@@ -307,7 +307,8 @@ add_action('admin_enqueue_scripts', function ($hook) {
     }
 
     wp_enqueue_media();
-    wp_register_script('hcvg-admin', false, ['jquery'], '1.6.0', true);
+    wp_enqueue_script('jquery-ui-sortable');
+    wp_register_script('hcvg-admin', false, ['jquery', 'jquery-ui-sortable'], '1.7.0', true);
     wp_enqueue_script('hcvg-admin');
     wp_add_inline_script('hcvg-admin', hcvg_admin_js());
 });
@@ -367,6 +368,24 @@ jQuery(function($){
         syncPayload();
     }
 
+    function enableSort($panel){
+        var $list = $panel.find('.hcvg-gallery-list');
+        if (!$list.length || !$.fn.sortable) return;
+        if ($list.hasClass('ui-sortable')) {
+            $list.sortable('refresh');
+            return;
+        }
+        $list.sortable({
+            items: '> .hcvg-gallery-item',
+            tolerance: 'pointer',
+            cursor: 'grabbing',
+            cancel: '.hcvg-remove-image',
+            update: function(){
+                markDirty($panel);
+            }
+        });
+    }
+
     function renderList($panel, attachments){
         var $list = $panel.find('.hcvg-gallery-list').empty();
         attachments.forEach(function(item){
@@ -377,12 +396,22 @@ jQuery(function($){
             html += '</div>';
             $list.append(html);
         });
+        enableSort($panel);
         markDirty($panel);
+    }
+
+    function enableAllSort(){
+        $('.hcvg-variation-panel').each(function(){
+            enableSort($(this));
+        });
     }
 
     $(document).on('mousedown', 'button.save-variation-changes', function(){
         syncPayload();
     });
+
+    $(document).on('woocommerce_variations_loaded', enableAllSort);
+    enableAllSort();
 
     $.ajaxPrefilter(function(options){
         if (!options || !options.data) return;
@@ -492,6 +521,20 @@ add_action('admin_head', function () {
             border-radius: 6px;
             overflow: hidden;
             background: #fff;
+            cursor: grab;
+        }
+        .hcvg-gallery-item.ui-sortable-helper {
+            cursor: grabbing;
+            z-index: 20;
+            box-shadow: 0 4px 12px rgba(0,0,0,.18);
+        }
+        .hcvg-gallery-list .ui-sortable-placeholder {
+            width: 54px;
+            height: 72px;
+            border: 1px dashed #8c8f94;
+            border-radius: 6px;
+            background: #f0f0f1;
+            visibility: visible !important;
         }
         .hcvg-gallery-item img {
             width: 100%;

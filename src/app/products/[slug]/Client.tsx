@@ -21,7 +21,11 @@ import {
   type ProductColor,
 } from "@/lib/productColors";
 import { formatProductPrice, hasRichHtmlContent, sanitizeRichHtml } from "@/lib/utils";
-import { type ColorGalleries } from "@/lib/variationGallery";
+import {
+  fullestVariationGallery,
+  resolveGalleryForColor,
+  type ColorGalleries,
+} from "@/lib/variationGallery";
 import {
   isWashingInstructionsVisible,
   type WashingInstructions,
@@ -671,15 +675,29 @@ export default function ProductClient({ product }: ProductProps) {
 
   const gallery = useMemo(() => {
     const excludeUrls = [product.sizeGuide?.imageUrl].filter(Boolean) as string[];
-    let images = baseGallery;
+    // 進頁就顯示變體圖庫（後台順序）；父商品圖只在沒有變體圖時備用
+    const colorGallery = resolveGalleryForColor(
+      selectedColor,
+      product.colorGalleries || {},
+      [],
+    );
+    const variationGallery = fullestVariationGallery(variations);
+    let images = colorGallery.length
+      ? colorGallery
+      : variationGallery.length
+        ? variationGallery
+        : baseGallery;
     if (selectedSize) {
       const fromVariation = (matchedVariation?.gallery || []).filter(Boolean);
       if (fromVariation.length) images = fromVariation;
     }
     return normalizeGalleryImages(images, excludeUrls);
   }, [
+    selectedColor,
     selectedSize,
     matchedVariation,
+    variations,
+    product.colorGalleries,
     baseGallery,
     product.sizeGuide?.imageUrl,
   ]);

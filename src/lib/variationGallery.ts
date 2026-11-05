@@ -121,6 +121,20 @@ export function mergeColorGalleries(
   return merged;
 }
 
+/** 尚未選尺寸時，用最完整的一組變體圖庫（順序與後台相同） */
+export function fullestVariationGallery(
+  variations: Array<{ gallery?: string[] }>,
+): string[] {
+  let best: string[] = [];
+  for (const variation of variations) {
+    const gallery = (variation.gallery || [])
+      .map((src) => String(src || "").trim())
+      .filter(Boolean);
+    if (gallery.length > best.length) best = gallery;
+  }
+  return best;
+}
+
 export function resolveGalleryForColor(
   color: string,
   colorGalleries: ColorGalleries,
