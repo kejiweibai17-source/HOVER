@@ -213,10 +213,11 @@ function hret_refund_amount(WC_Order_Refund $refund): float
 function hret_refund_date(WC_Order_Refund $refund): string
 {
     $d = $refund->get_date_created();
-    if (!$d) {
-        return wp_date('Y/m/d');
+    $tz = new DateTimeZone('Asia/Taipei');
+    if (!$d instanceof DateTimeInterface) {
+        return (new DateTimeImmutable('now', $tz))->format('Y/m/d');
     }
-    return $d->date_i18n('Y/m/d');
+    return (new DateTimeImmutable('@' . $d->getTimestamp()))->setTimezone($tz)->format('Y/m/d');
 }
 
 function hret_original_item(WC_Order $order, WC_Order_Item $refund_item): ?WC_Order_Item_Product

@@ -203,10 +203,48 @@ function hoet_customer_name(WC_Order $order): string
     return $name !== '' ? $name : '顧客';
 }
 
+/**
+ * 信件時間一律台灣時間。
+ * Woo 的 DateTime 是絕對時間，轉 Asia/Taipei。
+ * 沒有時區的字串（綠界 UpdateStatusDate、我們用 wp_date 存的 Y-m-d H:i:s）
+ * 已經是台灣當地時間；不能 strtotime（WordPress 把 PHP 時區鎖成 UTC）再 wp_date，否則會多 8 小時。
+ */
+function hoet_format_instant($value, string $format = 'Y/m/d H:i'): string
+{
+    if (!$value instanceof DateTimeInterface) {
+        return '';
+    }
+    return (new DateTimeImmutable('@' . $value->getTimestamp()))
+        ->setTimezone(new DateTimeZone('Asia/Taipei'))
+        ->format($format);
+}
+
+function hoet_format_stored_datetime(string $raw, string $format = 'Y/m/d H:i'): string
+{
+    $raw = trim($raw);
+    if ($raw === '') {
+        return '';
+    }
+    $has_tz = (bool) preg_match('/(?:Z|[+-]\d{2}:?\d{2})$/', $raw);
+    $date_only = (bool) preg_match('/^\d{4}[\/-]\d{1,2}[\/-]\d{1,2}$/', $raw);
+    try {
+        if ($has_tz) {
+            $dt = (new DateTimeImmutable($raw))->setTimezone(new DateTimeZone('Asia/Taipei'));
+        } else {
+            $dt = new DateTimeImmutable(str_replace('/', '-', $raw), new DateTimeZone('Asia/Taipei'));
+        }
+    } catch (Exception $e) {
+        return $raw;
+    }
+    if ($date_only) {
+        return $dt->format('Y/m/d');
+    }
+    return $dt->format($format);
+}
+
 function hoet_order_date(WC_Order $order): string
 {
-    $d = $order->get_date_created();
-    return $d ? $d->date_i18n('Y/m/d H:i') : '';
+    return hoet_format_instant($order->get_date_created());
 }
 
 function hoet_paid_date(WC_Order $order): string
@@ -215,7 +253,7 @@ function hoet_paid_date(WC_Order $order): string
     if (!$d) {
         $d = $order->get_date_modified();
     }
-    return $d ? $d->date_i18n('Y/m/d H:i') : '';
+    return hoet_format_instant($d);
 }
 
 function hoet_shipped_date(WC_Order $order): string
@@ -224,7 +262,7 @@ function hoet_shipped_date(WC_Order $order): string
     if (!$d) {
         $d = $order->get_date_modified();
     }
-    return $d ? $d->date_i18n('Y/m/d H:i') : '';
+    return hoet_format_instant($d);
 }
 
 function hoet_meta(WC_Order $order, array $keys): string
@@ -309,14 +347,7 @@ function hoet_atm_expire(WC_Order $order): string
             $raw = trim($m[1]);
         }
     }
-    if ($raw === '') {
-        return '';
-    }
-    $ts = strtotime(str_replace('/', '-', $raw));
-    if ($ts) {
-        return wp_date('Y/m/d H:i', $ts);
-    }
-    return $raw;
+    return hoet_format_stored_datetime($raw);
 }
 
 function hoet_payment_label(WC_Order $order): string
@@ -1048,23 +1079,22 @@ function hoet_tpl_shipped(WC_Order $order): string
 /** 到店時間（綠界 UpdateStatusDate；無則空） */
 function hoet_store_arrived_date(WC_Order $order): string
 {
-    $raw = trim((string) $order->get_meta('_hover_store_arrived_at', true));
-    if ($raw === '') {
-        return '';
-    }
-    $ts = strtotime(str_replace('/', '-', $raw));
-    return $ts ? wp_date('Y/m/d H:i', $ts) : $raw;
+    return hoet_format_stored_datetime((string) $order->get_meta('_hover_store_arrived_at', true));
 }
 
-/** 超商取貨參考期限：到店日 + 7 日 */
+/** 超商取貨參考期限：到店日 + 7 日（以台灣日曆計） */
 function hoet_pickup_deadline(WC_Order $order): string
 {
     $raw = trim((string) $order->get_meta('_hover_store_arrived_at', true));
-    $ts = $raw !== '' ? strtotime(str_replace('/', '-', $raw)) : 0;
-    if (!$ts) {
+    if ($raw === '') {
         return '送達門市後 7 日內';
     }
-    return wp_date('Y/m/d', $ts + 7 * DAY_IN_SECONDS) . ' 前';
+    try {
+        $dt = new DateTimeImmutable(str_replace('/', '-', $raw), new DateTimeZone('Asia/Taipei'));
+    } catch (Exception $e) {
+        return '送達門市後 7 日內';
+    }
+    return $dt->modify('+7 days')->format('Y/m/d') . ' 前';
 }
 
 function hoet_tpl_arrived(WC_Order $order): string
@@ -1165,12 +1195,7 @@ function hoet_send_arrived_notice(WC_Order $order): bool
 
 function hoet_picked_date(WC_Order $order): string
 {
-    $raw = trim((string) $order->get_meta('_hover_arrived_at', true));
-    if ($raw === '') {
-        return '';
-    }
-    $ts = strtotime(str_replace('/', '-', $raw));
-    return $ts ? wp_date('Y/m/d H:i', $ts) : $raw;
+    return hoet_format_stored_datetime((string) $order->get_meta('_hover_arrived_at', true));
 }
 
 function hoet_tpl_picked(WC_Order $order): string
@@ -1186,8 +1211,8 @@ function hoet_tpl_picked(WC_Order $order): string
     }
 
     $lead = hoet_is_cvs($order)
-        ? '您已於超商完成取貨。7 日鑑賞期自取貨日起算；若需退換，請於期限內透過官方客服聯繫。'
-        : '您的商品已配達簽收。7 日鑑賞期自簽收日起算；若需退換，請於期限內透過官方客服聯繫。';
+        ? '您已於超商完成取貨。7 日鑑賞期自取貨日起算；若需退貨，請於期限內透過官方客服聯繫。'
+        : '您的商品已配達簽收。7 日鑑賞期自簽收日起算；若需退貨，請於期限內透過官方客服聯繫。';
 
     $hint = '本通知僅供確認取件／簽收狀態。退換貨規範請見官網說明，並請保留商品完整包裝。';
 
@@ -1222,12 +1247,7 @@ function hoet_send_picked_notice(WC_Order $order): bool
 
 function hoet_unclaimed_date(WC_Order $order): string
 {
-    $raw = trim((string) $order->get_meta('_hover_unclaimed_at', true));
-    if ($raw === '') {
-        return '';
-    }
-    $ts = strtotime(str_replace('/', '-', $raw));
-    return $ts ? wp_date('Y/m/d H:i', $ts) : $raw;
+    return hoet_format_stored_datetime((string) $order->get_meta('_hover_unclaimed_at', true));
 }
 
 function hoet_tpl_unclaimed(WC_Order $order): string
@@ -1280,12 +1300,7 @@ function hoet_send_unclaimed_notice(WC_Order $order): bool
 
 function hoet_returning_date(WC_Order $order): string
 {
-    $raw = trim((string) $order->get_meta('_hover_returning_at', true));
-    if ($raw === '') {
-        return '';
-    }
-    $ts = strtotime(str_replace('/', '-', $raw));
-    return $ts ? wp_date('Y/m/d H:i', $ts) : $raw;
+    return hoet_format_stored_datetime((string) $order->get_meta('_hover_returning_at', true));
 }
 
 function hoet_tpl_returning(WC_Order $order): string
@@ -1334,12 +1349,7 @@ function hoet_send_returning_notice(WC_Order $order): bool
 
 function hoet_returned_date(WC_Order $order): string
 {
-    $raw = trim((string) $order->get_meta('_hover_returned_at', true));
-    if ($raw === '') {
-        return '';
-    }
-    $ts = strtotime(str_replace('/', '-', $raw));
-    return $ts ? wp_date('Y/m/d H:i', $ts) : $raw;
+    return hoet_format_stored_datetime((string) $order->get_meta('_hover_returned_at', true));
 }
 
 function hoet_tpl_returned(WC_Order $order): string

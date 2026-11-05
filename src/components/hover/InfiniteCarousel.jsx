@@ -253,16 +253,12 @@ export default function InfiniteCarousel({
         draggingRef.current = true;
         setDragging(true);
         setAnimate(false);
-        try {
-          el.setPointerCapture(e.pointerId);
-        } catch {
-          /* ignore */
-        }
+        // 不 setPointerCapture：iOS 常立刻 lostpointercapture，拖曳會被中斷。
+        // move／up 改聽 window。
       }
 
       if (axisLock.current !== "x") return;
 
-      // touch-action: pan-y 已交垂直給瀏覽器；水平拖曳時再擋預設
       if (e.pointerType !== "mouse" && e.cancelable) {
         e.preventDefault();
       }
@@ -273,28 +269,26 @@ export default function InfiniteCarousel({
 
     const onPointerUp = (e) => {
       if (pointerIdRef.current !== e.pointerId) return;
-      try {
-        if (el.hasPointerCapture?.(e.pointerId)) {
-          el.releasePointerCapture(e.pointerId);
-        }
-      } catch {
-        /* ignore */
-      }
       finish();
     };
 
+    const onTouchMove = (e) => {
+      if (axisLock.current !== "x") return;
+      if (e.cancelable) e.preventDefault();
+    };
+
     el.addEventListener("pointerdown", onPointerDown);
-    el.addEventListener("pointermove", onPointerMove, { passive: false });
-    el.addEventListener("pointerup", onPointerUp);
-    el.addEventListener("pointercancel", onPointerUp);
-    el.addEventListener("lostpointercapture", onPointerUp);
+    window.addEventListener("pointermove", onPointerMove, { passive: false });
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
 
     return () => {
       el.removeEventListener("pointerdown", onPointerDown);
-      el.removeEventListener("pointermove", onPointerMove);
-      el.removeEventListener("pointerup", onPointerUp);
-      el.removeEventListener("pointercancel", onPointerUp);
-      el.removeEventListener("lostpointercapture", onPointerUp);
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
+      el.removeEventListener("touchmove", onTouchMove);
     };
   }, [allowDrag, isMobile, goByUser, pauseAutoplay]);
 
@@ -337,7 +331,7 @@ export default function InfiniteCarousel({
           ref={trackRef}
           className={`relative overflow-hidden select-none [&_img]:pointer-events-none ${trackClassName} ${
             allowDrag
-              ? `touch-pan-y ${dragging ? "cursor-grabbing" : "cursor-grab"}`
+              ? `touch-pan-y [&_*]:touch-pan-y ${dragging ? "cursor-grabbing" : "cursor-grab"}`
               : ""
           }`}
           onClickCapture={(e) => {

@@ -76,19 +76,27 @@ function hel_map_rtn_phase(string $code, string $msg, string $logistics_type = '
     return null;
 }
 
-/** 解析綠界 UpdateStatusDate（Y/m/d H:i:s） */
+/**
+ * 解析綠界 UpdateStatusDate（Y/m/d H:i:s，台灣時間、無時區）。
+ * 不可 strtotime 後再 wp_date，否則會被多加 8 小時。
+ */
 function hel_parse_status_date(string $raw): string
 {
     $raw = trim($raw);
     if ($raw === '') {
         return '';
     }
-    $normalized = str_replace('/', '-', $raw);
-    $ts = strtotime($normalized);
-    if (!$ts) {
+    try {
+        $has_tz = (bool) preg_match('/(?:Z|[+-]\d{2}:?\d{2})$/', $raw);
+        if ($has_tz) {
+            $dt = (new DateTimeImmutable($raw))->setTimezone(new DateTimeZone('Asia/Taipei'));
+        } else {
+            $dt = new DateTimeImmutable(str_replace('/', '-', $raw), new DateTimeZone('Asia/Taipei'));
+        }
+        return $dt->format('Y-m-d H:i:s');
+    } catch (Exception $e) {
         return '';
     }
-    return wp_date('Y-m-d H:i:s', $ts);
 }
 
 function hel_map_status_phase(string $status): ?string

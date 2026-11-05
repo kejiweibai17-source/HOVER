@@ -201,10 +201,39 @@ function ufet_customer_name(WC_Order $order): string
     return $name !== '' ? $name : '顧客';
 }
 
+function ufet_format_instant($value, string $format = 'Y/m/d H:i'): string
+{
+    if (!$value instanceof DateTimeInterface) {
+        return '';
+    }
+    return (new DateTimeImmutable('@' . $value->getTimestamp()))
+        ->setTimezone(new DateTimeZone('Asia/Taipei'))
+        ->format($format);
+}
+
+function ufet_format_stored_datetime(string $raw, string $format = 'Y/m/d H:i'): string
+{
+    $raw = trim($raw);
+    if ($raw === '') {
+        return '';
+    }
+    $has_tz = (bool) preg_match('/(?:Z|[+-]\d{2}:?\d{2})$/', $raw);
+    $date_only = (bool) preg_match('/^\d{4}[\/-]\d{1,2}[\/-]\d{1,2}$/', $raw);
+    try {
+        if ($has_tz) {
+            $dt = (new DateTimeImmutable($raw))->setTimezone(new DateTimeZone('Asia/Taipei'));
+        } else {
+            $dt = new DateTimeImmutable(str_replace('/', '-', $raw), new DateTimeZone('Asia/Taipei'));
+        }
+    } catch (Exception $e) {
+        return $raw;
+    }
+    return $date_only ? $dt->format('Y/m/d') : $dt->format($format);
+}
+
 function ufet_order_date(WC_Order $order): string
 {
-    $d = $order->get_date_created();
-    return $d ? $d->date_i18n('Y/m/d H:i') : '';
+    return ufet_format_instant($order->get_date_created());
 }
 
 function ufet_paid_date(WC_Order $order): string
@@ -213,7 +242,7 @@ function ufet_paid_date(WC_Order $order): string
     if (!$d) {
         $d = $order->get_date_modified();
     }
-    return $d ? $d->date_i18n('Y/m/d H:i') : '';
+    return ufet_format_instant($d);
 }
 
 function ufet_shipped_date(WC_Order $order): string
@@ -222,7 +251,7 @@ function ufet_shipped_date(WC_Order $order): string
     if (!$d) {
         $d = $order->get_date_modified();
     }
-    return $d ? $d->date_i18n('Y/m/d H:i') : '';
+    return ufet_format_instant($d);
 }
 
 function ufet_meta(WC_Order $order, array $keys): string
@@ -307,14 +336,7 @@ function ufet_atm_expire(WC_Order $order): string
             $raw = trim($m[1]);
         }
     }
-    if ($raw === '') {
-        return '';
-    }
-    $ts = strtotime(str_replace('/', '-', $raw));
-    if ($ts) {
-        return wp_date('Y/m/d H:i', $ts);
-    }
-    return $raw;
+    return ufet_format_stored_datetime($raw);
 }
 
 function ufet_payment_label(WC_Order $order): string
@@ -946,23 +968,22 @@ function ufet_tpl_shipped(WC_Order $order): string
 /** 到店時間（綠界 UpdateStatusDate；無則空） */
 function ufet_store_arrived_date(WC_Order $order): string
 {
-    $raw = trim((string) $order->get_meta('_uflow_store_arrived_at', true));
-    if ($raw === '') {
-        return '';
-    }
-    $ts = strtotime(str_replace('/', '-', $raw));
-    return $ts ? wp_date('Y/m/d H:i', $ts) : $raw;
+    return ufet_format_stored_datetime((string) $order->get_meta('_uflow_store_arrived_at', true));
 }
 
-/** 超商取貨參考期限：到店日 + 7 日 */
+/** 超商取貨參考期限：到店日 + 7 日（以台灣日曆計） */
 function ufet_pickup_deadline(WC_Order $order): string
 {
     $raw = trim((string) $order->get_meta('_uflow_store_arrived_at', true));
-    $ts = $raw !== '' ? strtotime(str_replace('/', '-', $raw)) : 0;
-    if (!$ts) {
+    if ($raw === '') {
         return '送達門市後 7 日內';
     }
-    return wp_date('Y/m/d', $ts + 7 * DAY_IN_SECONDS) . ' 前';
+    try {
+        $dt = new DateTimeImmutable(str_replace('/', '-', $raw), new DateTimeZone('Asia/Taipei'));
+    } catch (Exception $e) {
+        return '送達門市後 7 日內';
+    }
+    return $dt->modify('+7 days')->format('Y/m/d') . ' 前';
 }
 
 function ufet_tpl_arrived(WC_Order $order): string
