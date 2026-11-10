@@ -286,6 +286,8 @@ function CategoryGrid({ tiles }) {
 /* ─── Section 7 · HOVER PEOPLE ───────────────────────────────────────── */
 
 function HoverPeopleSection({ slides }) {
+  // [] = 後台關閉或無圖 → 隱藏；null/undefined = 未傳入 → 用備援圖
+  if (Array.isArray(slides) && slides.length === 0) return null;
   const items = slides && slides.length ? slides : PEOPLE_ITEMS;
   return (
     <InfiniteCarousel

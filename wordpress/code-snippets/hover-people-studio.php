@@ -212,7 +212,7 @@ function hpps_render_page(): void
             <div class="hpps-topbar">
                 <div>
                     <h1>HOVER PEOPLE</h1>
-                    <p class="description">管理首頁底部 HOVER PEOPLE 輪播。選圖後將強制裁切為 481:550 直式比例，儲存後約 1 分鐘內同步至 Next.js。</p>
+                    <p class="description">管理首頁底部 HOVER PEOPLE 輪播。選圖後將強制裁切為 481:550 直式比例。關閉「啟用」後前台會整區隱藏；儲存後約 1 分鐘內同步至 Next.js（部署更新後才會正確）。</p>
                 </div>
                 <div class="hpps-topbar-actions">
                     <span class="hpps-status <?php echo !empty($s['enabled']) && $active_n ? 'is-live' : ''; ?>">

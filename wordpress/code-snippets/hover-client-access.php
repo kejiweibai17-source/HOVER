@@ -1,6 +1,6 @@
 <?php
 /**
- * HOVER — 客戶後台帳號、隱藏 Code Snippets、網站 6GB 容量限制
+ * HOVER — 客戶後台帳號、隱藏 Code Snippets、網站 10GB 容量限制
  *
  * 使用方式（WordPress 後台）：
  * 1. Code Snippets → Add New
@@ -14,7 +14,8 @@
  * - 以 Shop Manager 為基礎，可正常使用商品、訂單、HOVER 客製選單等
  * - 僅隱藏 Code Snippets / WPCode 外掛本身（客戶無法編輯 snippet 原始碼）
  *
- * 容量：整個 wp-content 目錄上限 6 GB（含 uploads、外掛、佈景主題）
+ * 容量：整個 wp-content 目錄上限 10 GB（含 uploads、外掛、佈景主題）
+ * 側邊欄「HOVER 網站容量」可查看已用／剩餘／上限
  */
 
 if (!defined('ABSPATH')) {
@@ -47,7 +48,7 @@ if (!defined('HOVER_CLIENT_BOOTSTRAP_PASSWORD')) {
 
 const HOVER_CLIENT_ROLE          = 'hover_client';
 const HOVER_CLIENT_ROLE_VERSION  = 3;
-const HOVER_CLIENT_STORAGE_BYTES = 6442450944; // 6 GB
+const HOVER_CLIENT_STORAGE_BYTES = 10737418240; // 10 GB
 const HOVER_CLIENT_STORAGE_CACHE = 'hover_client_storage_bytes_v1';
 
 /**
@@ -397,7 +398,7 @@ function hover_client_storage_status(): array
 }
 
 /**
- * 上傳前檢查：超過 6 GB 禁止新增媒體
+ * 上傳前檢查：超過上限禁止新增媒體
  */
 add_filter('wp_handle_upload_prefilter', function ($file) {
     delete_transient(HOVER_CLIENT_STORAGE_CACHE);
@@ -440,7 +441,7 @@ add_action('admin_notices', function () {
 
     if ($status['is_over']) {
         echo '<div class="notice notice-error"><p><strong>HOVER 網站容量：</strong>'
-            . esc_html("已使用 {$used_label} / {$limit_label}，已達 6 GB 上限，無法再上傳新檔案。")
+            . esc_html("已使用 {$used_label} / {$limit_label}，已達上限，無法再上傳新檔案。")
             . '</p></div>';
         return;
     }
@@ -465,3 +466,158 @@ add_action('restrict_manage_posts', function ($post_type) {
         . esc_html('網站容量：' . hover_client_format_bytes($status['used']) . ' / ' . hover_client_format_bytes($status['limit']))
         . '</span>';
 });
+
+/**
+ * 側邊欄：HOVER 網站容量
+ */
+add_action('admin_menu', function () {
+    if (!current_user_can('upload_files')) {
+        return;
+    }
+
+    add_menu_page(
+        'HOVER 網站容量',
+        'HOVER 網站容量',
+        'upload_files',
+        'hover-site-storage',
+        'hover_client_render_storage_page',
+        'dashicons-chart-area',
+        3
+    );
+}, 20);
+
+/**
+ * 強制重新掃描容量（本頁「立即重新計算」）
+ */
+add_action('admin_init', function () {
+    if (!isset($_GET['page']) || $_GET['page'] !== 'hover-site-storage') {
+        return;
+    }
+    if (!isset($_GET['hover_refresh_storage']) || $_GET['hover_refresh_storage'] !== '1') {
+        return;
+    }
+    if (!current_user_can('upload_files')) {
+        return;
+    }
+    check_admin_referer('hover_refresh_storage');
+
+    hover_client_get_storage_bytes(true);
+
+    wp_safe_redirect(remove_query_arg(['hover_refresh_storage', '_wpnonce']));
+    exit;
+});
+
+function hover_client_render_storage_page(): void
+{
+    if (!current_user_can('upload_files')) {
+        wp_die(esc_html__('您沒有權限存取此頁面。', 'hover'));
+    }
+
+    $status      = hover_client_storage_status();
+    $used_label  = hover_client_format_bytes($status['used']);
+    $left_label  = hover_client_format_bytes($status['left']);
+    $limit_label = hover_client_format_bytes($status['limit']);
+    $percent     = round($status['percent'], 1);
+    $bar_color   = $status['is_over'] ? '#d63638' : ($status['is_warning'] ? '#dba617' : '#2a514d');
+    $refresh_url = wp_nonce_url(
+        add_query_arg([
+            'page'                  => 'hover-site-storage',
+            'hover_refresh_storage' => '1',
+        ], admin_url('admin.php')),
+        'hover_refresh_storage'
+    );
+    ?>
+    <div class="wrap hover-storage-wrap">
+        <h1>HOVER 網站容量</h1>
+        <p class="description">計算範圍：整個 <code>wp-content</code>（含媒體庫、外掛、佈景主題）。數字每小時快取一次，可手動重新計算。</p>
+
+        <div class="hover-storage-card">
+            <div class="hover-storage-metrics">
+                <div class="hover-storage-metric is-left">
+                    <div class="hover-storage-label">剩餘可用</div>
+                    <div class="hover-storage-value"><?php echo esc_html($left_label); ?></div>
+                </div>
+                <div class="hover-storage-metric">
+                    <div class="hover-storage-label">已使用</div>
+                    <div class="hover-storage-value"><?php echo esc_html($used_label); ?></div>
+                </div>
+                <div class="hover-storage-metric">
+                    <div class="hover-storage-label">總上限</div>
+                    <div class="hover-storage-value"><?php echo esc_html($limit_label); ?></div>
+                </div>
+            </div>
+
+            <div class="hover-storage-bar-track" aria-hidden="true">
+                <div class="hover-storage-bar-fill" style="width:<?php echo esc_attr((string) min(100, $percent)); ?>%;background:<?php echo esc_attr($bar_color); ?>;"></div>
+            </div>
+            <p class="hover-storage-pct">已使用 <?php echo esc_html((string) $percent); ?>%</p>
+
+            <?php if ($status['is_over']) : ?>
+                <div class="notice notice-error inline"><p>已達容量上限，無法再上傳新檔案。請刪除不需要的媒體後再試。</p></div>
+            <?php elseif ($status['is_warning']) : ?>
+                <div class="notice notice-warning inline"><p>已超過 85%，建議清理媒體庫或備份檔，避免上傳失敗。</p></div>
+            <?php endif; ?>
+
+            <p>
+                <a class="button button-primary" href="<?php echo esc_url($refresh_url); ?>">立即重新計算</a>
+                <a class="button" href="<?php echo esc_url(admin_url('upload.php')); ?>">前往媒體庫</a>
+            </p>
+        </div>
+    </div>
+    <style>
+        .hover-storage-wrap { max-width: 720px; }
+        .hover-storage-card {
+            margin-top: 18px;
+            background: #fff;
+            border: 1px solid #dcdcde;
+            border-radius: 8px;
+            padding: 22px 24px;
+        }
+        .hover-storage-metrics {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 16px;
+            margin-bottom: 18px;
+        }
+        .hover-storage-metric {
+            background: #f6f7f7;
+            border-radius: 6px;
+            padding: 14px 16px;
+        }
+        .hover-storage-metric.is-left {
+            background: #edf4f3;
+        }
+        .hover-storage-label {
+            font-size: 12px;
+            color: #646970;
+            margin-bottom: 6px;
+        }
+        .hover-storage-value {
+            font-size: 28px;
+            line-height: 1.2;
+            font-weight: 700;
+            color: #1d2327;
+        }
+        .hover-storage-bar-track {
+            height: 12px;
+            background: #e2e4e7;
+            border-radius: 999px;
+            overflow: hidden;
+        }
+        .hover-storage-bar-fill {
+            height: 100%;
+            border-radius: 999px;
+            min-width: 0;
+            transition: width .25s ease;
+        }
+        .hover-storage-pct {
+            margin: 10px 0 18px;
+            color: #50575e;
+        }
+        @media (max-width: 640px) {
+            .hover-storage-metrics { grid-template-columns: 1fr; }
+            .hover-storage-value { font-size: 24px; }
+        }
+    </style>
+    <?php
+}
