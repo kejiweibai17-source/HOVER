@@ -37,34 +37,16 @@ const HOET_LINE_URL = 'https://line.me/R/ti/p/@330kefmm';
 /** 品牌綠 */
 const HOET_GREEN = '#2a514d';
 /** 信件標誌寬度 */
-const HOET_LOGO_WIDTH = 180;
-
-/** 讀取 WooCommerce／網站標誌 */
-function hoet_logo_url(): string
-{
-    $woo = trim((string) get_option('woocommerce_email_header_image', ''));
-    if ($woo !== '') {
-        return esc_url_raw($woo);
-    }
-    if (function_exists('has_custom_logo') && has_custom_logo()) {
-        $logo_id = (int) get_theme_mod('custom_logo');
-        $src = $logo_id ? wp_get_attachment_image_url($logo_id, 'full') : '';
-        if (is_string($src) && $src !== '') {
-            return esc_url_raw($src);
-        }
-    }
-    return HOET_SITE_URL . '/images/logo-04.png';
-}
-
-/** 頁首標誌（水平置中） */
+/**
+ * 頁首品牌字 Logo（水平置中）
+ * 與 Next.js mailBrandLogoHtml／入會禮／生日禮統一：serif 品牌字、32px、letter-spacing 0.28em
+ */
 function hoet_header_html(): string
 {
-    $url = hoet_logo_url();
-    $width = HOET_LOGO_WIDTH;
     return '
     <div style="margin:0 0 28px;text-align:center;width:100%;">
-      <a href="' . esc_url(HOET_SITE_URL) . '" style="display:inline-block;text-decoration:none;border:0;">
-        <img src="' . esc_url($url) . '" alt="HOVER" width="' . (int) $width . '" style="display:block;margin:0 auto;width:' . (int) $width . 'px;max-width:70%;height:auto;border:0;outline:none;" />
+      <a href="' . esc_url(HOET_SITE_URL) . '" style="display:inline-block;text-decoration:none;border:0;color:#111;">
+        <span style="display:inline-block;font-family:Georgia,\'Times New Roman\',\'Noto Serif HK\',serif;font-size:32px;letter-spacing:0.28em;font-weight:700;line-height:1.2;color:#111;">HOVER</span>
       </a>
     </div>';
 }

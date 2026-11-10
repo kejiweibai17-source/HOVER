@@ -84,7 +84,7 @@ export function baseShippingFee(
 }
 
 /**
- * 購物車「僅含」這些商品時免運（測試商品等）。
+ * 購物袋「僅含」這些商品時免運（測試商品等）。
  * 以 NEXT_PUBLIC_FREE_SHIPPING_PRODUCT_IDS 覆寫（逗號分隔 Woo product id）。
  */
 const DEFAULT_FREE_SHIPPING_PRODUCT_IDS = [1819]; // test / NT.10

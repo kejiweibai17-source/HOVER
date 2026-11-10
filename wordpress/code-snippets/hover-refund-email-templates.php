@@ -84,18 +84,17 @@ function hret_shell(string $inner): string
     if (function_exists('hoet_shell')) {
         return hoet_shell($inner);
     }
-    $logo = HRET_SITE_URL . '/images/logo-04.png';
     return '<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /></head>
 <body style="margin:0;padding:0;background:#f6f6f6;">
   <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f6f6;padding:24px 12px;">
     <tr><td align="center">
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#ffffff;padding:32px 28px;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,Helvetica,Arial,sans-serif;color:#111;">
         <tr><td>
-          <div style="margin:0 0 28px;text-align:center;"><a href="' . esc_url(HRET_SITE_URL) . '"><img src="' . esc_url($logo) . '" alt="HOVER" width="180" style="display:block;margin:0 auto;width:180px;max-width:70%;height:auto;border:0;" /></a></div>
+          <div style="margin:0 0 28px;text-align:center;width:100%;"><a href="' . esc_url(HRET_SITE_URL) . '" style="display:inline-block;text-decoration:none;border:0;color:#111;"><span style="display:inline-block;font-family:Georgia,\'Times New Roman\',\'Noto Serif HK\',serif;font-size:32px;letter-spacing:0.28em;font-weight:700;line-height:1.2;color:#111;">HOVER</span></a></div>
           ' . $inner . '
           <div style="margin-top:36px;padding-top:20px;border-top:1px solid #ddd;font-size:12px;line-height:1.8;color:#777;text-align:center;">
-            <p style="margin:0;">此為系統自動發送信件，請勿直接回覆。</p>
-            <p style="margin:8px 0 0;">HOVER 官方網站｜<a href="' . esc_url(HRET_SITE_URL) . '" style="color:' . HRET_GREEN . ';">hoverofficial.com</a><br />客服聯繫｜<a href="' . esc_url(HRET_LINE_URL) . '" style="color:' . HRET_GREEN . ';">HOVER 官方 LINE</a></p>
+            <p style="margin:0;text-align:center;">此為系統自動發送信件，請勿直接回覆。</p>
+            <p style="margin:8px 0 0;text-align:center;">HOVER 官方網站｜<a href="' . esc_url(HRET_SITE_URL) . '" style="color:' . HRET_GREEN . ';text-decoration:underline;">hoverofficial.com</a><br />客服聯繫｜<a href="' . esc_url(HRET_LINE_URL) . '" style="color:' . HRET_GREEN . ';text-decoration:underline;">HOVER 官方 LINE</a></p>
           </div>
         </td></tr>
       </table>

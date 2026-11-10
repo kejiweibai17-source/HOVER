@@ -1652,7 +1652,7 @@ function CartStep({
     <ConfirmDialog
       open={Boolean(pendingRemove)}
       title="移除商品"
-      message={`確定要從購物車移除「${pendingRemove?.name || "此商品"}」嗎？`}
+      message={`確定要從購物袋移除「${pendingRemove?.name || "此商品"}」嗎？`}
       confirmLabel="確定移除"
       cancelLabel="取消"
       onCancel={() => setPendingRemove(null)}
@@ -2654,7 +2654,7 @@ function CheckoutStep({
                     }}
                     className="inline-flex items-center gap-1.5 text-[13px] font-medium text-[#2a514d] transition-opacity hover:opacity-80"
                   >
-                    查看可用優惠券／優惠碼
+                    查看可用優惠券
                     {myCouponsOpen ? (
                       <ChevronUp size={16} strokeWidth={1.75} />
                     ) : (
@@ -2670,7 +2670,7 @@ function CheckoutStep({
                         </p>
                       ) : myCoupons.length === 0 ? (
                         <p className="px-4 py-5 text-center text-[13px] text-[#888]">
-                          目前沒有可使用的優惠券或優惠碼。可至會員中心查看領取狀態，或手動輸入活動優惠碼。
+                          目前沒有可使用的優惠券。
                         </p>
                       ) : (
                         <ul className="max-h-[280px] divide-y divide-[#e5e5e5] overflow-y-auto">
@@ -2895,7 +2895,7 @@ function CartContent() {
   /** 下單成功後禁止把舊表單再寫回 sessionStorage（否則跳轉綠界前 effect 會還原草稿） */
   const skipCheckoutPersist = useRef(false);
 
-  // 清空後若使用者又加商品進購物車，恢復草稿寫入（選店返回需要）
+  // 清空後若使用者又加商品進購物袋，恢復草稿寫入（選店返回需要）
   useEffect(() => {
     if (items.length > 0) skipCheckoutPersist.current = false;
   }, [items.length]);
@@ -3100,7 +3100,7 @@ function CartContent() {
     return () => {
       cancelled = true;
     };
-    // 只在購物車載入／品項組成變化時重查（不跟 qty，避免每次加減都打 API）
+    // 只在購物袋載入／品項組成變化時重查（不跟 qty，避免每次加減都打 API）
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     itemsLoaded,

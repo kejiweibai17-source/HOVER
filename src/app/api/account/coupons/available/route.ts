@@ -89,7 +89,10 @@ function belongsToEmail(coupon: any, email: string) {
   return emails.includes(email);
 }
 
-/** 公開活動券：無 email 限制（HOVER 優惠碼工作室／WP 自建活動碼） */
+/**
+ * 公開活動券：僅認 HOVER 優惠碼工作室標記／前綴。
+ * 一般 WP 公開券（如「滿千折百」）不再進會員中心／可使用列表。
+ */
 function isPublicPromoCoupon(coupon: any): boolean {
   if (emailRestrictions(coupon).length > 0) return false;
   const code = String(coupon?.code || "").toUpperCase();
@@ -100,30 +103,13 @@ function isPublicPromoCoupon(coupon: any): boolean {
       : "") || "",
   ).toLowerCase();
   if (metaKind === "promo" || metaKind === "vip") return true;
-  if (code.startsWith("HOVER-PROMO-") || code.startsWith("HOVER-EXCL-")) {
-    return true;
-  }
-  // WP 後台自建、無 email 綁定的活動碼（如「滿千折百」）
-  return true;
+  return code.startsWith("HOVER-PROMO-") || code.startsWith("HOVER-EXCL-");
 }
 
-function usedByCustomer(
-  coupon: any,
-  email: string,
-  customerId: number,
-): boolean {
-  const usedBy = Array.isArray(coupon?.used_by) ? coupon.used_by : [];
-  if (!usedBy.length) return false;
-  const emailL = String(email || "")
-    .trim()
-    .toLowerCase();
-  const idStr = String(customerId || "");
-  return usedBy.some((u: any) => {
-    const v = String(u || "")
-      .trim()
-      .toLowerCase();
-    return (emailL && v === emailL) || (idStr && v === idStr);
-  });
+function isCouponEnabled(coupon: any): boolean {
+  if (!coupon) return false;
+  const status = String(coupon.status || "publish").toLowerCase();
+  return status === "publish" || status === "";
 }
 
 function resolveCouponKind(coupon: any): string {
@@ -137,14 +123,12 @@ function resolveCouponKind(coupon: any): string {
   }
   const fromCode = couponKindFromCode(String(coupon?.code || ""));
   if (fromCode !== "other") return fromCode;
-  // 公開無 email 限制 → 當活動優惠顯示
-  if (emailRestrictions(coupon).length === 0) return "promo";
   return "other";
 }
 
 /**
  * 優惠券＝綁定會員（入會禮／生日禮等）
- * 優惠碼＝公開活動碼（無 email 限制，如 hover-promo-*、滿千折百）
+ * 優惠碼＝僅 HOVER 優惠碼工作室產生的公開碼（hover-promo-*／meta=promo）
  */
 function resolveEntryType(
   coupon: any,
@@ -371,12 +355,8 @@ export async function GET(req: Request) {
       legacyCodes.push(`HOVER-BDAY-${month}-${customerId}`);
     }
 
-    const [masterWc, couponsRes, ...legacyResults] = await Promise.all([
+    const [masterWc, ...legacyResults] = await Promise.all([
       Promise.all(masterCodes.map((code) => fetchCouponByCode(code, authHeader))),
-      fetch(
-        `${BASE}/wp-json/wc/v3/coupons?per_page=100&orderby=date&order=desc`,
-        { headers: authHeader, cache: "no-store" },
-      ),
       ...legacyCodes.map((code) => fetchCouponByCode(code, authHeader)),
     ]);
 
@@ -438,6 +418,10 @@ export async function GET(req: Request) {
       const kind = masterCouponKind(code);
       if (!kind) continue;
 
+      const wcCoupon = masterWc[i];
+      // 後台未啟用（非 publish）的母券不進前台
+      if (wcCoupon && !isCouponEnabled(wcCoupon)) continue;
+
       const status = resolveMasterCouponStatus(
         kind,
         meta,
@@ -463,30 +447,11 @@ export async function GET(req: Request) {
 
       byCode.set(
         code,
-        buildVirtualMasterCoupon(masterWc[i], code, status, expiresOverride),
+        buildVirtualMasterCoupon(wcCoupon, code, status, expiresOverride),
       );
     }
 
-    const recent = couponsRes.ok ? await couponsRes.json() : [];
-    for (const c of Array.isArray(recent) ? recent : []) {
-      if (!c) continue;
-      const key = String(c.code || "").toUpperCase();
-      if (!key || byCode.has(key) || isMasterCouponCode(key)) continue;
-      if (isLegacyGiftCode(key)) continue;
-
-      const personal = belongsToEmail(c, customerEmail);
-      const publicPromo = isPublicPromoCoupon(c);
-      if (!personal && !publicPromo) continue;
-
-      let status = resolveStatus(c);
-      if (
-        status === "usable" &&
-        usedByCustomer(c, customerEmail, customerId)
-      ) {
-        status = "used";
-      }
-      byCode.set(key, mapCoupon(c, status));
-    }
+    // 會員中心正式優惠僅母券（HOVER100／HBDAY100／VIPBDAY300，依等級）
 
     const coupons = Array.from(byCode.values()).sort((a, b) => {
       const rank = (k: string) =>

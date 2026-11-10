@@ -696,7 +696,7 @@ export default function CheckoutPage() {
             {/* 送出 */}
             <div className="flex items-center justify-between">
               <a href="/cart" className="text-sm text-gray-600 hover:underline">
-                ← 返回購物車
+                ← 返回購物袋
               </a>
               <button
                 onClick={submit}

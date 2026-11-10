@@ -69,7 +69,7 @@ export default function CookieConsentBanner() {
           </p>
           <p className="mt-1.5 text-[12px] leading-[1.75] tracking-[0.02em] text-[#374151] md:text-[13px]">
             本網站使用 Cookie
-            以維持會員登入、購物車及網站功能，並作為服務優化之用。繼續瀏覽即表示您了解相關說明，詳情請參閱
+            以維持會員登入、購物袋及網站功能，並作為服務優化之用。繼續瀏覽即表示您了解相關說明，詳情請參閱
             <Link
               href="/privacy"
               className="mx-1 font-semibold text-[#2a514d] underline underline-offset-2 transition-opacity hover:opacity-70"

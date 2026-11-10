@@ -9,7 +9,7 @@ export default function CartIcon({ count = 0, size = 48, className = "" }) {
       className={`relative inline-flex shrink-0 ${className}`}
       style={{ width: size, height: size }}
     >
-      <HoverIcon name="cart" size={size} alt="購物車" />
+      <HoverIcon name="cart" size={size} alt="購物袋" />
       {count > 0 && (
         <span
           className="pointer-events-none absolute left-1/2 top-[38%] flex h-[48%] w-[72%] -translate-x-1/2 items-center justify-center font-bold leading-none tabular-nums text-[#2a514d]"

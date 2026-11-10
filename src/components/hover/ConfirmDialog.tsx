@@ -10,12 +10,12 @@ type Props = {
   cancelLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
-  /** 提高 z-index（購物車側欄很大） */
+  /** 提高 z-index（購物袋側欄很大） */
   zIndexClassName?: string;
 };
 
 /**
- * 輕量確認彈窗（刪除購物車商品等）
+ * 輕量確認彈窗（刪除購物袋商品等）
  */
 export default function ConfirmDialog({
   open,

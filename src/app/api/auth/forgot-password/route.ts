@@ -2,6 +2,12 @@
 import { NextResponse } from "next/server";
 import jwt from "jsonwebtoken";
 import nodemailer from "nodemailer";
+import {
+  mailFooterText,
+  mailFromHeader,
+  mailReplyTo,
+  mailShellHtml,
+} from "@/lib/mailFrom";
 
 export const runtime = "nodejs";
 
@@ -106,30 +112,40 @@ export async function POST(req: Request) {
     url.searchParams.set("next", next);
 
     const transporter = createTransport();
-    const mailFrom = process.env.SMTP_USER!;
+    const resetUrl = url.toString();
+    const text = [
+      "HOVER 重設密碼通知",
+      "",
+      "親愛的會員您好：",
+      "我們收到您重設密碼的請求。請開啟以下連結前往重設密碼頁面：",
+      resetUrl,
+      "",
+      "此連結將在 30 分鐘後失效。如非您本人操作，請忽略本信件。",
+      "",
+      mailFooterText(),
+    ].join("\n");
 
-    const html = `
-      <div style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.6;">
-        <h2>重設密碼通知</h2>
-        <p>親愛的會員您好：</p>
-        <p>我們收到您重設密碼的請求。請點擊下方按鈕前往重設密碼頁面：</p>
-        <p style="margin: 24px 0;">
-          <a href="${url.toString()}" 
-             style="display:inline-block;padding:10px 18px;background:#2a514d;color:#fff;text-decoration:none;border-radius:4px;">
+    const html = mailShellHtml(`
+        <h2 style="margin:0 0 16px;color:#222;font-size:18px;font-weight:700;">重設密碼通知</h2>
+        <p style="margin:0 0 8px;font-size:15px;line-height:1.8;">親愛的會員您好：</p>
+        <p style="margin:0 0 8px;font-size:14px;line-height:1.8;color:#333;">我們收到您重設密碼的請求。請點擊下方按鈕前往重設密碼頁面：</p>
+        <p style="margin:28px 0;text-align:center;">
+          <a href="${resetUrl}"
+             style="display:inline-block;padding:14px 28px;background:#2a514d;color:#fff;text-decoration:none;font-weight:700;">
             前往重設密碼
           </a>
         </p>
-        <p>如果按鈕無法點擊，請將以下連結複製到瀏覽器開啟：</p>
-        <p style="word-break: break-all;">${url.toString()}</p>
-        <p>此連結將在 30 分鐘後失效。如非您本人操作，請忽略本信件。</p>
-        <p style="margin-top: 24px;">HOVER 官方網站</p>
-      </div>
-    `;
+        <p style="margin:0 0 8px;font-size:14px;color:#666;">如果按鈕無法點擊，請將以下連結複製到瀏覽器開啟：</p>
+        <p style="margin:0;word-break:break-all;font-size:13px;color:#333;">${resetUrl}</p>
+        <p style="margin:20px 0 0;font-size:14px;color:#666;">此連結將在 30 分鐘後失效。如非您本人操作，請忽略本信件。</p>
+    `);
 
     await transporter.sendMail({
-      from: mailFrom,
+      from: mailFromHeader(),
+      replyTo: mailReplyTo(),
       to: email,
       subject: "HOVER – 重設密碼連結",
+      text,
       html,
     });
 

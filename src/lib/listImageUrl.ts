@@ -12,7 +12,7 @@ export type ImageRole = "card" | "pdp" | "banner" | "bannerMobile" | "thumb";
  * 勿再喂 600px 小檔給全螢幕／半寬大圖，否則會被放大變糊。
  */
 const ROLE_MAX: Record<ImageRole, number> = {
-  /** 購物車側欄／結帳縮圖（約 90px ×2） */
+  /** 購物袋側欄／結帳縮圖（約 90px ×2） */
   thumb: 240,
   /** 列表約 22–50vw @2x → 800 足夠清晰，仍遠小於原圖 */
   card: 800,
@@ -279,7 +279,7 @@ export function toOptimizedImageUrl(
   return viaPhoton(direct, role);
 }
 
-/** 購物車／結帳小圖（顯示時呼叫即可，舊 localStorage 原圖也會被轉小） */
+/** 購物袋／結帳小圖（顯示時呼叫即可，舊 localStorage 原圖也會被轉小） */
 export function toCartThumbUrl(src: string): string {
   if (!src || typeof src !== "string") return src;
   if (src.startsWith("/")) return src;

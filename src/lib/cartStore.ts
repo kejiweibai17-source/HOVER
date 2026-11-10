@@ -23,7 +23,7 @@ export type CartItem = {
   onSale?: boolean;
   regularPrice?: number;
   options?: Record<string, string>;
-  /** Woo 庫存快照（加入購物車時寫入） */
+  /** Woo 庫存快照（加入購物袋時寫入） */
   manageStock?: boolean;
   stockQuantity?: number | null;
   stockStatus?: string;

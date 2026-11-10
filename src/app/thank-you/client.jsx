@@ -95,7 +95,7 @@ function ThankYouContent({ page }) {
   const [orderReady, setOrderReady] = useState(!orderId);
   const clearCart = useCartStore((s) => s.clearCart);
 
-  // 下單成功落地：清購物車與結帳草稿（含 ATM／刷卡從綠界導回）
+  // 下單成功落地：清購物袋與結帳草稿（含 ATM／刷卡從綠界導回）
   useEffect(() => {
     clearCheckoutSession();
     clearCart();

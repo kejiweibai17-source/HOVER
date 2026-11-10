@@ -18,7 +18,7 @@ const SITE_URL = getSiteUrl();
 export const metadata = {
   title: "購物袋｜HOVER｜只為經典而生",
   description: "查看您在 HOVER 服飾選購的商品，確認數量與金額後完成結帳。",
-  keywords: ["HOVER", "服飾", "購物袋", "購物車", "結帳"],
+  keywords: ["HOVER", "服飾", "購物袋", "結帳"],
   alternates: {
     canonical: `${SITE_URL}/cart`,
   },

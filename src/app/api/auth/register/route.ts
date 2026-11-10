@@ -12,7 +12,12 @@ import {
 } from "@/lib/authRateLimit";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { membershipBaselineMeta } from "@/lib/membership";
-import { mailFooterHtml, mailFooterText, mailFromHeader, mailReplyTo } from "@/lib/mailFrom";
+import {
+  mailFooterText,
+  mailFromHeader,
+  mailReplyTo,
+  mailShellHtml,
+} from "@/lib/mailFrom";
 
 export const runtime = "nodejs";
 
@@ -367,30 +372,26 @@ export async function POST(req: Request) {
         mailFooterText(),
       ].join("\n");
 
-      const html = `
-        <div style="font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px; color: #333;">
-          <h2 style="color: #222; border-bottom: 2px solid #2a514d; padding-bottom: 10px;">會員註冊信箱驗證</h2>
-          <p>親愛的會員您好：</p>
-          <p>感謝您註冊 HOVER，請點擊下方按鈕完成信箱驗證：</p>
+      const html = mailShellHtml(`
+          <h2 style="margin:0 0 16px;color:#222;font-size:18px;font-weight:700;">會員註冊信箱驗證</h2>
+          <p style="margin:0 0 8px;font-size:15px;line-height:1.8;">親愛的會員您好：</p>
+          <p style="margin:0 0 8px;font-size:14px;line-height:1.8;color:#333;">感謝您註冊 HOVER，請點擊下方按鈕完成信箱驗證：</p>
 
-          <div style="margin: 30px 0; text-align: center;">
+          <div style="margin:28px 0;text-align:center;">
             <a href="${verifyUrl}" target="_blank"
-               style="display: inline-block; padding: 14px 28px; background-color: #2a514d; color: #ffffff; text-decoration: none; border-radius: 6px; font-weight: bold; letter-spacing: 1px;">
+               style="display:inline-block;padding:14px 28px;background-color:#2a514d;color:#ffffff;text-decoration:none;font-weight:700;letter-spacing:1px;">
               完成信箱驗證
             </a>
           </div>
 
-          <p style="font-size: 14px; color: #666; margin-bottom: 8px;">如果按鈕無法點擊，請將以下連結複製並貼上到瀏覽器網址列開啟：</p>
-          <div style="background-color: #f8f9fa; padding: 12px; border-radius: 4px; word-break: break-all; font-size: 13px; color: #333;">
+          <p style="font-size:14px;color:#666;margin:0 0 8px;">如果按鈕無法點擊，請將以下連結複製並貼上到瀏覽器網址列開啟：</p>
+          <div style="background-color:#f8f9fa;padding:12px;word-break:break-all;font-size:13px;color:#333;">
             ${verifyUrl}
           </div>
 
-          <p style="color: #c90000; margin-top: 20px; font-weight: 600;">此驗證連結將在 15 分鐘後失效。</p>
-          <p style="color: #666; margin-top: 8px;">若非您本人操作，請忽略本信。</p>
-
-          ${mailFooterHtml()}
-        </div>
-      `;
+          <p style="color:#c90000;margin:20px 0 0;font-weight:600;">此驗證連結將在 15 分鐘後失效。</p>
+          <p style="color:#666;margin:8px 0 0;">若非您本人操作，請忽略本信。</p>
+      `);
 
       const info = await transporter.sendMail({
         from: mailFromHeader(),

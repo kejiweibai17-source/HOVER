@@ -130,7 +130,7 @@ function MenuToggleButton({ open, onClick, className = "", buttonRef }) {
   );
 }
 
-/** * 購物車按鈕 */
+/** * 購物袋按鈕 */
 function CartButton({ count = 0, onClick }) {
   return (
     <Link
@@ -226,7 +226,7 @@ function MobileDrawer({
                   className="flex items-center gap-3 px-4 py-3 hover:bg-slate-50 rounded-lg"
                 >
                   <span className="font-medium text-slate-800">
-                    購物車 ({cartCount})
+                    購物袋 ({cartCount})
                   </span>
                 </Link>
                 <Link

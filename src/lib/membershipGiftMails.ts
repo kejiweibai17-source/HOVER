@@ -14,9 +14,9 @@ import {
   mailFooterText,
   mailFromHeader,
   mailReplyTo,
+  mailShellHtml,
 } from "@/lib/mailFrom";
 import {
-  HOVER_LINE_OA,
   HOVER_SITE_URL,
   HOVER_SUPPORT_EMAIL,
 } from "@/lib/hoverContact";
@@ -27,7 +27,6 @@ const SITE_URL = (
   HOVER_SITE_URL
 ).replace(/\/$/, "");
 
-const LINE_URL = HOVER_LINE_OA;
 const GREEN = "#2a514d";
 
 type GiftMailContent = {
@@ -50,8 +49,9 @@ function createTransport() {
   });
 }
 
+/** 與官網 formatProductPrice 一致：NT.100、NT.1,000 */
 function money(n: number): string {
-  return `NT$${Number(n).toLocaleString("en-US")}`;
+  return `NT.${Number(n).toLocaleString("en-US")}`;
 }
 
 function formatExpiry(iso: string | null | undefined): string {
@@ -81,26 +81,7 @@ function displayName(name?: string | null, email?: string | null): string {
 }
 
 function shell(inner: string): string {
-  return `<!DOCTYPE html><html lang="zh-Hant"><head><meta charset="UTF-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /></head>
-<body style="margin:0;padding:0;background:#f6f6f6;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f6f6f6;padding:24px 12px;">
-    <tr><td align="center">
-      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;background:#ffffff;padding:32px 28px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#111;">
-        <tr><td>
-          <div style="font-size:28px;letter-spacing:0.2em;font-weight:700;margin-bottom:28px;">HOVER</div>
-          ${inner}
-          <div style="margin-top:36px;padding-top:20px;border-top:1px solid #ddd;font-size:12px;line-height:1.8;color:#777;text-align:center;">
-            <p style="margin:0;text-align:center;">此為系統自動發送信件，請勿直接回覆。</p>
-            <p style="margin:8px 0 0;text-align:center;">
-              HOVER 官方網站｜<a href="${SITE_URL}" style="color:${GREEN};text-decoration:underline;">hoverofficial.com</a><br />
-              客服聯繫｜<a href="${LINE_URL}" style="color:${GREEN};text-decoration:underline;">HOVER 官方 LINE</a>
-            </p>
-          </div>
-        </td></tr>
-      </table>
-    </td></tr>
-  </table>
-</body></html>`;
+  return mailShellHtml(inner);
 }
 
 function giftBlock(opts: {
@@ -115,7 +96,7 @@ function giftBlock(opts: {
     <h2 style="margin:28px 0 12px;font-size:15px;letter-spacing:0.08em;color:${GREEN};font-weight:700;">${opts.title}</h2>
     <table width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;">
       <tr>
-        <td style="padding:6px 0;font-size:14px;color:#333;">會員代碼</td>
+        <td style="padding:6px 0;font-size:14px;color:#333;">優惠碼</td>
         <td style="padding:6px 0;font-size:14px;color:#111;text-align:right;font-weight:700;letter-spacing:0.06em;">${opts.code}</td>
       </tr>
       <tr>
@@ -151,7 +132,7 @@ function giftBlockText(opts: {
   const min = money(MEMBERSHIP_RULES.giftMinSpend);
   return [
     opts.title,
-    `會員代碼：${opts.code}`,
+    `優惠碼：${opts.code}`,
     `可折抵金額：${money(opts.amount)}`,
     `使用條件：單筆訂單滿 ${min}`,
     `使用次數：${opts.usageLimit}`,
@@ -181,7 +162,7 @@ export function buildWelcomeGiftMailHtml(params: {
   const html = shell(`
     <p style="margin:0 0 12px;font-size:15px;line-height:1.8;">親愛的${name}，</p>
     <p style="margin:0 0 8px;font-size:14px;line-height:1.8;color:#333;">您的 HOVER 會員帳號已建立完成。</p>
-    <p style="margin:0 0 8px;font-size:14px;line-height:1.8;color:#333;">以下為入會禮會員權益明細，結帳時輸入會員代碼即可使用。</p>
+    <p style="margin:0 0 8px;font-size:14px;line-height:1.8;color:#333;">以下為入會禮會員權益明細，結帳時輸入優惠碼即可使用。</p>
     <div style="height:16px;line-height:16px;font-size:16px;">&nbsp;</div>
     ${giftBlock(gift)}
   `);
@@ -189,7 +170,7 @@ export function buildWelcomeGiftMailHtml(params: {
     `親愛的${name}，`,
     "",
     "您的 HOVER 會員帳號已建立完成。",
-    "以下為入會禮會員權益明細，結帳時輸入會員代碼即可使用。",
+    "以下為入會禮會員權益明細，結帳時輸入優惠碼即可使用。",
     "",
     giftBlockText(gift),
     "",
@@ -238,7 +219,7 @@ export function buildBirthdayGiftMailHtml(params: {
   const html = shell(`
     <p style="margin:0 0 12px;font-size:15px;line-height:1.8;">親愛的${name}，</p>
     <p style="margin:0 0 8px;font-size:14px;line-height:1.8;color:#333;">祝您生日快樂。</p>
-    <p style="margin:0 0 8px;font-size:14px;line-height:1.8;color:#333;">感謝您對 HOVER 的支持，以下為本年度生日禮會員權益明細，結帳時輸入會員代碼即可使用。</p>
+    <p style="margin:0 0 8px;font-size:14px;line-height:1.8;color:#333;">感謝您對 HOVER 的支持，以下為本年度生日禮會員權益明細，結帳時輸入優惠碼即可使用。</p>
     <div style="height:16px;line-height:16px;font-size:16px;">&nbsp;</div>
     ${giftBlock(gift)}
   `);
@@ -246,7 +227,7 @@ export function buildBirthdayGiftMailHtml(params: {
     `親愛的${name}，`,
     "",
     "祝您生日快樂。",
-    "感謝您對 HOVER 的支持，以下為本年度生日禮會員權益明細，結帳時輸入會員代碼即可使用。",
+    "感謝您對 HOVER 的支持，以下為本年度生日禮會員權益明細，結帳時輸入優惠碼即可使用。",
     "",
     giftBlockText(gift),
     "",

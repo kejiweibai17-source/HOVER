@@ -88,14 +88,13 @@ export default function RegisterPage() {
     return (
       <div className="flex min-h-[calc(100vh-var(--hover-header-height,116px))] items-center justify-center bg-hover-bg px-8">
         <div className="w-full max-w-[380px] text-center">
-          <h2 className="mb-4 text-[22px] font-bold text-black">🎉 註冊成功！</h2>
+          <h2 className="mb-4 text-[22px] font-bold text-black">註冊成功!</h2>
           <p className="mb-8 text-[14px] leading-[1.8] text-[#555]">
-            帳號已建立，我們已寄出一封{" "}
-            <span className="font-semibold text-black">信箱驗證信</span> 到：
+            帳號已建立，我們已寄出一封信箱驗證信至：
             <br />
             <span className="font-medium text-[#2a514d]">{email}</span>
             <br />
-            您現在即可登入購物；建議至信箱完成驗證，也可之後在會員中心重寄。
+            您現在即可登入購物；建議完成信箱驗證，以確保正常收到訂單與會員通知。
           </p>
           <button
             onClick={() => router.push(`/login?next=${encodeURIComponent(next)}`)}
@@ -210,8 +209,7 @@ export default function RegisterPage() {
                 autoComplete="bday"
               />
               <p className="mt-1.5 text-[12px] leading-[1.6] text-[#888]">
-                可於之後至會員中心補填；設定完成後不可自行修改。須年滿 13
-                歲。點日曆標題可完整選擇年份（最早至 1920）。
+                可於會員中心後續補填，設定完成後不可自行修改。
               </p>
             </div>
 

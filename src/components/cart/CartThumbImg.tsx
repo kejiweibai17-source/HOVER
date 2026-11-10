@@ -18,7 +18,7 @@ type Props = {
 };
 
 /**
- * 購物車／結帳縮圖：Photon 小圖優先，404 時回退原圖（避免硬拼尺寸檔死圖）
+ * 購物袋／結帳縮圖：Photon 小圖優先，404 時回退原圖（避免硬拼尺寸檔死圖）
  */
 export default function CartThumbImg({
   src,

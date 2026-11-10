@@ -14,6 +14,7 @@ import {
 import { toCartThumbUrl } from "@/lib/listImageUrl";
 import CartThumbImg from "@/components/cart/CartThumbImg";
 import { formatProductPrice } from "@/lib/utils";
+import { formatDiscountAmount } from "@/lib/orderSummary";
 import {
   DEFAULT_SHIPPING,
   cartQualifiesForProductFreeShipping,
@@ -28,7 +29,7 @@ const currency = (n: number) => formatProductPrice(n);
  * 購物袋尚未選配送方式：
  * - 免運門檻與結帳一致：以「應付商品金額」判斷（此抽屜尚無折扣碼／會員折，即商品小計）
  * - 指定免運商品（如測試商品）單獨在車內時視為免運
- * - 目前僅超商取貨：未滿免運時顯示超商運費參考（不計入總計）
+ * - 未達免運：總計＝小計＋超商運費；達免運：顯示運費／免運優惠對消，總計＝小計
  */
 function calcBagSummary(items: CartItem[], shippingSettings: ShippingSettings) {
   const subtotal = items.reduce(
@@ -44,14 +45,21 @@ function calcBagSummary(items: CartItem[], shippingSettings: ShippingSettings) {
   const needForFreeShip = productFreeShipping
     ? 0
     : Math.max(0, threshold - subtotal);
+  const shippingFee = subtotal > 0 ? cvsFee : 0;
+  const freeShippingDiscount = reachedFreeShip && shippingFee > 0 ? shippingFee : 0;
+  const total = reachedFreeShip
+    ? subtotal
+    : subtotal + shippingFee;
 
   return {
     subtotal,
     threshold,
-    cvsFee,
+    shippingFee,
+    freeShippingDiscount,
     productFreeShipping,
     reachedFreeShip,
     needForFreeShip,
+    total,
   };
 }
 
@@ -89,13 +97,15 @@ export default function CartSheet() {
   const {
     subtotal,
     threshold,
-    cvsFee,
+    shippingFee,
+    freeShippingDiscount,
     productFreeShipping,
     reachedFreeShip,
     needForFreeShip,
+    total,
   } = summary;
 
-  // 進站／購物車變動時預載縮圖，打開側欄時幾乎秒出
+  // 進站／購物袋變動時預載縮圖，打開側欄時幾乎秒出
   useEffect(() => {
     items.forEach((it) => {
       const src = it.image ? toCartThumbUrl(it.image) : "";
@@ -158,12 +168,12 @@ export default function CartSheet() {
           >
             {/* Header */}
             <div className="flex items-center justify-between border-b border-[#ccc] px-6 py-5">
-              <h2 className="text-[18px] font-bold text-black">購物車</h2>
+              <h2 className="text-[18px] font-bold text-black">購物袋</h2>
               <button
                 type="button"
                 onClick={close}
                 className="text-black transition-opacity hover:opacity-50"
-                aria-label="關閉購物車"
+                aria-label="關閉購物袋"
               >
                 <X size={22} strokeWidth={1.5} />
               </button>
@@ -292,18 +302,19 @@ export default function CartSheet() {
                     <span>{currency(subtotal)}</span>
                   </div>
 
-                  <div className="flex items-start justify-between gap-3">
+                  <div className="flex items-center justify-between gap-3">
                     <span>運費</span>
-                    <div className="text-right">
-                      {reachedFreeShip ? (
-                        <span className="font-medium text-[#2a514d]">免運</span>
-                      ) : (
-                        <span className="text-[#666]">
-                          {currency(cvsFee)}
-                        </span>
-                      )}
-                    </div>
+                    <span>{currency(shippingFee)}</span>
                   </div>
+
+                  {freeShippingDiscount > 0 ? (
+                    <div className="flex items-center justify-between gap-3">
+                      <span>免運優惠</span>
+                      <span className="text-[#2a514d]">
+                        {formatDiscountAmount(freeShippingDiscount)}
+                      </span>
+                    </div>
+                  ) : null}
 
                   {reachedFreeShip ? (
                     <p className="bg-[#edf4f3] px-3 py-2 text-center text-[12px] text-[#2a514d]">
@@ -326,15 +337,8 @@ export default function CartSheet() {
                   )}
 
                   <div className="flex items-center justify-between border-t border-[#ddd] pt-2.5 font-bold">
-                    <span>
-                      總計
-                      {!reachedFreeShip ? (
-                        <span className="ml-1 text-[12px] font-normal text-[#888]">
-                          （未含運費）
-                        </span>
-                      ) : null}
-                    </span>
-                    <span>{currency(subtotal)}</span>
+                    <span>總計</span>
+                    <span>{currency(total)}</span>
                   </div>
                 </div>
               )}
@@ -356,7 +360,7 @@ export default function CartSheet() {
           <ConfirmDialog
             open={Boolean(pendingRemove)}
             title="移除商品"
-            message={`確定要從購物車移除「${pendingRemove?.name || "此商品"}」嗎？`}
+            message={`確定要從購物袋移除「${pendingRemove?.name || "此商品"}」嗎？`}
             confirmLabel="確定移除"
             cancelLabel="取消"
             zIndexClassName="z-[10000000000000]"

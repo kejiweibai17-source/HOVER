@@ -69,7 +69,7 @@ interface CartItem {
   name?: string;
   id?: string | number;
   onSale?: boolean;
-  /** 購物車規格（例：{ 顏色: "酒紅", 尺寸: "M" }），寫入訂單 meta 供信件顯示 */
+  /** 購物袋規格（例：{ 顏色: "酒紅", 尺寸: "M" }），寫入訂單 meta 供信件顯示 */
   options?: Record<string, string>;
 }
 interface ContactInfo { email: string; }
@@ -481,7 +481,7 @@ export async function POST(req: Request) {
       }
       if (Math.abs(current.price - claimedUnit) > 1) {
         return NextResponse.json(
-          { ok: false, message: "商品價格已更新，請重新整理購物車。" },
+          { ok: false, message: "商品價格已更新，請重新整理購物袋。" },
           { status: 409 },
         );
       }
@@ -535,7 +535,7 @@ export async function POST(req: Request) {
         )
       ) {
         return NextResponse.json(
-          { ok: false, message: "購物車已不符合活動條件，請重新選擇優惠。" },
+          { ok: false, message: "購物袋已不符合活動條件，請重新選擇優惠。" },
           { status: 409 },
         );
       }
@@ -676,7 +676,7 @@ export async function POST(req: Request) {
               ok: false,
               message: blockedByPromo
                 ? paidQty > 0
-                  ? `「${name}」目前庫存 ${maxQty}，購物車已有 ${paidQty} 件，無法再當贈品／加價購。請取消該優惠後再結帳。`
+                  ? `「${name}」目前庫存 ${maxQty}，購物袋已有 ${paidQty} 件，無法再當贈品／加價購。請取消該優惠後再結帳。`
                   : `贈品／加價購「${name}」庫存不足（目前庫存 ${maxQty}）。請取消該優惠後再結帳。`
                 : stockCheck.message || "庫存不足",
             },
@@ -947,7 +947,7 @@ export async function POST(req: Request) {
                   ? { variation_id: Number(it.wcVariationId) }
                   : {}),
                 quantity: qty,
-                // 鎖定站內購物車單價，與綠界／發票金額一致
+                // 鎖定站內購物袋單價，與綠界／發票金額一致
                 subtotal: String(line),
                 total: String(line),
                 ...(meta.length ? { meta_data: meta } : {}),
@@ -1044,7 +1044,7 @@ export async function POST(req: Request) {
             {
               ok: false,
               message: looksLikeStock
-                ? "庫存不足，請調整購物車數量後再試"
+                ? "庫存不足，請調整購物袋數量後再試"
                 : wcMsg,
             },
             { status: looksLikeStock ? 409 : 400 },

@@ -480,7 +480,7 @@ export function promotionStockBlockMessage(
   );
   if (reserved + need <= stockQty) return "";
   if (reserved > 0) {
-    return `購物車已有 ${reserved} 件，庫存只剩 ${stockQty}，無法再當贈品／加價購`;
+    return `購物袋已有 ${reserved} 件，庫存只剩 ${stockQty}，無法再當贈品／加價購`;
   }
   return `庫存只剩 ${stockQty}，無法再加 ${need} 件`;
 }

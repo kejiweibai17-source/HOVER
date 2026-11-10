@@ -147,7 +147,7 @@ function hhss_render_page(): void
             <div class="hhss-topbar">
                 <div>
                     <h1>HOVER 運費</h1>
-                    <p class="description">全館運費與免運門檻，購物車／結帳會依此計算。不需在每一件商品重複設定。</p>
+                    <p class="description">全館運費與免運門檻，購物袋／結帳會依此計算。不需在每一件商品重複設定。</p>
                 </div>
                 <div class="hhss-topbar-actions">
                     <span class="hhss-status <?php echo !empty($s['enabled']) ? 'is-live' : ''; ?>">

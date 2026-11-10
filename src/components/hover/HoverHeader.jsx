@@ -263,7 +263,7 @@ export default function HoverHeader({
           </div>
         )}
 
-        {/* 手機 — 頂列：選單 / Logo / 搜尋+購物車 */}
+        {/* 手機 — 頂列：選單 / Logo / 搜尋+購物袋 */}
         <div className="relative flex items-center justify-between px-4 py-2.5 md:hidden">
           <MenuToggle
             open={menuOpen || searchOpen}
@@ -301,7 +301,7 @@ export default function HoverHeader({
             <Link
               href="/cart"
               aria-label={
-                cartCount > 0 ? `購物車，${cartCount} 件商品` : "購物車"
+                cartCount > 0 ? `購物袋，${cartCount} 件商品` : "購物袋"
               }
               className="relative flex shrink-0 items-center justify-center text-black"
               style={{
@@ -408,7 +408,7 @@ export default function HoverHeader({
               <Link
                 href="/cart"
                 aria-label={
-                  cartCount > 0 ? `購物車，${cartCount} 件商品` : "購物車"
+                  cartCount > 0 ? `購物袋，${cartCount} 件商品` : "購物袋"
                 }
                 className="relative flex shrink-0 items-center justify-center text-black transition-opacity hover:opacity-50"
                 style={{

@@ -88,7 +88,7 @@ export function isInStock(stock: ProductStock | null | undefined): boolean {
   return max === null || max > 0;
 }
 
-/** 把想加的數量壓在「庫存 − 購物車已有」之內 */
+/** 把想加的數量壓在「庫存 − 購物袋已有」之內 */
 export function clampAddQty(
   desiredQty: number,
   stock: ProductStock | null | undefined,
@@ -123,7 +123,7 @@ export function stockFromCartFields(item: {
   backorders?: string;
   maxQty?: number | null;
 }): ProductStock | null {
-  // 舊購物車只有 maxQty 快照時，還原成可判斷的 stock
+  // 舊購物袋只有 maxQty 快照時，還原成可判斷的 stock
   if (
     item.manageStock === undefined &&
     item.stockStatus === undefined &&

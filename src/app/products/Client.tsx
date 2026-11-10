@@ -148,7 +148,7 @@ function FilterSidebar({
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        {/* Top bar — X / Logo / 搜尋 + 購物車（手機才顯示） */}
+        {/* Top bar — X / Logo / 搜尋 + 購物袋（手機才顯示） */}
         <div className="relative flex shrink-0 items-center justify-between border-b border-[#ececec] px-4 py-3 md:hidden">
           <button
             type="button"
@@ -183,7 +183,7 @@ function FilterSidebar({
             <Link
               href="/cart"
               aria-label={
-                cartCount > 0 ? `購物車，${cartCount} 件商品` : "購物車"
+                cartCount > 0 ? `購物袋，${cartCount} 件商品` : "購物袋"
               }
               className="relative flex h-8 w-8 shrink-0 items-center justify-center text-black"
               onClick={onClose}
