@@ -6,8 +6,13 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { animate, motion, useMotionValue } from "framer-motion";
 import OptimizedImage from "@/components/hover/OptimizedImage";
 import {
+  buildYoutubeEmbedSrc,
   getActiveHeroSlides,
+  getYoutubePosterUrl,
+  HERO_YOUTUBE_START_SEC,
+  isHeroYoutubeSlide,
   normalizeHeroSettings,
+  parseYoutubeVideoId,
   resolveHeroImageAlt,
   resolveHeroImageUrl,
 } from "@/lib/heroDefaults";
@@ -60,9 +65,174 @@ function HeroCta({ label, href, visible }) {
   );
 }
 
+function postYoutubeCommand(iframe, func, args = []) {
+  const win = iframe?.contentWindow;
+  if (!win) return;
+  win.postMessage(
+    JSON.stringify({ event: "command", func, args }),
+    "*",
+  );
+}
+
+function HeroYoutube({ videoId, isActive, dragging }) {
+  const iframeRef = useRef(null);
+  const primedRef = useRef(false);
+  const [mounted, setMounted] = useState(isActive);
+  const [showCover, setShowCover] = useState(true);
+  const [embedSrc, setEmbedSrc] = useState(() =>
+    buildYoutubeEmbedSrc(videoId, { autoplay: true }),
+  );
+  const posterUrl = getYoutubePosterUrl(videoId);
+
+  useEffect(() => {
+    if (isActive) setMounted(true);
+  }, [isActive]);
+
+  useEffect(() => {
+    const origin =
+      typeof window !== "undefined" ? window.location.origin : undefined;
+    setEmbedSrc(buildYoutubeEmbedSrc(videoId, { autoplay: true, origin }));
+    setShowCover(true);
+    primedRef.current = false;
+  }, [videoId]);
+
+  const kickPlay = useCallback(
+    ({ seekToStart = false } = {}) => {
+      const iframe = iframeRef.current;
+      if (!iframe) return;
+      iframe.contentWindow?.postMessage(
+        JSON.stringify({ event: "listening", id: videoId }),
+        "*",
+      );
+      postYoutubeCommand(iframe, "mute");
+      if (seekToStart) {
+        postYoutubeCommand(iframe, "seekTo", [HERO_YOUTUBE_START_SEC, true]);
+      }
+      postYoutubeCommand(iframe, "playVideo");
+      if (!primedRef.current) {
+        postYoutubeCommand(iframe, "setPlaybackQuality", ["highres"]);
+        postYoutubeCommand(iframe, "setPlaybackQuality", ["hd1080"]);
+        primedRef.current = true;
+      }
+    },
+    [videoId],
+  );
+
+  useEffect(() => {
+    const onMessage = (event) => {
+      if (typeof event.origin !== "string") return;
+      if (
+        !event.origin.includes("youtube.com") &&
+        !event.origin.includes("youtube-nocookie.com")
+      ) {
+        return;
+      }
+
+      let data = event.data;
+      if (typeof data === "string") {
+        try {
+          data = JSON.parse(data);
+        } catch {
+          return;
+        }
+      }
+      if (!data || typeof data !== "object") return;
+
+      const state =
+        data.event === "onStateChange"
+          ? data.info
+          : data.event === "infoDelivery"
+            ? data.info?.playerState
+            : undefined;
+
+      // 1 = playing：盡快掀開封面，一進來就能看到畫面
+      if (state === 1) setShowCover(false);
+
+      // 0 = ended：loop 常會回到 0 秒，再跳回片頭後起點
+      if (state === 0) {
+        kickPlay({ seekToStart: true });
+      }
+    };
+
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, [kickPlay]);
+
+  useEffect(() => {
+    if (!mounted) return undefined;
+
+    if (!(isActive && !dragging)) {
+      postYoutubeCommand(iframeRef.current, "pauseVideo");
+      setShowCover(true);
+      return undefined;
+    }
+
+    // 只在進場時啟動／重試幾次，不要週期 playVideo（會一直閃暫停鈕）
+    kickPlay({ seekToStart: true });
+    const timers = [250, 700, 1500].map((ms) =>
+      window.setTimeout(() => kickPlay({ seekToStart: false }), ms),
+    );
+    const uncoverFallback = window.setTimeout(() => setShowCover(false), 1200);
+
+    return () => {
+      timers.forEach((id) => window.clearTimeout(id));
+      window.clearTimeout(uncoverFallback);
+    };
+  }, [isActive, dragging, mounted, videoId, kickPlay]);
+
+  if (!mounted) {
+    return (
+      <div className="absolute inset-0 overflow-hidden bg-black">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={posterUrl}
+          alt=""
+          className="absolute inset-0 h-full w-full object-cover object-center"
+          draggable={false}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div className="pointer-events-none absolute inset-0 overflow-hidden bg-black">
+      <iframe
+        ref={iframeRef}
+        key={embedSrc}
+        className="absolute left-1/2 top-1/2 z-[1] aspect-video h-[56.25vw] min-h-full w-[177.78vh] min-w-full -translate-x-1/2 -translate-y-1/2 border-0"
+        src={embedSrc}
+        title="YouTube video"
+        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        allowFullScreen
+        referrerPolicy="strict-origin-when-cross-origin"
+        onLoad={() => kickPlay({ seekToStart: true })}
+      />
+      {showCover && (
+        <div className="absolute inset-0 z-[2] bg-black">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={posterUrl}
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover object-center"
+            draggable={false}
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function HeroMedia({ slide, isActive, dragging }) {
   const videoRef = useRef(null);
-  const isVideo = slide.mediaType === "video" && Boolean(slide.video?.url);
+  const youtubeId =
+    slide.mediaType === "video"
+      ? parseYoutubeVideoId(slide.video?.url || "")
+      : null;
+  const isYoutube = Boolean(youtubeId);
+  const isVideo =
+    !isYoutube &&
+    slide.mediaType === "video" &&
+    Boolean(slide.video?.url);
 
   useEffect(() => {
     const el = videoRef.current;
@@ -87,6 +257,16 @@ function HeroMedia({ slide, isActive, dragging }) {
     el.pause();
     return undefined;
   }, [isActive, dragging, isVideo, slide.video?.url]);
+
+  if (isYoutube && youtubeId) {
+    return (
+      <HeroYoutube
+        videoId={youtubeId}
+        isActive={isActive}
+        dragging={dragging}
+      />
+    );
+  }
 
   if (isVideo) {
     return (
@@ -277,8 +457,14 @@ export default function HoverHero({ initialHero = null }) {
     [count, goTo],
   );
 
+  const activeIsYoutube =
+    count > 0 && slides[index] ? isHeroYoutubeSlide(slides[index]) : false;
+
   useEffect(() => {
     if (count <= 1) return undefined;
+
+    // YouTube 主視覺採自身無限循環，停留在該張時不自動切下一張
+    if (activeIsYoutube) return undefined;
 
     const timer = window.setInterval(() => {
       if (autoplayPausedRef.current || draggingRef.current) return;
@@ -286,7 +472,7 @@ export default function HoverHero({ initialHero = null }) {
     }, hero?.autoplayMs ?? 5000);
 
     return () => window.clearInterval(timer);
-  }, [count, hero?.autoplayMs, go]);
+  }, [count, hero?.autoplayMs, go, activeIsYoutube]);
 
   const dragConstraints =
     count > 1 && viewportWidth > 0

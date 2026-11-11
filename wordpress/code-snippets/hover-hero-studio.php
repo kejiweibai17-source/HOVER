@@ -8,6 +8,7 @@
  * 3. 左側選單「HOVER 首頁主圖」
  *
  * 每張 slide 可選「圖片」或「影片」呈現。
+ * 影片支援上傳 MP4，或貼上 YouTube 網址（前台 iframe 自動靜音無限循環）。
  * 圖片支援桌機／手機分開上傳與強制裁切預覽（桌機 16:9、手機 9:16）。
  *
  * REST API（給 Next.js）：
@@ -496,8 +497,9 @@ function hhs_print_admin_styles(): void
             border: 3px solid #1d2327;
         }
         .hover-hero-admin .hhs-mock-hero img,
-        .hover-hero-admin .hhs-mock-hero video {
-            width: 100%; height: 100%; object-fit: cover; object-position: top;
+        .hover-hero-admin .hhs-mock-hero video,
+        .hover-hero-admin .hhs-mock-hero iframe {
+            width: 100%; height: 100%; object-fit: cover; object-position: top; border: 0;
         }
         .hover-hero-admin .hhs-preview-ratio {
             margin: 0; font-size: 11px; color: #646970; letter-spacing: .04em;
@@ -582,6 +584,30 @@ function hhs_admin_footer_script(): void
             } catch (e) {
                 return url;
             }
+        }
+
+        function youtubeId(url){
+            if (!url) return '';
+            var raw = String(url).trim();
+            // 允許直接貼 11 碼 id、完整網址、或整段 iframe HTML
+            if (/^[\w-]{11}$/.test(raw)) return raw;
+            var m = raw.match(/(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:watch\?(?:[^"'<\s]*?[?&])?v=|embed\/|shorts\/|live\/|v\/)|[?&]v=)([\w-]{11})/);
+            if (m) return m[1];
+            m = raw.match(/youtube(?:-nocookie)?\.com\/watch\?v=([\w-]{11})/);
+            return m ? m[1] : '';
+        }
+
+        function youtubeThumb(id){
+            // maxres 畫質明顯優於 hqdefault；若該片無 maxres，前台仍會正常播 iframe
+            return id ? 'https://i.ytimg.com/vi/'+id+'/maxresdefault.jpg' : '';
+        }
+
+        function youtubeEmbedSrc(id){
+            if (!id) return '';
+            // start=5：與前台一致略過片頭
+            return 'https://www.youtube.com/embed/'+id
+                + '?autoplay=1&mute=1&controls=0&playsinline=1&rel=0&modestbranding=1'
+                + '&loop=1&playlist='+id+'&start=5&enablejsapi=1&iv_load_policy=3&disablekb=1&fs=0';
         }
 
         function mediaUrl(att){
@@ -710,17 +736,20 @@ function hhs_admin_footer_script(): void
             var isVideo = slide.mediaType === 'video';
             var poster = slide.image && slide.image.url ? slide.image.url : '';
             var videoUrl = slide.video && slide.video.url ? slide.video.url : '';
+            var yt = youtubeId(videoUrl);
             var html = '';
 
             if (isVideo) {
                 if (poster) {
                     html = '<img src="'+esc(poster)+'" alt="">';
+                } else if (yt) {
+                    html = '<img src="'+esc(youtubeThumb(yt))+'" alt="">';
                 } else if (videoUrl) {
                     html = '<video src="'+esc(videoUrl)+'#t=0.1" muted playsinline preload="auto"></video>';
                 } else {
-                    return '<div class="hhs-thumb-empty">尚未選影片</div>';
+                    return '<div class="hhs-thumb-empty">尚未選影片／YouTube</div>';
                 }
-                html += '<span class="hhs-thumb-badge">VIDEO</span>';
+                html += '<span class="hhs-thumb-badge">'+(yt ? 'YT' : 'VIDEO')+'</span>';
                 return html;
             }
 
@@ -749,10 +778,13 @@ function hhs_admin_footer_script(): void
                 ensureSlide(i);
                 slide = state.slides[i];
                 var isVideo = slide.mediaType === 'video';
+                var yt = isVideo ? youtubeId(slide.video && slide.video.url) : '';
                 var desktopMeta = '';
                 var mobileMeta = '';
                 if (isVideo && slide.video.url) {
-                    desktopMeta = '<div class="hhs-media-meta">影片：'+esc(fileLabel(slide.video.url))+'</div>';
+                    desktopMeta = yt
+                        ? '<div class="hhs-media-meta">YouTube：'+esc(yt)+'</div>'
+                        : '<div class="hhs-media-meta">影片：'+esc(fileLabel(slide.video.url))+'</div>';
                     if (slide.image.url) desktopMeta += '<div class="hhs-media-meta">海報：'+esc(fileLabel(slide.image.url))+'</div>';
                 } else if (!isVideo && slide.image.url) {
                     desktopMeta = '<div class="hhs-media-meta">'+esc(fileLabel(slide.image.url))+'</div>';
@@ -765,7 +797,7 @@ function hhs_admin_footer_script(): void
 
                 var html = '<div class="hhs-slide" data-index="'+i+'">';
                 html += '<div class="hhs-slide-head">';
-                html += '<span class="hhs-slide-title">Slide '+(i+1)+' · '+(isVideo ? '影片' : '圖片')+'</span>';
+                html += '<span class="hhs-slide-title">Slide '+(i+1)+' · '+(isVideo ? (yt ? 'YouTube' : '影片') : '圖片')+'</span>';
                 html += '<div class="hhs-slide-actions">';
                 html += '<button type="button" class="button button-small hhs-move" data-dir="-1"'+(i===0?' disabled':'')+'>↑</button>';
                 html += '<button type="button" class="button button-small hhs-move" data-dir="1"'+(i===state.slides.length-1?' disabled':'')+'>↓</button>';
@@ -779,7 +811,7 @@ function hhs_admin_footer_script(): void
                 html += desktopMeta;
                 html += '<div class="hhs-media-actions">';
                 if (isVideo) {
-                    html += '<button type="button" class="button button-primary button-small hhs-pick-video" data-index="'+i+'">選影片</button>';
+                    html += '<button type="button" class="button button-primary button-small hhs-pick-video" data-index="'+i+'">選 MP4</button>';
                     html += '<button type="button" class="button button-small hhs-pick-poster" data-index="'+i+'">海報圖（選填）</button>';
                 } else {
                     html += '<button type="button" class="button button-primary button-small hhs-pick-crop" data-index="'+i+'" data-target="desktop">選圖並裁切</button>';
@@ -803,7 +835,15 @@ function hhs_admin_footer_script(): void
                 html += '<button type="button" class="hhs-set-type'+(isVideo?'':' is-on')+'" data-index="'+i+'" data-type="image">圖片</button>';
                 html += '<button type="button" class="hhs-set-type'+(isVideo?' is-on':'')+'" data-index="'+i+'" data-type="video">影片</button>';
                 html += '</div>';
-                html += '<p class="description" style="margin:6px 0 0">'+(isVideo ? '建議上傳 MP4；海報／手機圖用於預覽與載入前畫面。' : '桌機建議 1920×1080；手機建議 1080×1920。可於右側切換預覽確認裁切。')+'</p></div>';
+                html += '<p class="description" style="margin:6px 0 0">'+(isVideo ? '可上傳 MP4，或下方貼 YouTube 網址；前台 YouTube 會自動靜音並無限循環。' : '桌機建議 1920×1080；手機建議 1080×1920。可於右側切換預覽確認裁切。')+'</p></div>';
+                if (isVideo) {
+                    var ytFieldValue = yt
+                        ? slide.video.url
+                        : (slide.video.url && /youtu\.?be|youtube/i.test(slide.video.url) ? slide.video.url : '');
+                    html += '<div class="hhs-field full"><label class="hhs-label">YouTube 網址</label>';
+                    html += '<input type="text" class="regular-text hhs-youtube-url" data-index="'+i+'" value="'+esc(ytFieldValue)+'" placeholder="https://www.youtube.com/watch?v=jUwa2U8Ihhk" autocomplete="off">';
+                    html += '<p class="description" style="margin:6px 0 0">請貼 YouTube 影片網址（youtube.com / youtu.be），不要貼 LINE 或其他連結。可貼完整網址或 iframe 代碼。</p></div>';
+                }
                 html += '<div class="hhs-field full"><label class="hhs-label">'+(isVideo ? '影片／海報替代文字' : '圖片替代文字')+'</label>';
                 html += '<input type="text" class="regular-text hhs-alt" data-index="'+i+'" value="'+esc(slide.image.alt)+'"></div>';
                 html += '<div class="hhs-field full"><label class="hhs-label">點擊連結</label>';
@@ -849,10 +889,15 @@ function hhs_admin_footer_script(): void
             var slide = slides[previewIndex];
             var html = '';
             if (slide.mediaType === 'video' && slide.video && slide.video.url) {
-                var poster = previewMode === 'mobile'
-                    ? (resolveMobileImage(slide) || (slide.image && slide.image.url) || '')
-                    : ((slide.image && slide.image.url) || '');
-                html = '<video src="'+esc(slide.video.url)+'"'+(poster ? ' poster="'+esc(poster)+'"' : '')+' muted autoplay loop playsinline></video>';
+                var ytPreview = youtubeId(slide.video.url);
+                if (ytPreview) {
+                    html = '<iframe src="'+esc(youtubeEmbedSrc(ytPreview))+'" title="YouTube preview" allow="autoplay; encrypted-media" allowfullscreen style="position:absolute;inset:0;width:100%;height:100%;border:0;pointer-events:none"></iframe>';
+                } else {
+                    var poster = previewMode === 'mobile'
+                        ? (resolveMobileImage(slide) || (slide.image && slide.image.url) || '')
+                        : ((slide.image && slide.image.url) || '');
+                    html = '<video src="'+esc(slide.video.url)+'"'+(poster ? ' poster="'+esc(poster)+'"' : '')+' muted autoplay loop playsinline></video>';
+                }
             } else {
                 var imgUrl = previewMode === 'mobile' ? resolveMobileImage(slide) : (slide.image && slide.image.url);
                 var imgAlt = previewMode === 'mobile' && slide.imageMobile && slide.imageMobile.alt
@@ -987,6 +1032,39 @@ function hhs_admin_footer_script(): void
             var slide = ensureSlide(slideIndex($(this)));
             if (!slide) return;
             slide.imageMobile.url = '';
+            renderSlides();
+        });
+
+        $(document).on('input', '.hhs-youtube-url', function(){
+            var slide = ensureSlide(slideIndex($(this)));
+            if (!slide) return;
+            slide.mediaType = 'video';
+            slide.video.url = String($(this).val() || '').trim();
+        });
+
+        $(document).on('blur', '.hhs-youtube-url', function(){
+            var $input = $(this);
+            var slide = ensureSlide(slideIndex($input));
+            if (!slide) return;
+            var val = String($input.val() || '').trim();
+            var id = youtubeId(val);
+            slide.mediaType = 'video';
+            if (!val) {
+                // 清空 YouTube 欄不強制清掉既有 MP4（若目前仍是 yt 來源才清）
+                if (youtubeId(slide.video.url)) slide.video.url = '';
+                renderSlides();
+                return;
+            }
+            if (!id) {
+                alert('這不是 YouTube 影片網址。\n請貼例如：\nhttps://www.youtube.com/watch?v=jUwa2U8Ihhk\n或 https://youtu.be/jUwa2U8Ihhk');
+                return;
+            }
+            // 統一存成標準 watch 網址，方便前後台辨識
+            slide.video.url = 'https://www.youtube.com/watch?v=' + id;
+            $input.val(slide.video.url);
+            if (!slide.image.url) {
+                slide.image.url = youtubeThumb(id);
+            }
             renderSlides();
         });
 

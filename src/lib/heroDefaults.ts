@@ -75,6 +75,93 @@ function parseBool(value: unknown, fallback = false): boolean {
   return fallback;
 }
 
+/** 從 watch / youtu.be / embed / shorts／iframe HTML 解析 11 碼 video id */
+export function parseYoutubeVideoId(url: string): string | null {
+  const raw = String(url || "").trim();
+  if (!raw) return null;
+  if (/^[\w-]{11}$/.test(raw)) return raw;
+
+  const loose = raw.match(
+    /(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:watch\?(?:[^"'<\s]*?[?&])?v=|embed\/|shorts\/|live\/|v\/)|[?&]v=)([\w-]{11})/,
+  );
+  if (loose?.[1]) return loose[1];
+
+  try {
+    const u = new URL(raw);
+    const host = u.hostname.replace(/^www\./, "").toLowerCase();
+
+    if (host === "youtu.be") {
+      const id = u.pathname.split("/").filter(Boolean)[0] || "";
+      return /^[\w-]{11}$/.test(id) ? id : null;
+    }
+
+    if (
+      host === "youtube.com" ||
+      host === "m.youtube.com" ||
+      host === "music.youtube.com" ||
+      host === "youtube-nocookie.com"
+    ) {
+      const v = u.searchParams.get("v");
+      if (v && /^[\w-]{11}$/.test(v)) return v;
+
+      const match = u.pathname.match(
+        /^\/(?:embed|shorts|live|v)\/([\w-]{11})(?:\/|$)/,
+      );
+      if (match?.[1]) return match[1];
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+export function isHeroYoutubeSlide(slide: HeroSlide): boolean {
+  return (
+    slide.mediaType === "video" &&
+    Boolean(parseYoutubeVideoId(slide.video.url))
+  );
+}
+
+/** YouTube 封面：優先 maxres，失敗時瀏覽器仍可退回 hq */
+export function getYoutubePosterUrl(videoId: string): string {
+  return `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;
+}
+
+/** Hero YouTube 略過片頭秒數 */
+export const HERO_YOUTUBE_START_SEC = 5;
+
+/** muted + loop 需帶 playlist=同一支 video id */
+export function buildYoutubeEmbedSrc(
+  videoId: string,
+  {
+    autoplay = false,
+    origin,
+    startSec = HERO_YOUTUBE_START_SEC,
+  }: { autoplay?: boolean; origin?: string; startSec?: number } = {},
+): string {
+  const params = new URLSearchParams({
+    autoplay: autoplay ? "1" : "0",
+    mute: "1",
+    controls: "0",
+    playsinline: "1",
+    rel: "0",
+    modestbranding: "1",
+    loop: "1",
+    playlist: videoId,
+    enablejsapi: "1",
+    iv_load_policy: "3",
+    disablekb: "1",
+    fs: "0",
+    start: String(Math.max(0, Math.floor(startSec))),
+    // 盡力請求高畫質（YouTube 仍可能依頻寬自動降級）
+    vq: "hd1080",
+    hd: "1",
+  });
+  if (origin) params.set("origin", origin);
+  return `https://www.youtube.com/embed/${videoId}?${params.toString()}`;
+}
+
 function slideHasMedia(slide: HeroSlide): boolean {
   if (slide.mediaType === "video") return Boolean(slide.video.url.trim());
   return Boolean(slide.image.url.trim());
