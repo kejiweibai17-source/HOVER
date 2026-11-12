@@ -69,6 +69,46 @@ function photonDisabled(): boolean {
   );
 }
 
+/** 安全 decode（中文檔名／錯誤 % 序列都不應炸） */
+export function safeDecodeURIComponent(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+/**
+ * 路徑段正確 percent-encode（支援中文檔名，避免雙重編碼）。
+ * Photon／瀏覽器對未編碼的「半身.jpg」常抓錯或沿用舊快取。
+ */
+export function encodeUploadPathname(pathname: string): string {
+  return pathname
+    .split("/")
+    .map((segment) => {
+      if (!segment) return "";
+      try {
+        return encodeURIComponent(safeDecodeURIComponent(segment));
+      } catch {
+        return encodeURIComponent(segment);
+      }
+    })
+    .join("/");
+}
+
+/** 正規化 uploads URL：路徑段編碼正確，查詢參數保留 */
+export function normalizeUploadUrl(src: string): string {
+  if (!src || typeof src !== "string") return src;
+  try {
+    const u = new URL(src);
+    if (!u.pathname.includes("/wp-content/uploads/")) return src;
+    u.pathname = encodeUploadPathname(u.pathname);
+    return u.toString();
+  } catch {
+    return src;
+  }
+}
+
 /**
  * 換圖後 Photon／瀏覽器常仍吃舊檔（同路徑）。
  * 帶上附件更新時間或 id 當版本，強制走新 CDN 快取鍵。
@@ -79,12 +119,12 @@ export function withImageCacheBust(
 ): string {
   if (!src || version == null || version === "") return src;
   try {
-    const u = new URL(src);
+    const u = new URL(normalizeUploadUrl(src));
     const token = String(version)
       .trim()
       .replace(/[^\w.-]/g, "")
       .slice(-20);
-    if (!token) return src;
+    if (!token) return u.toString();
     u.searchParams.set("v", token);
     return u.toString();
   } catch {
@@ -112,9 +152,15 @@ function isNearRatio(
 export function toFullUploadUrl(src: string): string {
   if (!src || typeof src !== "string") return src;
   try {
-    const u = new URL(src);
+    const u = new URL(normalizeUploadUrl(src));
     if (!u.pathname.includes("/wp-content/uploads/")) return src;
-    u.pathname = u.pathname.replace(/-\d+x\d+(\.[a-zA-Z]+)$/i, "$1");
+    // 在 decode 後的檔名上剝尺寸後綴，再重新 encode（支援「半身-800x1000.jpg」）
+    const segments = u.pathname.split("/");
+    const last = segments[segments.length - 1] || "";
+    const decodedLast = safeDecodeURIComponent(last);
+    const stripped = decodedLast.replace(/-\d+x\d+(\.[a-zA-Z]+)$/i, "$1");
+    segments[segments.length - 1] = encodeURIComponent(stripped);
+    u.pathname = segments.join("/");
     return u.toString();
   } catch {
     return src;
@@ -136,7 +182,11 @@ export function stripPhotonUrl(src: string): string {
     const path = raw.slice(slash);
     if (!path.includes("/wp-content/uploads/")) return src;
     const ssl = u.searchParams.get("ssl") !== "0";
-    return `${ssl ? "https" : "http"}://${host}${path}`;
+    const cacheV = u.searchParams.get("v");
+    const out = new URL(`${ssl ? "https" : "http"}://${host}${path}`);
+    out.pathname = encodeUploadPathname(out.pathname);
+    if (cacheV) out.searchParams.set("v", cacheV);
+    return out.toString();
   } catch {
     return src;
   }
@@ -268,13 +318,15 @@ export function toDirectWpImageUrl(
 export function viaPhoton(src: string, role: ImageRole = "card"): string {
   if (!src || photonDisabled()) return src;
   try {
-    const u = new URL(src);
+    const u = new URL(normalizeUploadUrl(src));
     const maxEdge = ROLE_MAX[role];
     const quality = ROLE_QUALITY[role];
 
     const cacheV = u.searchParams.get("v");
+    const encodedPath = encodeUploadPathname(u.pathname);
 
     if (isPhotonHost(u.hostname)) {
+      u.pathname = encodedPath;
       u.searchParams.set("w", String(maxEdge));
       u.searchParams.set("quality", String(quality));
       if (cacheV) u.searchParams.set("v", cacheV);
@@ -283,7 +335,8 @@ export function viaPhoton(src: string, role: ImageRole = "card"): string {
 
     if (!u.pathname.includes("/wp-content/uploads/")) return src;
 
-    const photon = new URL(`https://i0.wp.com/${u.host}${u.pathname}`);
+    // 中文檔名必須先 encode 路徑段，否則 Photon 常回舊圖／404
+    const photon = new URL(`https://i0.wp.com/${u.host}${encodedPath}`);
     photon.searchParams.set("w", String(maxEdge));
     photon.searchParams.set("quality", String(quality));
     if (u.protocol === "https:") photon.searchParams.set("ssl", "1");
@@ -302,7 +355,7 @@ export function toOptimizedImageUrl(
   role: ImageRole = "card",
 ): string {
   if (!src || typeof src !== "string") return src;
-  const direct = toDirectWpImageUrl(src, role);
+  const direct = toDirectWpImageUrl(normalizeUploadUrl(src), role);
   return viaPhoton(direct, role);
 }
 

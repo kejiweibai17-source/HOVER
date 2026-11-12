@@ -105,8 +105,14 @@ function isValidGallerySrc(src: unknown): src is string {
 }
 
 function isNonProductGalleryImage(src: string): boolean {
+  let decoded = src;
+  try {
+    decoded = decodeURIComponent(src);
+  } catch {
+    decoded = src;
+  }
   return /尺寸表|size[-_ ]?guide|size[-_ ]?chart|量測|measurement/i.test(
-    decodeURIComponent(src),
+    decoded,
   );
 }
 

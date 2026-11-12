@@ -22,6 +22,45 @@ define('HCVG_LOADED', true);
 
 const HCVG_META = 'hover_variation_gallery';
 
+/**
+ * 上傳時保留中文／日文等檔名（WP 預設 sanitize 常把非 ASCII 剝掉或造成同名衝突）。
+ * 仍移除路徑危險字元。
+ */
+add_filter('sanitize_file_name', function ($filename) {
+    $filename = (string) $filename;
+    $filename = str_replace(["\0", '/', '\\'], '', $filename);
+    // 空白改底線，其餘 Unicode 字母數字保留
+    $filename = preg_replace('/\s+/u', '_', $filename) ?: $filename;
+    $filename = preg_replace('/[^\p{L}\p{N}\._-]+/u', '', $filename) ?: $filename;
+    return $filename;
+}, 20);
+
+/** 媒體 URL 路徑段正確 rawurlencode（支援「半身.jpg」） */
+function hcvg_encode_media_url(string $url): string
+{
+    $parts = wp_parse_url($url);
+    if (empty($parts['scheme']) || empty($parts['host']) || empty($parts['path'])) {
+        return $url;
+    }
+    $segments = explode('/', $parts['path']);
+    $encoded = array_map(static function ($seg) {
+        if ($seg === '') {
+            return '';
+        }
+        return rawurlencode(rawurldecode($seg));
+    }, $segments);
+    $path = implode('/', $encoded);
+    $out = $parts['scheme'] . '://' . $parts['host'];
+    if (!empty($parts['port'])) {
+        $out .= ':' . $parts['port'];
+    }
+    $out .= $path;
+    if (!empty($parts['query'])) {
+        $out .= '?' . $parts['query'];
+    }
+    return $out;
+}
+
 function hcvg_is_color_attribute_name(string $name): bool
 {
     $raw = trim($name);
@@ -65,16 +104,36 @@ function hcvg_ids_to_images(array $ids): array
         if (!$src) {
             continue;
         }
+        $file = get_attached_file($id);
+        $mtime = ($file && is_string($file) && file_exists($file))
+            ? (string) filemtime($file)
+            : (string) (get_post_modified_time('U', true, $id) ?: '');
         $out[] = [
             'id'       => $id,
-            'src'      => $src,
+            'src'      => hcvg_encode_media_url($src),
             'alt'      => (string) get_post_meta($id, '_wp_attachment_image_alt', true),
-            // 前台換圖快取鍵（同檔名置換時也能刷新 Photon）
-            'modified' => (string) (get_post_modified_time('U', true, $id) ?: ''),
+            // 前台換圖快取鍵：同中文檔名置換時以檔案 mtime 刷新 Photon
+            'modified' => $mtime,
         ];
     }
     return $out;
 }
+
+/** Woo／媒體庫回傳的附件 URL 一併正確編碼中文路徑 */
+add_filter('wp_get_attachment_url', function ($url) {
+    if (!is_string($url) || $url === '') {
+        return $url;
+    }
+    return hcvg_encode_media_url($url);
+}, 20);
+
+add_filter('wp_get_attachment_image_src', function ($image) {
+    if (!is_array($image) || empty($image[0]) || !is_string($image[0])) {
+        return $image;
+    }
+    $image[0] = hcvg_encode_media_url($image[0]);
+    return $image;
+}, 20);
 
 function hcvg_get_variation_gallery_ids(int $variation_id): array
 {

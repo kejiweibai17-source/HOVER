@@ -7,9 +7,28 @@ export type ProductCardImage = {
 };
 
 function stripSizeSuffix(src: string): string {
-  return String(src || "")
-    .split("?")[0]
-    .replace(/-\d+x\d+(?=\.[a-zA-Z]+$)/i, "");
+  const raw = String(src || "").split("?")[0];
+  try {
+    // 支援中文檔名的 -WxH 後綴（路徑可能已 percent-encode）
+    const u = new URL(raw, "https://example.invalid");
+    const segments = u.pathname.split("/");
+    const last = segments[segments.length - 1] || "";
+    let decoded = last;
+    try {
+      decoded = decodeURIComponent(last);
+    } catch {
+      decoded = last;
+    }
+    const stripped = decoded.replace(/-\d+x\d+(?=\.[a-zA-Z]+$)/i, "");
+    segments[segments.length - 1] = encodeURIComponent(stripped);
+    if (raw.startsWith("http://") || raw.startsWith("https://")) {
+      u.pathname = segments.join("/");
+      return u.toString();
+    }
+    return segments.join("/");
+  } catch {
+    return raw.replace(/-\d+x\d+(?=\.[a-zA-Z]+$)/i, "");
+  }
 }
 
 function isSameCardImage(a?: ProductCardImage | null, b?: ProductCardImage | null): boolean {
