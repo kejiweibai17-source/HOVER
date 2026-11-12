@@ -123,6 +123,62 @@ export function isHeroYoutubeSlide(slide: HeroSlide): boolean {
   );
 }
 
+/** 上傳／媒體庫影片（非 YouTube） */
+export function isHeroFileVideoSlide(slide: HeroSlide): boolean {
+  return (
+    slide.mediaType === "video" &&
+    Boolean(slide.video.url.trim()) &&
+    !parseYoutubeVideoId(slide.video.url)
+  );
+}
+
+/** 影片 slide（YouTube 或上傳檔）：停留該張並自身無限循環，不自動切下一張 */
+export function isHeroVideoSlide(slide: HeroSlide): boolean {
+  return isHeroYoutubeSlide(slide) || isHeroFileVideoSlide(slide);
+}
+
+/**
+ * Hero 影片一律用原始檔網址播放（不經 Photon quality／縮圖）。
+ * 若誤存成 i0.wp.com／cdn 形式，還原回原站 uploads。
+ */
+export function resolveHeroVideoUrl(url: string): string {
+  const raw = String(url || "").trim();
+  if (!raw) return "";
+  try {
+    const u = new URL(raw);
+    const host = u.hostname.toLowerCase();
+    if (
+      host === "i0.wp.com" ||
+      host === "i1.wp.com" ||
+      host === "i2.wp.com" ||
+      host === "i3.wp.com"
+    ) {
+      const parts = u.pathname.replace(/^\//, "").split("/");
+      if (parts.length >= 2) {
+        const originHost = parts[0];
+        const path = `/${parts.slice(1).join("/")}`;
+        return `https://${originHost}${path}`;
+      }
+    }
+    // 清掉可能誤加的圖片壓縮參數
+    if (
+      u.searchParams.has("quality") ||
+      u.searchParams.has("w") ||
+      u.searchParams.has("h")
+    ) {
+      u.searchParams.delete("quality");
+      u.searchParams.delete("w");
+      u.searchParams.delete("h");
+      u.searchParams.delete("resize");
+      u.searchParams.delete("fit");
+      return u.toString();
+    }
+  } catch {
+    return raw;
+  }
+  return raw;
+}
+
 /** YouTube 封面：優先 maxres，失敗時瀏覽器仍可退回 hq */
 export function getYoutubePosterUrl(videoId: string): string {
   return `https://i.ytimg.com/vi/${videoId}/maxresdefault.jpg`;

@@ -8,7 +8,7 @@
  * 3. 左側選單「HOVER 首頁主圖」
  *
  * 每張 slide 可選「圖片」或「影片」呈現。
- * 影片支援上傳 MP4，或貼上 YouTube 網址（前台 iframe 自動靜音無限循環）。
+ * 影片改為媒體庫上傳（上限 85MB；支援 MP4／WebM／MOV／M4V 等常見格式）。
  * 圖片支援桌機／手機分開上傳與強制裁切預覽（桌機 16:9、手機 9:16）。
  *
  * REST API（給 Next.js）：
@@ -25,6 +25,129 @@ if (defined('HHS_LOADED')) {
 define('HHS_LOADED', true);
 
 const HHS_OPTION = 'hover_hero_v1';
+/** 首頁主圖影片上傳上限（bytes） */
+const HHS_VIDEO_MAX_BYTES = 85 * 1024 * 1024;
+
+/**
+ * 允許的影片副檔名 → MIME
+ * 前台自動播放建議優先用 H.264 MP4；其餘格式依瀏覽器支援度而定。
+ */
+function hhs_video_mime_map(): array
+{
+    return [
+        'mp4'  => 'video/mp4',
+        'm4v'  => 'video/x-m4v',
+        'mov'  => 'video/quicktime',
+        'webm' => 'video/webm',
+        'ogv'  => 'video/ogg',
+        'ogg'  => 'video/ogg',
+        'avi'  => 'video/avi',
+        'mpeg' => 'video/mpeg',
+        'mpg'  => 'video/mpeg',
+        '3gp'  => 'video/3gpp',
+        '3g2'  => 'video/3gpp2',
+    ];
+}
+
+function hhs_php_upload_cap_bytes(): int
+{
+    $upload = wp_convert_hr_to_bytes((string) ini_get('upload_max_filesize'));
+    $post   = wp_convert_hr_to_bytes((string) ini_get('post_max_size'));
+    $caps   = array_filter([(int) $upload, (int) $post]);
+    return $caps ? (int) min($caps) : 0;
+}
+
+/** WP 媒體上傳上限至少拉到 85MB（仍受 PHP ini 實際上限限制） */
+add_filter('upload_size_limit', function ($size) {
+    $want = HHS_VIDEO_MAX_BYTES;
+    $php  = hhs_php_upload_cap_bytes();
+    $base = max((int) $size, $want);
+    if ($php > 0) {
+        return (int) min($base, $php);
+    }
+    return $base;
+});
+
+/** 放寬常見影片 MIME，避免媒體庫拒收 MOV／WebM 等 */
+add_filter('upload_mimes', function ($mimes) {
+    foreach (hhs_video_mime_map() as $ext => $type) {
+        $mimes[$ext] = $type;
+    }
+    return $mimes;
+});
+
+add_filter('wp_check_filetype_and_ext', function ($data, $file, $filename, $mimes) {
+    $ext = strtolower(pathinfo((string) $filename, PATHINFO_EXTENSION));
+    $map = hhs_video_mime_map();
+    if ($ext !== '' && isset($map[$ext])) {
+        $data['ext']  = $ext;
+        $data['type'] = $map[$ext];
+        if (empty($data['proper_filename'])) {
+            $data['proper_filename'] = $filename;
+        }
+    }
+    return $data;
+}, 10, 4);
+
+/** 硬性擋超過 85MB 的影片（即使主機允許更大）；不做轉碼、不降畫質 */
+add_filter('wp_handle_upload_prefilter', function ($file) {
+    $name = (string) ($file['name'] ?? '');
+    $type = strtolower((string) ($file['type'] ?? ''));
+    $ext  = strtolower(pathinfo($name, PATHINFO_EXTENSION));
+    $map  = hhs_video_mime_map();
+    $is_video = str_starts_with($type, 'video/') || isset($map[$ext]);
+    if (!$is_video) {
+        return $file;
+    }
+    $size = (int) ($file['size'] ?? 0);
+    if ($size > HHS_VIDEO_MAX_BYTES) {
+        $file['error'] = sprintf(
+            '影片超過 %dMB 上限（目前 %.1fMB）。系統不會轉碼降畫質，請改用體積較小的原始檔再上傳。',
+            (int) round(HHS_VIDEO_MAX_BYTES / 1048576),
+            $size / 1048576
+        );
+    }
+    return $file;
+});
+
+/**
+ * 影片一律保留原始檔：不經 Jetpack Photon／Site Accelerator 改寫。
+ * （Photon 的 quality／w 參數只適用圖片，誤套到影片會損畫質或無法播放。）
+ */
+function hhs_is_video_url(string $url): bool
+{
+    $path = (string) (parse_url($url, PHP_URL_PATH) ?: '');
+    $ext  = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+    return $ext !== '' && isset(hhs_video_mime_map()[$ext]);
+}
+
+add_filter('jetpack_photon_skip_for_url', function ($skip, $url) {
+    if (is_string($url) && hhs_is_video_url($url)) {
+        return true;
+    }
+    return $skip;
+}, 10, 2);
+
+add_filter('jetpack_photon_skip_image', function ($skip, $src) {
+    if (is_string($src) && hhs_is_video_url($src)) {
+        return true;
+    }
+    return $skip;
+}, 10, 2);
+
+/** 媒體庫上傳器顯示／套用 85MB 上限 */
+add_filter('plupload_default_settings', function ($settings) {
+    $php = hhs_php_upload_cap_bytes();
+    $max = HHS_VIDEO_MAX_BYTES;
+    if ($php > 0) {
+        $max = min($max, $php);
+    }
+    if (!isset($settings['filters']) || !is_array($settings['filters'])) {
+        $settings['filters'] = [];
+    }
+    $settings['filters']['max_file_size'] = $max . 'b';
+    return $settings;
+});
 
 add_action('admin_menu', function () {
     if (!current_user_can('manage_options')) {
@@ -256,13 +379,17 @@ function hhs_render_page(): void
     $s = hhs_get_settings();
     $api_url = rest_url('hover/v1/hero');
     $active_n = hhs_active_count($s);
+    $php_cap = hhs_php_upload_cap_bytes();
+    $wp_cap = (int) wp_max_upload_size();
+    $want_mb = (int) round(HHS_VIDEO_MAX_BYTES / 1048576);
+    $php_ok = $php_cap <= 0 || $php_cap >= HHS_VIDEO_MAX_BYTES;
     ?>
     <div class="wrap hover-hero-admin">
         <div class="hhs-shell">
             <div class="hhs-topbar">
                 <div>
                     <h1>HOVER 首頁主圖</h1>
-                    <p class="description">管理首頁 Hero 輪播：每張可選圖片或影片、分別設定桌機／手機主圖（強制裁切預覽），並設定連結與 CTA。前台支援自動輪播與拖曳切換。儲存後約 1 分鐘內同步至 Next.js。</p>
+                    <p class="description">管理首頁 Hero 輪播：每張可選圖片或上傳影片（上限 <?php echo (int) $want_mb; ?>MB）、分別設定桌機／手機主圖（強制裁切預覽），並設定連結與 CTA。前台支援自動輪播與拖曳切換。儲存後約 1 分鐘內同步至 Next.js。</p>
                 </div>
                 <div class="hhs-topbar-actions">
                     <span class="hhs-status <?php echo !empty($s['enabled']) && $active_n ? 'is-live' : ''; ?>">
@@ -275,6 +402,29 @@ function hhs_render_page(): void
             <?php if ($flash) : ?>
                 <div class="notice <?php echo $flash['ok'] ? 'notice-success' : 'notice-error'; ?> is-dismissible">
                     <p><?php echo esc_html($flash['msg']); ?></p>
+                </div>
+            <?php endif; ?>
+
+            <?php if (!$php_ok) : ?>
+                <div class="notice notice-error">
+                    <p>
+                        主機 PHP 上傳上限目前為
+                        <strong><?php echo esc_html(size_format($php_cap)); ?></strong>
+                        （upload_max_filesize／post_max_size），低於影片需求
+                        <strong><?php echo (int) $want_mb; ?>MB</strong>。
+                        請在 Bluehost MultiPHP INI 將兩者至少調到 <?php echo (int) $want_mb; ?>M，否則大檔會上傳失敗。
+                        目前 WordPress 可見上限：<?php echo esc_html(size_format(max(0, $wp_cap))); ?>。
+                    </p>
+                </div>
+            <?php else : ?>
+                <div class="notice notice-info inline">
+                    <p>
+                        影片上傳上限 <strong><?php echo (int) $want_mb; ?>MB</strong>｜
+                        <strong>保留原始畫質、不做轉碼壓縮</strong>｜
+                        支援 MP4、WebM、MOV、M4V、OGV、MPEG、3GP 等｜
+                        建議 H.264／AAC 的 <strong>MP4</strong>（相容性最好）。
+                        目前主機可上傳約 <?php echo esc_html(size_format(max(0, $wp_cap))); ?>。
+                    </p>
                 </div>
             <?php endif; ?>
 
@@ -586,10 +736,14 @@ function hhs_admin_footer_script(): void
             }
         }
 
+        var VIDEO_MAX_BYTES = <?php echo (int) HHS_VIDEO_MAX_BYTES; ?>;
+        var VIDEO_MAX_MB = Math.round(VIDEO_MAX_BYTES / 1048576);
+        var VIDEO_EXT_RE = /\.(mp4|m4v|mov|webm|ogv|ogg|avi|mpeg|mpg|3gp|3g2)(?:$|\?)/i;
+
         function youtubeId(url){
             if (!url) return '';
             var raw = String(url).trim();
-            // 允許直接貼 11 碼 id、完整網址、或整段 iframe HTML
+            // 舊資料相容：仍辨識 YouTube，方便提示改上傳
             if (/^[\w-]{11}$/.test(raw)) return raw;
             var m = raw.match(/(?:youtu\.be\/|youtube(?:-nocookie)?\.com\/(?:watch\?(?:[^"'<\s]*?[?&])?v=|embed\/|shorts\/|live\/|v\/)|[?&]v=)([\w-]{11})/);
             if (m) return m[1];
@@ -598,13 +752,11 @@ function hhs_admin_footer_script(): void
         }
 
         function youtubeThumb(id){
-            // maxres 畫質明顯優於 hqdefault；若該片無 maxres，前台仍會正常播 iframe
             return id ? 'https://i.ytimg.com/vi/'+id+'/maxresdefault.jpg' : '';
         }
 
         function youtubeEmbedSrc(id){
             if (!id) return '';
-            // start=5：與前台一致略過片頭
             return 'https://www.youtube.com/embed/'+id
                 + '?autoplay=1&mute=1&controls=0&playsinline=1&rel=0&modestbranding=1'
                 + '&loop=1&playlist='+id+'&start=5&enablejsapi=1&iv_load_policy=3&disablekb=1&fs=0';
@@ -613,6 +765,37 @@ function hhs_admin_footer_script(): void
         function mediaUrl(att){
             if (!att) return '';
             return att.url || att.link || (att.sizes && att.sizes.full && att.sizes.full.url) || '';
+        }
+
+        function attachmentBytes(att){
+            if (!att) return 0;
+            var n = Number(att.filesizeInBytes || att.filesize || 0);
+            return Number.isFinite(n) ? n : 0;
+        }
+
+        function isAllowedVideoAttachment(att){
+            if (!att) return false;
+            var mime = String(att.mime || '').toLowerCase();
+            if (mime.indexOf('video/') === 0) return true;
+            var name = String(att.filename || att.name || mediaUrl(att) || '');
+            return VIDEO_EXT_RE.test(name);
+        }
+
+        function validateVideoAttachment(att){
+            if (!isAllowedVideoAttachment(att)) {
+                return '請選擇影片檔（MP4、WebM、MOV、M4V、OGV、MPEG、3GP 等）。';
+            }
+            var bytes = attachmentBytes(att);
+            if (bytes > VIDEO_MAX_BYTES) {
+                return '影片超過 '+VIDEO_MAX_MB+'MB 上限（目前約 '+(bytes/1048576).toFixed(1)+'MB）。系統不會轉碼降畫質，請改用較小的原始檔再上傳。';
+            }
+            return '';
+        }
+
+        /** 一律用原始檔網址（不走縮圖／CDN 改寫） */
+        function originalVideoUrl(att){
+            if (!att) return '';
+            return att.url || mediaUrl(att) || '';
         }
 
         function newSlide(){
@@ -747,7 +930,7 @@ function hhs_admin_footer_script(): void
                 } else if (videoUrl) {
                     html = '<video src="'+esc(videoUrl)+'#t=0.1" muted playsinline preload="auto"></video>';
                 } else {
-                    return '<div class="hhs-thumb-empty">尚未選影片／YouTube</div>';
+                    return '<div class="hhs-thumb-empty">尚未上傳影片</div>';
                 }
                 html += '<span class="hhs-thumb-badge">'+(yt ? 'YT' : 'VIDEO')+'</span>';
                 return html;
@@ -811,7 +994,7 @@ function hhs_admin_footer_script(): void
                 html += desktopMeta;
                 html += '<div class="hhs-media-actions">';
                 if (isVideo) {
-                    html += '<button type="button" class="button button-primary button-small hhs-pick-video" data-index="'+i+'">選 MP4</button>';
+                    html += '<button type="button" class="button button-primary button-small hhs-pick-video" data-index="'+i+'">上傳／選擇影片</button>';
                     html += '<button type="button" class="button button-small hhs-pick-poster" data-index="'+i+'">海報圖（選填）</button>';
                 } else {
                     html += '<button type="button" class="button button-primary button-small hhs-pick-crop" data-index="'+i+'" data-target="desktop">選圖並裁切</button>';
@@ -835,14 +1018,11 @@ function hhs_admin_footer_script(): void
                 html += '<button type="button" class="hhs-set-type'+(isVideo?'':' is-on')+'" data-index="'+i+'" data-type="image">圖片</button>';
                 html += '<button type="button" class="hhs-set-type'+(isVideo?' is-on':'')+'" data-index="'+i+'" data-type="video">影片</button>';
                 html += '</div>';
-                html += '<p class="description" style="margin:6px 0 0">'+(isVideo ? '可上傳 MP4，或下方貼 YouTube 網址；前台 YouTube 會自動靜音並無限循環。' : '桌機建議 1920×1080；手機建議 1080×1920。可於右側切換預覽確認裁切。')+'</p></div>';
-                if (isVideo) {
-                    var ytFieldValue = yt
-                        ? slide.video.url
-                        : (slide.video.url && /youtu\.?be|youtube/i.test(slide.video.url) ? slide.video.url : '');
-                    html += '<div class="hhs-field full"><label class="hhs-label">YouTube 網址</label>';
-                    html += '<input type="text" class="regular-text hhs-youtube-url" data-index="'+i+'" value="'+esc(ytFieldValue)+'" placeholder="https://www.youtube.com/watch?v=jUwa2U8Ihhk" autocomplete="off">';
-                    html += '<p class="description" style="margin:6px 0 0">請貼 YouTube 影片網址（youtube.com / youtu.be），不要貼 LINE 或其他連結。可貼完整網址或 iframe 代碼。</p></div>';
+                html += '<p class="description" style="margin:6px 0 0">'+(isVideo
+                    ? ('請用「上傳／選擇影片」選檔，上限 '+VIDEO_MAX_MB+'MB。系統保留原始畫質、不做轉碼。支援 MP4、WebM、MOV、M4V、OGV、MPEG、3GP；建議 H.264 MP4。')
+                    : '桌機建議 1920×1080；手機建議 1080×1920。可於右側切換預覽確認裁切。')+'</p></div>';
+                if (isVideo && yt) {
+                    html += '<div class="notice notice-warning inline" style="margin:0 0 12px"><p style="margin:0">此張仍是舊的 YouTube 連結。請改上傳影片檔後儲存，前台才會改為自架影片。</p></div>';
                 }
                 html += '<div class="hhs-field full"><label class="hhs-label">'+(isVideo ? '影片／海報替代文字' : '圖片替代文字')+'</label>';
                 html += '<input type="text" class="regular-text hhs-alt" data-index="'+i+'" value="'+esc(slide.image.alt)+'"></div>';
@@ -969,20 +1149,26 @@ function hhs_admin_footer_script(): void
             }
             var i = slideIndex($(this));
             var frame = wp.media({
-                title: '選擇主視覺影片',
+                title: '上傳／選擇主視覺影片（上限 '+VIDEO_MAX_MB+'MB）',
                 button: { text: '使用這支影片' },
                 multiple: false,
                 library: { type: 'video' }
             });
             frame.on('select', function(){
                 var att = frame.state().get('selection').first().toJSON();
-                var url = mediaUrl(att);
+                var err = validateVideoAttachment(att);
+                if (err) {
+                    alert(err);
+                    return;
+                }
+                var url = originalVideoUrl(att);
                 var slide = ensureSlide(i);
                 if (!slide || !url) {
                     alert('無法取得影片網址，請確認檔案已上傳完成後再選一次。');
                     return;
                 }
                 slide.mediaType = 'video';
+                // 存原始上傳檔 URL，前端直接播放、不經 Photon 壓縮
                 slide.video.url = url;
                 // WP 影片常附帶 icon／預覽圖，可當暫時海報
                 if (!slide.image.url) {
@@ -1032,39 +1218,6 @@ function hhs_admin_footer_script(): void
             var slide = ensureSlide(slideIndex($(this)));
             if (!slide) return;
             slide.imageMobile.url = '';
-            renderSlides();
-        });
-
-        $(document).on('input', '.hhs-youtube-url', function(){
-            var slide = ensureSlide(slideIndex($(this)));
-            if (!slide) return;
-            slide.mediaType = 'video';
-            slide.video.url = String($(this).val() || '').trim();
-        });
-
-        $(document).on('blur', '.hhs-youtube-url', function(){
-            var $input = $(this);
-            var slide = ensureSlide(slideIndex($input));
-            if (!slide) return;
-            var val = String($input.val() || '').trim();
-            var id = youtubeId(val);
-            slide.mediaType = 'video';
-            if (!val) {
-                // 清空 YouTube 欄不強制清掉既有 MP4（若目前仍是 yt 來源才清）
-                if (youtubeId(slide.video.url)) slide.video.url = '';
-                renderSlides();
-                return;
-            }
-            if (!id) {
-                alert('這不是 YouTube 影片網址。\n請貼例如：\nhttps://www.youtube.com/watch?v=jUwa2U8Ihhk\n或 https://youtu.be/jUwa2U8Ihhk');
-                return;
-            }
-            // 統一存成標準 watch 網址，方便前後台辨識
-            slide.video.url = 'https://www.youtube.com/watch?v=' + id;
-            $input.val(slide.video.url);
-            if (!slide.image.url) {
-                slide.image.url = youtubeThumb(id);
-            }
             renderSlides();
         });
 

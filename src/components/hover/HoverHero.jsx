@@ -6,15 +6,15 @@ import { ChevronLeft, ChevronRight } from "lucide-react";
 import { animate, motion, useMotionValue } from "framer-motion";
 import OptimizedImage from "@/components/hover/OptimizedImage";
 import {
-  buildYoutubeEmbedSrc,
   getActiveHeroSlides,
   getYoutubePosterUrl,
   HERO_YOUTUBE_START_SEC,
-  isHeroYoutubeSlide,
+  isHeroVideoSlide,
   normalizeHeroSettings,
   parseYoutubeVideoId,
   resolveHeroImageAlt,
   resolveHeroImageUrl,
+  resolveHeroVideoUrl,
 } from "@/lib/heroDefaults";
 
 const SWIPE_THRESHOLD = 48;
@@ -28,8 +28,13 @@ const SLIDE_SPRING = {
 };
 
 function HeroCta({ label, href, visible }) {
+  // 必須在拖曳層外／可點；並擋下 pointer 以免被 swipe 吃掉
   const className =
-    "group absolute bottom-14 left-1/2 z-20 flex -translate-x-1/2 flex-col items-center text-white";
+    "group absolute bottom-16 left-1/2 z-30 flex w-[min(100%,280px)] -translate-x-1/2 touch-manipulation flex-col items-center px-6 py-4 text-white pointer-events-auto md:bottom-14";
+
+  const stopDragBleed = (e) => {
+    e.stopPropagation();
+  };
 
   const inner = (
     <motion.span
@@ -45,6 +50,14 @@ function HeroCta({ label, href, visible }) {
     </motion.span>
   );
 
+  if (!visible) {
+    return (
+      <div className={className} aria-hidden style={{ pointerEvents: "none" }}>
+        {inner}
+      </div>
+    );
+  }
+
   if (href.startsWith("http")) {
     return (
       <a
@@ -52,6 +65,9 @@ function HeroCta({ label, href, visible }) {
         target="_blank"
         rel="noopener noreferrer"
         className={className}
+        onPointerDown={stopDragBleed}
+        onTouchStart={stopDragBleed}
+        onClick={stopDragBleed}
       >
         {inner}
       </a>
@@ -59,130 +75,254 @@ function HeroCta({ label, href, visible }) {
   }
 
   return (
-    <Link href={href || "/products"} className={className}>
+    <Link
+      href={href || "/products"}
+      className={className}
+      onPointerDown={stopDragBleed}
+      onTouchStart={stopDragBleed}
+      onClick={stopDragBleed}
+    >
       {inner}
     </Link>
   );
 }
 
-function postYoutubeCommand(iframe, func, args = []) {
-  const win = iframe?.contentWindow;
-  if (!win) return;
-  win.postMessage(
-    JSON.stringify({ event: "command", func, args }),
-    "*",
-  );
+let youtubeApiPromise = null;
+
+function loadYoutubeIframeApi() {
+  if (typeof window === "undefined") {
+    return Promise.reject(new Error("no window"));
+  }
+  if (window.YT?.Player) return Promise.resolve(window.YT);
+  if (youtubeApiPromise) return youtubeApiPromise;
+
+  youtubeApiPromise = new Promise((resolve) => {
+    const prev = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      if (typeof prev === "function") prev();
+      resolve(window.YT);
+    };
+
+    if (!document.getElementById("youtube-iframe-api")) {
+      const tag = document.createElement("script");
+      tag.id = "youtube-iframe-api";
+      tag.src = "https://www.youtube.com/iframe_api";
+      document.head.appendChild(tag);
+    }
+
+    const poll = window.setInterval(() => {
+      if (window.YT?.Player) {
+        window.clearInterval(poll);
+        resolve(window.YT);
+      }
+    }, 40);
+  });
+
+  return youtubeApiPromise;
 }
 
 function HeroYoutube({ videoId, isActive, dragging }) {
-  const iframeRef = useRef(null);
-  const primedRef = useRef(false);
+  const boxRef = useRef(null);
+  const playerRef = useRef(null);
+  const loopingRef = useRef(false);
   const [mounted, setMounted] = useState(isActive);
   const [showCover, setShowCover] = useState(true);
-  const [embedSrc, setEmbedSrc] = useState(() =>
-    buildYoutubeEmbedSrc(videoId, { autoplay: true }),
-  );
+  const [needsTap, setNeedsTap] = useState(false);
   const posterUrl = getYoutubePosterUrl(videoId);
 
   useEffect(() => {
     if (isActive) setMounted(true);
   }, [isActive]);
 
-  useEffect(() => {
-    const origin =
-      typeof window !== "undefined" ? window.location.origin : undefined;
-    setEmbedSrc(buildYoutubeEmbedSrc(videoId, { autoplay: true, origin }));
+  const restartLoop = useCallback((player) => {
+    if (!player || typeof player.seekTo !== "function") return;
+    loopingRef.current = true;
     setShowCover(true);
-    primedRef.current = false;
-  }, [videoId]);
+    try {
+      player.mute?.();
+      player.seekTo(HERO_YOUTUBE_START_SEC, true);
+      player.playVideo?.();
+    } catch {
+      // ignore
+    }
+  }, []);
 
-  const kickPlay = useCallback(
-    ({ seekToStart = false } = {}) => {
-      const iframe = iframeRef.current;
-      if (!iframe) return;
-      iframe.contentWindow?.postMessage(
-        JSON.stringify({ event: "listening", id: videoId }),
-        "*",
-      );
-      postYoutubeCommand(iframe, "mute");
-      if (seekToStart) {
-        postYoutubeCommand(iframe, "seekTo", [HERO_YOUTUBE_START_SEC, true]);
-      }
-      postYoutubeCommand(iframe, "playVideo");
-      if (!primedRef.current) {
-        postYoutubeCommand(iframe, "setPlaybackQuality", ["highres"]);
-        postYoutubeCommand(iframe, "setPlaybackQuality", ["hd1080"]);
-        primedRef.current = true;
-      }
-    },
-    [videoId],
-  );
-
-  useEffect(() => {
-    const onMessage = (event) => {
-      if (typeof event.origin !== "string") return;
-      if (
-        !event.origin.includes("youtube.com") &&
-        !event.origin.includes("youtube-nocookie.com")
-      ) {
-        return;
-      }
-
-      let data = event.data;
-      if (typeof data === "string") {
-        try {
-          data = JSON.parse(data);
-        } catch {
-          return;
+  const tryPlay = useCallback(() => {
+    const player = playerRef.current;
+    if (!player || typeof player.playVideo !== "function") return;
+    try {
+      if (typeof player.mute === "function") player.mute();
+      if (typeof player.seekTo === "function") {
+        const t =
+          typeof player.getCurrentTime === "function"
+            ? player.getCurrentTime()
+            : 0;
+        if (!t || t < HERO_YOUTUBE_START_SEC - 0.25) {
+          player.seekTo(HERO_YOUTUBE_START_SEC, true);
         }
       }
-      if (!data || typeof data !== "object") return;
-
-      const state =
-        data.event === "onStateChange"
-          ? data.info
-          : data.event === "infoDelivery"
-            ? data.info?.playerState
-            : undefined;
-
-      // 1 = playing：盡快掀開封面，一進來就能看到畫面
-      if (state === 1) setShowCover(false);
-
-      // 0 = ended：loop 常會回到 0 秒，再跳回片頭後起點
-      if (state === 0) {
-        kickPlay({ seekToStart: true });
-      }
-    };
-
-    window.addEventListener("message", onMessage);
-    return () => window.removeEventListener("message", onMessage);
-  }, [kickPlay]);
+      player.playVideo();
+    } catch {
+      // ignore
+    }
+  }, []);
 
   useEffect(() => {
     if (!mounted) return undefined;
 
-    if (!(isActive && !dragging)) {
-      postYoutubeCommand(iframeRef.current, "pauseVideo");
-      setShowCover(true);
-      return undefined;
-    }
+    let cancelled = false;
+    let unlockTap = null;
+    let failSafeTimer = null;
+    let loopWatch = null;
+    const box = boxRef.current;
 
-    // 只在進場時啟動／重試幾次，不要週期 playVideo（會一直閃暫停鈕）
-    kickPlay({ seekToStart: true });
-    const timers = [250, 700, 1500].map((ms) =>
-      window.setTimeout(() => kickPlay({ seekToStart: false }), ms),
-    );
-    const uncoverFallback = window.setTimeout(() => setShowCover(false), 1200);
+    loadYoutubeIframeApi()
+      .then((YT) => {
+        if (cancelled || !box) return;
+
+        try {
+          playerRef.current?.destroy?.();
+        } catch {
+          // ignore
+        }
+        box.innerHTML = "";
+        const mount = document.createElement("div");
+        mount.style.width = "100%";
+        mount.style.height = "100%";
+        box.appendChild(mount);
+
+        // 關閉 YouTube 內建 loop（結束重載常爆黑屏），改由我們提前 seek + 封面遮罩
+        const player = new YT.Player(mount, {
+          videoId,
+          width: "100%",
+          height: "100%",
+          playerVars: {
+            autoplay: 1,
+            mute: 1,
+            controls: 0,
+            playsinline: 1,
+            rel: 0,
+            modestbranding: 1,
+            loop: 0,
+            start: HERO_YOUTUBE_START_SEC,
+            iv_load_policy: 3,
+            disablekb: 1,
+            fs: 0,
+            origin: window.location.origin,
+          },
+          events: {
+            onReady: (event) => {
+              try {
+                event.target.mute();
+                event.target.playVideo();
+              } catch {
+                // ignore
+              }
+              failSafeTimer = window.setTimeout(() => {
+                try {
+                  const state = event.target.getPlayerState?.();
+                  if (state !== YT.PlayerState.PLAYING) setNeedsTap(true);
+                } catch {
+                  setNeedsTap(true);
+                }
+              }, 1800);
+
+              // 結束前先跳回，縮短黑屏；跳轉瞬間用封面蓋住
+              loopWatch = window.setInterval(() => {
+                const p = playerRef.current;
+                if (!p || typeof p.getCurrentTime !== "function") return;
+                try {
+                  const state = p.getPlayerState?.();
+                  if (state === YT.PlayerState.BUFFERING) {
+                    setShowCover(true);
+                    return;
+                  }
+                  const t = p.getCurrentTime() || 0;
+                  const d = p.getDuration?.() || 0;
+                  if (d > HERO_YOUTUBE_START_SEC + 1 && d - t <= 0.45) {
+                    restartLoop(p);
+                  }
+                } catch {
+                  // ignore
+                }
+              }, 200);
+            },
+            onStateChange: (event) => {
+              if (event.data === YT.PlayerState.PLAYING) {
+                loopingRef.current = false;
+                setShowCover(false);
+                setNeedsTap(false);
+              }
+              if (
+                event.data === YT.PlayerState.BUFFERING ||
+                event.data === YT.PlayerState.CUED
+              ) {
+                // 循環 seek 後的緩衝用封面蓋黑屏
+                if (loopingRef.current) setShowCover(true);
+              }
+              if (event.data === YT.PlayerState.ENDED) {
+                restartLoop(event.target);
+              }
+            },
+          },
+        });
+        playerRef.current = player;
+      })
+      .catch(() => {
+        setNeedsTap(true);
+      });
+
+    unlockTap = () => {
+      tryPlay();
+      setShowCover(false);
+      setNeedsTap(false);
+    };
+    document.addEventListener("touchstart", unlockTap, {
+      once: true,
+      passive: true,
+    });
+    document.addEventListener("click", unlockTap, { once: true });
+
+    const uncover = window.setTimeout(() => setShowCover(false), 1600);
 
     return () => {
-      timers.forEach((id) => window.clearTimeout(id));
-      window.clearTimeout(uncoverFallback);
+      cancelled = true;
+      window.clearTimeout(uncover);
+      if (failSafeTimer) window.clearTimeout(failSafeTimer);
+      if (loopWatch) window.clearInterval(loopWatch);
+      if (unlockTap) {
+        document.removeEventListener("touchstart", unlockTap);
+        document.removeEventListener("click", unlockTap);
+      }
+      try {
+        playerRef.current?.destroy?.();
+      } catch {
+        // ignore
+      }
+      playerRef.current = null;
+      if (box) box.innerHTML = "";
     };
-  }, [isActive, dragging, mounted, videoId, kickPlay]);
+  }, [mounted, videoId, tryPlay, restartLoop]);
+
+  useEffect(() => {
+    const player = playerRef.current;
+    if (!player) return;
+
+    if (isActive && !dragging) {
+      tryPlay();
+      return;
+    }
+
+    try {
+      player.pauseVideo?.();
+    } catch {
+      // ignore
+    }
+  }, [isActive, dragging, tryPlay]);
 
   if (!mounted) {
     return (
-      <div className="absolute inset-0 overflow-hidden bg-black">
+      <div className="pointer-events-none absolute inset-0 overflow-hidden bg-black">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={posterUrl}
@@ -195,20 +335,25 @@ function HeroYoutube({ videoId, isActive, dragging }) {
   }
 
   return (
-    <div className="pointer-events-none absolute inset-0 overflow-hidden bg-black">
-      <iframe
-        ref={iframeRef}
-        key={embedSrc}
-        className="absolute left-1/2 top-1/2 z-[1] aspect-video h-[56.25vw] min-h-full w-[177.78vh] min-w-full -translate-x-1/2 -translate-y-1/2 border-0"
-        src={embedSrc}
-        title="YouTube video"
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-        allowFullScreen
-        referrerPolicy="strict-origin-when-cross-origin"
-        onLoad={() => kickPlay({ seekToStart: true })}
+    <div className="absolute inset-0 overflow-hidden bg-black">
+      {/* 底層永遠放封面，循環黑屏時至少不會整片黑 */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={posterUrl}
+        alt=""
+        className="pointer-events-none absolute inset-0 z-0 h-full w-full object-cover object-center"
+        draggable={false}
       />
+
+      <div className="pointer-events-none absolute left-1/2 top-1/2 z-[1] aspect-video h-[56.25vw] min-h-full w-[177.78vh] min-w-[220%] -translate-x-1/2 -translate-y-1/2 md:min-w-full">
+        <div
+          ref={boxRef}
+          className="h-full w-full [&_iframe]:pointer-events-none"
+        />
+      </div>
+
       {showCover && (
-        <div className="absolute inset-0 z-[2] bg-black">
+        <div className="pointer-events-none absolute inset-0 z-[2] bg-black">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={posterUrl}
@@ -217,6 +362,24 @@ function HeroYoutube({ videoId, isActive, dragging }) {
             draggable={false}
           />
         </div>
+      )}
+
+      {needsTap && isActive && (
+        <button
+          type="button"
+          className="absolute inset-0 z-[3] flex items-center justify-center bg-black/35 text-white touch-manipulation"
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            tryPlay();
+            setShowCover(false);
+            setNeedsTap(false);
+          }}
+        >
+          <span className="rounded-full border border-white/70 px-5 py-2 font-serif text-sm tracking-[0.2em]">
+            輕觸播放
+          </span>
+        </button>
       )}
     </div>
   );
@@ -241,21 +404,42 @@ function HeroMedia({ slide, isActive, dragging }) {
     el.muted = true;
     el.defaultMuted = true;
     el.setAttribute("muted", "");
+    el.setAttribute("playsinline", "");
+    el.setAttribute("webkit-playsinline", "");
     el.playsInline = true;
+    el.loop = true;
+
+    const play = () => {
+      el.muted = true;
+      const p = el.play();
+      if (p && typeof p.catch === "function") p.catch(() => {});
+    };
+
+    // 部分瀏覽器 loop 屬性偶發失效，結束時手動重播
+    const onEnded = () => {
+      try {
+        el.currentTime = 0;
+      } catch {
+        /* ignore */
+      }
+      play();
+    };
+
+    el.addEventListener("ended", onEnded);
 
     if (isActive && !dragging) {
-      const play = () => {
-        const p = el.play();
-        if (p && typeof p.catch === "function") p.catch(() => {});
-      };
       play();
-      // 部分瀏覽器需等 canplay 再播
       el.addEventListener("canplay", play);
-      return () => el.removeEventListener("canplay", play);
+      return () => {
+        el.removeEventListener("canplay", play);
+        el.removeEventListener("ended", onEnded);
+      };
     }
 
     el.pause();
-    return undefined;
+    return () => {
+      el.removeEventListener("ended", onEnded);
+    };
   }, [isActive, dragging, isVideo, slide.video?.url]);
 
   if (isYoutube && youtubeId) {
@@ -269,17 +453,18 @@ function HeroMedia({ slide, isActive, dragging }) {
   }
 
   if (isVideo) {
+    const videoSrc = resolveHeroVideoUrl(slide.video.url);
     return (
       <div className="absolute inset-0 overflow-hidden">
         <video
           ref={videoRef}
           className="absolute inset-0 h-full w-full object-cover object-center"
-          src={slide.video.url}
+          src={videoSrc}
           poster={resolveHeroImageUrl(slide, "desktop") || undefined}
           muted
           loop
           playsInline
-          autoPlay={isActive}
+          autoPlay={isActive && !dragging}
           preload="auto"
           controls={false}
           disablePictureInPicture
@@ -457,14 +642,14 @@ export default function HoverHero({ initialHero = null }) {
     [count, goTo],
   );
 
-  const activeIsYoutube =
-    count > 0 && slides[index] ? isHeroYoutubeSlide(slides[index]) : false;
+  const activeIsVideo =
+    count > 0 && slides[index] ? isHeroVideoSlide(slides[index]) : false;
 
   useEffect(() => {
     if (count <= 1) return undefined;
 
-    // YouTube 主視覺採自身無限循環，停留在該張時不自動切下一張
-    if (activeIsYoutube) return undefined;
+    // 影片主視覺（上傳檔／YouTube）自身無限循環，停留該張不自動切下一張
+    if (activeIsVideo) return undefined;
 
     const timer = window.setInterval(() => {
       if (autoplayPausedRef.current || draggingRef.current) return;
@@ -472,7 +657,7 @@ export default function HoverHero({ initialHero = null }) {
     }, hero?.autoplayMs ?? 5000);
 
     return () => window.clearInterval(timer);
-  }, [count, hero?.autoplayMs, go, activeIsYoutube]);
+  }, [count, hero?.autoplayMs, go, activeIsVideo]);
 
   const dragConstraints =
     count > 1 && viewportWidth > 0
@@ -515,11 +700,13 @@ export default function HoverHero({ initialHero = null }) {
   if (!hero) return <HeroSkeleton />;
   if (!count) return null;
 
+  const activeSlide = slides[index];
+
   return (
     <section className="relative w-full overflow-hidden bg-black">
       <div
         ref={viewportRef}
-        className={`relative h-[85vh] min-h-[560px] w-full overflow-hidden select-none [&_img]:pointer-events-none md:h-[calc(100dvh-var(--hover-header-height,116px))] md:min-h-0 ${
+        className={`relative h-[78vh] min-h-[480px] w-full overflow-hidden select-none [&_img]:pointer-events-none md:h-[calc(100dvh-var(--hover-header-height,116px))] md:min-h-0 ${
           count > 1
             ? dragging
               ? "cursor-grabbing"
@@ -528,6 +715,11 @@ export default function HoverHero({ initialHero = null }) {
         }`}
         onClickCapture={(e) => {
           if (!suppressClickRef.current) return;
+          // 手機點 CTA／圓點時不要被 swipe 抑制吃掉
+          if (e.target?.closest?.("a,button")) {
+            suppressClickRef.current = false;
+            return;
+          }
           e.preventDefault();
           e.stopPropagation();
           suppressClickRef.current = false;
@@ -560,18 +752,19 @@ export default function HoverHero({ initialHero = null }) {
                 />
 
                 <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-black/10" />
-
-                {slide.cta.show && slide.cta.label && (
-                  <HeroCta
-                    label={slide.cta.label}
-                    href={slide.link.href || "/products"}
-                    visible={isActive && !dragging}
-                  />
-                )}
               </div>
             );
           })}
         </motion.div>
+
+        {/* CTA 放拖曳層外，手機才能穩定點到 */}
+        {activeSlide?.cta?.show && activeSlide?.cta?.label && (
+          <HeroCta
+            label={activeSlide.cta.label}
+            href={activeSlide.link?.href || "/products"}
+            visible={!dragging}
+          />
+        )}
 
         {count > 1 && (
           <>
@@ -579,28 +772,38 @@ export default function HoverHero({ initialHero = null }) {
               type="button"
               aria-label="上一張"
               onClick={() => go(-1)}
-              className="absolute left-3 top-1/2 z-20 hidden -translate-y-1/2 text-white/90 transition-opacity hover:opacity-100 md:flex md:left-6"
+              className="absolute left-2 top-1/2 z-30 flex -translate-y-1/2 touch-manipulation p-2 text-white/90 md:left-6 md:p-0"
             >
-              <ChevronLeft size={32} strokeWidth={1.25} />
+              <ChevronLeft size={28} strokeWidth={1.25} className="md:hidden" />
+              <ChevronLeft
+                size={32}
+                strokeWidth={1.25}
+                className="hidden md:block"
+              />
             </button>
             <button
               type="button"
               aria-label="下一張"
               onClick={() => go(1)}
-              className="absolute right-3 top-1/2 z-20 hidden -translate-y-1/2 text-white/90 transition-opacity hover:opacity-100 md:flex md:right-6"
+              className="absolute right-2 top-1/2 z-30 flex -translate-y-1/2 touch-manipulation p-2 text-white/90 md:right-6 md:p-0"
             >
-              <ChevronRight size={32} strokeWidth={1.25} />
+              <ChevronRight size={28} strokeWidth={1.25} className="md:hidden" />
+              <ChevronRight
+                size={32}
+                strokeWidth={1.25}
+                className="hidden md:block"
+              />
             </button>
 
-            <div className="absolute bottom-6 left-1/2 z-20 flex -translate-x-1/2 items-center gap-2">
+            <div className="absolute bottom-5 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2.5 md:bottom-6 md:gap-2">
               {slides.map((slide, i) => (
                 <button
                   key={slide.id}
                   type="button"
                   aria-label={`第 ${i + 1} 張`}
                   onClick={() => goTo(i)}
-                  className="relative h-1.5 overflow-hidden rounded-full bg-white/30 transition-all duration-500"
-                  style={{ width: i === index ? 24 : 6 }}
+                  className="relative h-2 overflow-hidden rounded-full bg-white/30 touch-manipulation transition-all duration-500 md:h-1.5"
+                  style={{ width: i === index ? 28 : 8 }}
                 >
                   <motion.span
                     className="absolute inset-0 rounded-full bg-white"
