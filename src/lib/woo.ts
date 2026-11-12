@@ -31,7 +31,11 @@ import {
 } from "./productVariations";
 import { parseWooStock, type ProductStock, isInStock } from "./productStock";
 import { resolveWooPrices } from "./productPricing";
-import { pickWpSizeUrl, toOptimizedImageUrl } from "./listImageUrl";
+import {
+  pickWpSizeUrl,
+  toOptimizedImageUrl,
+  withImageCacheBust,
+} from "./listImageUrl";
 
 export type WooImage = {
   id: number;
@@ -127,23 +131,29 @@ const withAuth = (url: string) => {
 
 const mapWoo = (p: any): WooProduct => {
   const images: WooImage[] = Array.isArray(p?.images)
-    ? p.images.map((im: any) => ({
-        id: im.id,
-        src: im.src,
-        alt: im.alt || p?.name || "",
-        sizes:
-          im.sizes && typeof im.sizes === "object"
-            ? {
-                thumbnail: im.sizes.thumbnail || null,
-                medium: im.sizes.medium || null,
-                medium_large: im.sizes.medium_large || null,
-                large: im.sizes.large || null,
-                woocommerce_thumbnail: im.sizes.woocommerce_thumbnail || null,
-                woocommerce_single: im.sizes.woocommerce_single || null,
-                full: im.sizes.full || im.src || null,
-              }
-            : undefined,
-      }))
+    ? p.images.map((im: any) => {
+        const version =
+          im.date_modified_gmt || im.date_modified || im.id || "";
+        const bust = (url: string | null | undefined) =>
+          url ? withImageCacheBust(String(url), version) : null;
+        return {
+          id: im.id,
+          src: withImageCacheBust(String(im.src || ""), version),
+          alt: im.alt || p?.name || "",
+          sizes:
+            im.sizes && typeof im.sizes === "object"
+              ? {
+                  thumbnail: bust(im.sizes.thumbnail),
+                  medium: bust(im.sizes.medium),
+                  medium_large: bust(im.sizes.medium_large),
+                  large: bust(im.sizes.large),
+                  woocommerce_thumbnail: bust(im.sizes.woocommerce_thumbnail),
+                  woocommerce_single: bust(im.sizes.woocommerce_single),
+                  full: bust(im.sizes.full || im.src),
+                }
+              : undefined,
+        };
+      })
     : [];
   const attributes = p.attributes || [];
   const colorSwatches = extractColorSwatchesFromWooProduct(p);
@@ -386,8 +396,8 @@ export function filterProductsByCategorySlug(
   );
 }
 
-/** 商品／變體 ISR：5 分鐘（庫存仍走 /api/stock/check no-store） */
-const PRODUCT_REVALIDATE = 300;
+/** 商品／變體 ISR：60 秒（換圖後約 1 分鐘內同步；庫存仍走 /api/stock/check no-store） */
+const PRODUCT_REVALIDATE = 60;
 
 async function fetchProductVariations(productId: number) {
   const { base } = getEnv();
@@ -463,7 +473,7 @@ export async function fetchAllProductSlugs({
   const url = withAuth(
     `${base}/wp-json/wc/v3/products?per_page=${perPage}&status=publish`
   );
-  const res = await fetch(url, { next: { revalidate: 300 } });
+  const res = await fetch(url, { next: { revalidate: PRODUCT_REVALIDATE } });
   if (!res.ok) return [] as string[];
   const data = (await res.json()) as any[];
   return (data || []).map((p: any) => p.slug as string).filter(Boolean);

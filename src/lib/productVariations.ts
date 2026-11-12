@@ -1,4 +1,5 @@
 import { isColorAttributeName, isSizeAttributeName } from "./productColors";
+import { withImageCacheBust } from "./listImageUrl";
 import { resolveWooPrices } from "./productPricing";
 import { parseWooStock, type ProductStock } from "./productStock";
 
@@ -69,7 +70,11 @@ export function parseWooVariation(raw: {
   backorders?: string;
   purchasable?: boolean;
   attributes?: Array<{ name?: string; option?: string }>;
-  hover_variation_gallery?: Array<{ src?: string }>;
+  hover_variation_gallery?: Array<{
+    id?: number | string;
+    src?: string;
+    modified?: string | number;
+  }>;
 }): ProductVariation {
   const attributes: Record<string, string> = {};
   for (const attr of raw.attributes || []) {
@@ -82,7 +87,14 @@ export function parseWooVariation(raw: {
   const stock = parseWooStock(raw);
   const gallery = Array.isArray(raw.hover_variation_gallery)
     ? raw.hover_variation_gallery
-        .map((image) => String(image?.src || "").trim())
+        .map((image) => {
+          const src = String(image?.src || "").trim();
+          if (!src) return "";
+          return withImageCacheBust(
+            src,
+            image?.modified || image?.id || "",
+          );
+        })
         .filter(Boolean)
     : [];
 

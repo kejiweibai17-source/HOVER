@@ -10,8 +10,8 @@ import { productDetailGallerySources } from "@/lib/productCardImages";
 import { stripHtmlToText } from "@/lib/utils";
 import { fetchShippingSettings } from "@/lib/shippingDefaults";
 
-/** ISR：商品頁 5 分鐘熱快取；庫存結帳仍走 /api/stock/check（no-store） */
-export const revalidate = 300;
+/** ISR：商品頁 60 秒熱快取（換圖較快同步）；庫存結帳仍走 /api/stock/check（no-store） */
+export const revalidate = 60;
 
 // 🌟 動態獲取網址：本地端會顯示 localhost，正式上線設定變數後自動轉為正式網址
 const getSiteUrl = () => {

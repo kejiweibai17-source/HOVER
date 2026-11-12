@@ -69,6 +69,29 @@ function photonDisabled(): boolean {
   );
 }
 
+/**
+ * 換圖後 Photon／瀏覽器常仍吃舊檔（同路徑）。
+ * 帶上附件更新時間或 id 當版本，強制走新 CDN 快取鍵。
+ */
+export function withImageCacheBust(
+  src: string,
+  version?: string | number | null,
+): string {
+  if (!src || version == null || version === "") return src;
+  try {
+    const u = new URL(src);
+    const token = String(version)
+      .trim()
+      .replace(/[^\w.-]/g, "")
+      .slice(-20);
+    if (!token) return src;
+    u.searchParams.set("v", token);
+    return u.toString();
+  } catch {
+    return src;
+  }
+}
+
 function isPhotonHost(hostname: string): boolean {
   return /(^|\.)wp\.com$/i.test(hostname);
 }
@@ -249,9 +272,12 @@ export function viaPhoton(src: string, role: ImageRole = "card"): string {
     const maxEdge = ROLE_MAX[role];
     const quality = ROLE_QUALITY[role];
 
+    const cacheV = u.searchParams.get("v");
+
     if (isPhotonHost(u.hostname)) {
       u.searchParams.set("w", String(maxEdge));
       u.searchParams.set("quality", String(quality));
+      if (cacheV) u.searchParams.set("v", cacheV);
       return u.toString();
     }
 
@@ -261,6 +287,7 @@ export function viaPhoton(src: string, role: ImageRole = "card"): string {
     photon.searchParams.set("w", String(maxEdge));
     photon.searchParams.set("quality", String(quality));
     if (u.protocol === "https:") photon.searchParams.set("ssl", "1");
+    if (cacheV) photon.searchParams.set("v", cacheV);
     return photon.toString();
   } catch {
     return src;

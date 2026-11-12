@@ -66,9 +66,11 @@ function hcvg_ids_to_images(array $ids): array
             continue;
         }
         $out[] = [
-            'id'  => $id,
-            'src' => $src,
-            'alt' => (string) get_post_meta($id, '_wp_attachment_image_alt', true),
+            'id'       => $id,
+            'src'      => $src,
+            'alt'      => (string) get_post_meta($id, '_wp_attachment_image_alt', true),
+            // 前台換圖快取鍵（同檔名置換時也能刷新 Photon）
+            'modified' => (string) (get_post_modified_time('U', true, $id) ?: ''),
         ];
     }
     return $out;

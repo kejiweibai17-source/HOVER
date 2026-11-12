@@ -1,9 +1,11 @@
 import { isColorAttributeName } from "./productColors";
+import { withImageCacheBust } from "./listImageUrl";
 
 export type GalleryImage = {
   id?: number;
   src: string;
   alt?: string;
+  modified?: string | number;
 };
 
 export type ColorGalleries = Record<string, GalleryImage[]>;
@@ -18,10 +20,12 @@ export type WooVariationRow = {
   hover_variation_gallery?: GalleryImage[];
 };
 
-function optimizeGallerySrc(src: string): string {
-  // 顏色圖庫／內頁：保持原圖。臆造 -1024x1024 等後綴常 404。
-  // 列表縮圖請用 toOptimizedImageUrl(..., "card")。
-  return src;
+function optimizeGallerySrc(
+  src: string,
+  version?: string | number | null,
+): string {
+  // 顏色圖庫／內頁：保持原圖路徑，僅加版本鍵避免 Photon 舊圖。
+  return withImageCacheBust(src, version);
 }
 
 export function normalizeColorGalleries(raw: unknown): ColorGalleries {
@@ -37,10 +41,13 @@ export function normalizeColorGalleries(raw: unknown): ColorGalleries {
         const row = img as Record<string, unknown>;
         const src = String(row.src || "").trim();
         if (!src) return null;
+        const id = row.id ? Number(row.id) : undefined;
+        const modified = row.modified ?? row.date_modified ?? id;
         return {
-          id: row.id ? Number(row.id) : undefined,
-          src: optimizeGallerySrc(src),
+          id,
+          src: optimizeGallerySrc(src, modified as string | number | undefined),
           alt: String(row.alt || "").trim() || undefined,
+          modified: modified as string | number | undefined,
         };
       })
       .filter(Boolean) as GalleryImage[];
@@ -79,10 +86,14 @@ export function buildColorGalleriesFromVariations(
           .map((image) => {
             const src = String(image?.src || "").trim();
             if (!src) return null;
+            const id = image.id ? Number(image.id) : undefined;
+            const modified =
+              (image as GalleryImage).modified ?? id;
             return {
-              id: image.id ? Number(image.id) : undefined,
-              src: optimizeGallerySrc(src),
+              id,
+              src: optimizeGallerySrc(src, modified),
               alt: String(image.alt || "").trim() || undefined,
+              modified,
             };
           })
           .filter(Boolean)

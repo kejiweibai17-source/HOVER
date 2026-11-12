@@ -23,7 +23,8 @@ const SITE_URL =
  * 不在 Server 讀 searchParams（否則整頁變 dynamic、無法 ISR）。
  * 分類篩選改由 Client 用 useSearchParams 處理。
  */
-export const revalidate = 300;
+/** 商品列表 60 秒 ISR，與 PDP／Woo fetch 對齊，換圖較快出現 */
+export const revalidate = 60;
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
