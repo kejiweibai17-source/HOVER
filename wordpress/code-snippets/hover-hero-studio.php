@@ -781,6 +781,19 @@ function hhs_admin_footer_script(): void
             return VIDEO_EXT_RE.test(name);
         }
 
+        function isImageAttachment(att){
+            if (!att) return false;
+            var mime = String(att.mime || '').toLowerCase();
+            if (mime.indexOf('image/') === 0) return true;
+            var name = String(att.filename || att.name || mediaUrl(att) || '');
+            if (VIDEO_EXT_RE.test(name)) return false;
+            return /\.(jpe?g|png|gif|webp|avif|bmp)(?:$|\?)/i.test(name);
+        }
+
+        function isYoutubeThumbUrl(url){
+            return /ytimg\.com|hqdefault|maxresdefault|mqdefault|sddefault/i.test(String(url || ''));
+        }
+
         function validateVideoAttachment(att){
             if (!isAllowedVideoAttachment(att)) {
                 return '請選擇影片檔（MP4、WebM、MOV、M4V、OGV、MPEG、3GP 等）。';
@@ -796,6 +809,17 @@ function hhs_admin_footer_script(): void
         function originalVideoUrl(att){
             if (!att) return '';
             return att.url || mediaUrl(att) || '';
+        }
+
+        function attachmentPosterUrl(att){
+            if (!att) return '';
+            var poster = (att.image && (att.image.src || att.image.url))
+                || (att.thumb && (att.thumb.src || att.thumb.url))
+                || '';
+            if (!poster) return '';
+            if (poster.indexOf('/images/media/video') !== -1) return '';
+            if (isYoutubeThumbUrl(poster)) return '';
+            return poster;
         }
 
         function newSlide(){
@@ -886,7 +910,7 @@ function hhs_admin_footer_script(): void
                 button: { text: '下一步：裁切 ' + cfg.label, close: false },
                 states: [
                     new wp.media.controller.Library({
-                        title: '選擇' + (target === 'mobile' ? '手機' : '桌機') + '主圖（強制裁切 ' + cfg.label + '）',
+                        title: '選擇' + (target === 'mobile' ? '手機' : '桌機') + '圖片（強制裁切 ' + cfg.label + '｜勿選影片）',
                         library: wp.media.query({ type: 'image' }),
                         multiple: false,
                         date: false,
@@ -897,20 +921,41 @@ function hhs_admin_footer_script(): void
                 ]
             });
 
-            frame.on('select', function(){ frame.setState('cropper'); });
+            frame.on('select', function(){
+                var selection = frame.state().get('selection');
+                var model = selection && selection.first ? selection.first() : null;
+                var att = model && model.toJSON ? model.toJSON() : null;
+                // 影片不能走 WP crop-image；誤選會出現「裁剪圖片時發生錯誤」
+                if (!isImageAttachment(att) || isAllowedVideoAttachment(att)) {
+                    alert('裁切只支援圖片（JPG／PNG／WebP 等），請勿選擇影片檔。\n影片請用「上傳／選擇影片」。');
+                    return;
+                }
+                if (!att.width || !att.height) {
+                    alert('無法讀取圖片尺寸，請改選其他圖片後再裁切。');
+                    return;
+                }
+                frame.setState('cropper');
+            });
             frame.on('cropped', function(cropped){
                 var slide = ensureSlide(index);
                 if (slide && cropped && cropped.url) {
-                    slide.mediaType = 'image';
                     if (target === 'mobile') {
                         slide.imageMobile.url = cropped.url;
                         if (!slide.imageMobile.alt) slide.imageMobile.alt = slide.image.alt || 'HOVER';
+                        // 影片模式下手機圖只當靜態海報，不可把 slide 改成圖片
+                    } else if (slide.mediaType === 'video') {
+                        // 影片桌機側若裁切到圖，只更新海報
+                        slide.image.url = cropped.url;
                     } else {
+                        slide.mediaType = 'image';
                         slide.image.url = cropped.url;
                     }
                     renderSlides();
                 }
                 frame.close();
+            });
+            frame.on('skippedcrop', function(){
+                alert('請完成裁切後再使用。');
             });
             frame.open();
         }
@@ -923,12 +968,14 @@ function hhs_admin_footer_script(): void
             var html = '';
 
             if (isVideo) {
-                if (poster) {
-                    html = '<img src="'+esc(poster)+'" alt="">';
+                // 上傳影片：縮圖直接播影片幀，避免舊海報／YouTube 封面蓋住新片
+                if (videoUrl && !yt) {
+                    var safePoster = poster && !isYoutubeThumbUrl(poster) ? poster : '';
+                    html = '<video key="'+esc(videoUrl)+'" src="'+esc(videoUrl)+'#t=0.1" muted playsinline preload="metadata"'+(safePoster ? ' poster="'+esc(safePoster)+'"' : '')+'></video>';
                 } else if (yt) {
-                    html = '<img src="'+esc(youtubeThumb(yt))+'" alt="">';
-                } else if (videoUrl) {
-                    html = '<video src="'+esc(videoUrl)+'#t=0.1" muted playsinline preload="auto"></video>';
+                    html = '<img src="'+esc(poster && isYoutubeThumbUrl(poster) ? poster : youtubeThumb(yt))+'" alt="">';
+                } else if (poster && !isYoutubeThumbUrl(poster)) {
+                    html = '<img src="'+esc(poster)+'" alt="">';
                 } else {
                     return '<div class="hhs-thumb-empty">尚未上傳影片</div>';
                 }
@@ -1002,11 +1049,11 @@ function hhs_admin_footer_script(): void
                 html += '<button type="button" class="button button-small hhs-clear-desktop" data-index="'+i+'">清除</button>';
                 html += '</div></div>';
                 html += '<div class="hhs-media-col">';
-                html += '<span class="hhs-media-col-label">手機主圖 <span>裁切 9:16</span></span>';
+                html += '<span class="hhs-media-col-label">'+(isVideo ? '手機海報圖' : '手機主圖')+' <span>裁切 9:16</span></span>';
                 html += '<div class="hhs-thumb is-mobile" data-thumb-mobile="'+i+'">'+mobileThumbHtml(slide)+'</div>';
                 html += mobileMeta;
                 html += '<div class="hhs-media-actions">';
-                html += '<button type="button" class="button button-primary button-small hhs-pick-crop" data-index="'+i+'" data-target="mobile">選圖並裁切</button>';
+                html += '<button type="button" class="button button-primary button-small hhs-pick-crop" data-index="'+i+'" data-target="mobile">'+(isVideo ? '選海報並裁切' : '選圖並裁切')+'</button>';
                 html += '<button type="button" class="button button-small hhs-clear-mobile" data-index="'+i+'">清除</button>';
                 html += '</div></div>';
                 html += '</div>';
@@ -1073,10 +1120,13 @@ function hhs_admin_footer_script(): void
                 if (ytPreview) {
                     html = '<iframe src="'+esc(youtubeEmbedSrc(ytPreview))+'" title="YouTube preview" allow="autoplay; encrypted-media" allowfullscreen style="position:absolute;inset:0;width:100%;height:100%;border:0;pointer-events:none"></iframe>';
                 } else {
-                    var poster = previewMode === 'mobile'
+                    var posterRaw = previewMode === 'mobile'
                         ? (resolveMobileImage(slide) || (slide.image && slide.image.url) || '')
                         : ((slide.image && slide.image.url) || '');
-                    html = '<video src="'+esc(slide.video.url)+'"'+(poster ? ' poster="'+esc(poster)+'"' : '')+' muted autoplay loop playsinline></video>';
+                    var poster = posterRaw && !isYoutubeThumbUrl(posterRaw) ? posterRaw : '';
+                    // cache-bust：更換影片後強制重載，避免仍顯示上一支畫面
+                    var videoSrc = slide.video.url + (slide.video.url.indexOf('?') >= 0 ? '&' : '?') + 'hhs=' + encodeURIComponent(String(slide.video.url).slice(-24));
+                    html = '<video key="'+esc(slide.video.url)+'" src="'+esc(videoSrc)+'"'+(poster ? ' poster="'+esc(poster)+'"' : '')+' muted autoplay loop playsinline preload="auto"></video>';
                 }
             } else {
                 var imgUrl = previewMode === 'mobile' ? resolveMobileImage(slide) : (slide.image && slide.image.url);
@@ -1168,18 +1218,18 @@ function hhs_admin_footer_script(): void
                     return;
                 }
                 slide.mediaType = 'video';
-                // 存原始上傳檔 URL，前端直接播放、不經 Photon 壓縮
+                // 存原始上傳檔 URL；更換時清掉舊海報／YouTube 封面，避免仍顯示舊畫面
                 slide.video.url = url;
-                // WP 影片常附帶 icon／預覽圖，可當暫時海報
-                if (!slide.image.url) {
-                    var poster = (att.image && (att.image.src || att.image.url))
-                        || (att.thumb && (att.thumb.src || att.thumb.url))
-                        || '';
-                    // 略過 WP 預設的 video.png icon（通常不含實際幀）
-                    if (poster && poster.indexOf('/images/media/video') === -1) {
-                        slide.image.url = poster;
-                    }
+                slide.image.url = attachmentPosterUrl(att);
+                // 舊 YouTube 手機封面一併清掉，避免手機預覽還是舊圖
+                if (slide.imageMobile && isYoutubeThumbUrl(slide.imageMobile.url)) {
+                    slide.imageMobile.url = '';
                 }
+                // 即時預覽對準剛更換的這張（activeSlides 索引）
+                var actives = activeSlides();
+                var previewAt = actives.findIndex(function(s){ return s === slide; });
+                if (previewAt < 0) previewAt = actives.findIndex(function(s){ return s && s.id === slide.id; });
+                previewIndex = previewAt >= 0 ? previewAt : 0;
                 renderSlides();
             });
             frame.open();
@@ -1191,9 +1241,14 @@ function hhs_admin_footer_script(): void
                 return;
             }
             var i = slideIndex($(this));
-            var frame = wp.media({ title: '選擇影片海報圖', button: { text: '使用這張圖' }, multiple: false, library: { type: 'image' } });
+            var frame = wp.media({ title: '選擇影片海報圖（僅圖片）', button: { text: '使用這張圖' }, multiple: false, library: { type: 'image' } });
             frame.on('select', function(){
-                var url = mediaUrl(frame.state().get('selection').first().toJSON());
+                var att = frame.state().get('selection').first().toJSON();
+                if (!isImageAttachment(att) || isAllowedVideoAttachment(att)) {
+                    alert('海報只支援圖片，請勿選擇影片檔。');
+                    return;
+                }
+                var url = mediaUrl(att);
                 var slide = ensureSlide(i);
                 if (!slide || !url) {
                     alert('無法取得圖片網址，請改選其他檔案。');

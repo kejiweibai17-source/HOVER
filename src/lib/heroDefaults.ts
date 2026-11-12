@@ -137,6 +137,13 @@ export function isHeroVideoSlide(slide: HeroSlide): boolean {
   return isHeroYoutubeSlide(slide) || isHeroFileVideoSlide(slide);
 }
 
+/** YouTube 自動產生的封面（更換成上傳影片後不應再當 poster） */
+export function isYoutubeThumbUrl(url: string): boolean {
+  return /ytimg\.com|hqdefault|maxresdefault|mqdefault|sddefault/i.test(
+    String(url || ""),
+  );
+}
+
 /**
  * Hero 影片一律用原始檔網址播放（不經 Photon quality／縮圖）。
  * 若誤存成 i0.wp.com／cdn 形式，還原回原站 uploads。

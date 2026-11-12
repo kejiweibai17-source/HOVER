@@ -12,6 +12,7 @@ import {
   isHeroVideoSlide,
   normalizeHeroSettings,
   parseYoutubeVideoId,
+  isYoutubeThumbUrl,
   resolveHeroImageAlt,
   resolveHeroImageUrl,
   resolveHeroVideoUrl,
@@ -454,13 +455,17 @@ function HeroMedia({ slide, isActive, dragging }) {
 
   if (isVideo) {
     const videoSrc = resolveHeroVideoUrl(slide.video.url);
+    const posterRaw = resolveHeroImageUrl(slide, "desktop");
+    const poster =
+      posterRaw && !isYoutubeThumbUrl(posterRaw) ? posterRaw : undefined;
     return (
       <div className="absolute inset-0 overflow-hidden">
         <video
+          key={videoSrc}
           ref={videoRef}
           className="absolute inset-0 h-full w-full object-cover object-center"
           src={videoSrc}
-          poster={resolveHeroImageUrl(slide, "desktop") || undefined}
+          poster={poster}
           muted
           loop
           playsInline
