@@ -30,6 +30,7 @@ import {
   type ProductVariation,
 } from "./productVariations";
 import { parseWooStock, type ProductStock, isInStock } from "./productStock";
+import { resolveWooPrices } from "./productPricing";
 import { pickWpSizeUrl, toOptimizedImageUrl } from "./listImageUrl";
 
 export type WooImage = {
@@ -236,14 +237,16 @@ const mapWoo = (p: any): WooProduct => {
       "rank_math_description",
       "_yoast_wpseo_metadesc",
     );
+  const prices = resolveWooPrices(p);
   return {
     id: p.id,
     name: p.name,
     slug: p.slug,
     permalink: p.permalink,
-    price: p.price || p.regular_price || "0",
-    regular_price: p.regular_price,
-    sale_price: p.sale_price,
+    price: String(prices.price || 0),
+    regular_price: String(prices.regularPrice || p.regular_price || "0"),
+    // 未開始／已結束的促銷不帶出 sale_price，避免 PDP／列表誤顯折扣
+    sale_price: prices.salePrice != null ? String(prices.salePrice) : "",
     images,
     categories,
     short_description: p.short_description,

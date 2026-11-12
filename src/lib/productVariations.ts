@@ -1,4 +1,5 @@
 import { isColorAttributeName, isSizeAttributeName } from "./productColors";
+import { resolveWooPrices } from "./productPricing";
 import { parseWooStock, type ProductStock } from "./productStock";
 
 export type ProductVariation = {
@@ -57,6 +58,11 @@ export function parseWooVariation(raw: {
   price?: string;
   regular_price?: string;
   sale_price?: string;
+  on_sale?: boolean | string | number | null;
+  date_on_sale_from?: string | null;
+  date_on_sale_to?: string | null;
+  date_on_sale_from_gmt?: string | null;
+  date_on_sale_to_gmt?: string | null;
   stock_status?: string;
   manage_stock?: boolean | string;
   stock_quantity?: number | string | null;
@@ -72,11 +78,7 @@ export function parseWooVariation(raw: {
     if (name && option) attributes[name] = option;
   }
 
-  const regularPrice = Number(raw.regular_price || raw.price || 0);
-  const saleRaw = raw.sale_price ? Number(raw.sale_price) : null;
-  const salePrice =
-    saleRaw && saleRaw > 0 && saleRaw < regularPrice ? saleRaw : null;
-  const price = salePrice ?? Number(raw.price || regularPrice || 0);
+  const { price, regularPrice, salePrice } = resolveWooPrices(raw);
   const stock = parseWooStock(raw);
   const gallery = Array.isArray(raw.hover_variation_gallery)
     ? raw.hover_variation_gallery
