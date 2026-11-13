@@ -626,7 +626,16 @@ export default function ProductClient({ product }: ProductProps) {
       productSlug &&
       color.slug !== productSlug
     ) {
-      router.push(`/products/${color.slug}`);
+      // WP 若存了 %e7%b6... 字面 slug，解碼後再進路由，避免雙重編碼／找不到商品
+      let pathSlug = color.slug;
+      try {
+        if (/%[0-9a-f]{2}/i.test(pathSlug)) {
+          pathSlug = decodeURIComponent(pathSlug);
+        }
+      } catch {
+        /* keep raw */
+      }
+      router.push(`/products/${pathSlug}`);
       return;
     }
     setSelectedColor(color.label);

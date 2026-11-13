@@ -505,29 +505,64 @@ async function attachVariableProductData(
   return { ...product, colorGalleries, variations };
 }
 
+/**
+ * Woo 偶發把中文標題存成「字面 percent-encoding」slug
+ *（例：%e7%b6%93... 而非經典...）。網址列解碼成中文後會查不到，
+ * 因此同時嘗試：原字、解碼、以及 encode 後的字面形式。
+ */
+function slugLookupCandidates(slug: string): string[] {
+  const raw = String(slug || "").trim();
+  if (!raw) return [];
+  const out: string[] = [];
+  const add = (value: string) => {
+    const v = String(value || "").trim();
+    if (v && !out.includes(v)) out.push(v);
+  };
+  add(raw);
+  try {
+    const decoded = decodeURIComponent(raw);
+    add(decoded);
+    add(encodeURIComponent(decoded).toLowerCase());
+    add(encodeURIComponent(decoded));
+  } catch {
+    /* ignore malformed % sequences */
+  }
+  if (!/%[0-9a-f]{2}/i.test(raw)) {
+    add(encodeURIComponent(raw).toLowerCase());
+    add(encodeURIComponent(raw));
+  }
+  return out;
+}
+
 // 3. 單一產品抓取 (透過 Slug)
 export async function fetchProductBySlug(slug: string) {
   const { base } = getEnv();
-  const url = withAuth(
-    `${base}/wp-json/wc/v3/products?slug=${encodeURIComponent(
-      slug
-    )}&status=publish`
-  );
+  const candidates = slugLookupCandidates(slug);
 
   // Bluehost 偶爾會短暫 DNS/連線失敗；重試一次且不要讓商品頁直接 500。
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      const res = await fetch(url, { next: { revalidate: PRODUCT_REVALIDATE } });
-      if (!res.ok) return null;
-      const arr = (await res.json()) as any[];
-      if (!Array.isArray(arr) || arr.length === 0) return null;
-      const product = mapWoo(arr[0]) as WooProduct;
-      try {
-        return await attachVariableProductData(product, arr[0]);
-      } catch (error) {
-        console.error("[woo] 商品變體讀取失敗，改顯示基本資料：", error);
-        return product;
+      for (const candidate of candidates) {
+        const url = withAuth(
+          `${base}/wp-json/wc/v3/products?slug=${encodeURIComponent(
+            candidate,
+          )}&status=publish`,
+        );
+        const res = await fetch(url, {
+          next: { revalidate: PRODUCT_REVALIDATE },
+        });
+        if (!res.ok) continue;
+        const arr = (await res.json()) as any[];
+        if (!Array.isArray(arr) || arr.length === 0) continue;
+        const product = mapWoo(arr[0]) as WooProduct;
+        try {
+          return await attachVariableProductData(product, arr[0]);
+        } catch (error) {
+          console.error("[woo] 商品變體讀取失敗，改顯示基本資料：", error);
+          return product;
+        }
       }
+      return null;
     } catch (error) {
       if (attempt === 1) {
         console.error(`[woo] 商品讀取失敗 (${slug})：`, error);
