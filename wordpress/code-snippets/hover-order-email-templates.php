@@ -545,6 +545,61 @@ function hoet_item_promo_badge(WC_Order_Item_Product $item): string
     return '<div style="margin:0 0 6px;"><span style="display:inline-block;padding:3px 8px;background:' . HOET_GREEN . ';color:#ffffff;font-size:11px;font-weight:700;letter-spacing:0.06em;line-height:1.4;">' . hoet_esc($label) . '</span></div>';
 }
 
+/** 是否為尺寸 token（含 F）；純數字色號不當尺寸 */
+function hoet_looks_like_size_token(string $value): bool
+{
+    return (bool) preg_match('/^(XXS|XS|S|M|L|XL|XXL|2XL|3XL|F)$/iu', trim($value));
+}
+
+/**
+ * 拆開混雜規格（如「F／白」「F / 11」）→ [size, color]
+ *
+ * @param string $size_raw
+ * @param string $color_raw
+ * @param array<int, string> $extra_tokens
+ * @return array{0:string,1:string}
+ */
+function hoet_normalize_size_color(string $size_raw, string $color_raw, array $extra_tokens = []): array
+{
+    $tokens = [];
+    foreach (array_merge([$size_raw, $color_raw], $extra_tokens) as $chunk) {
+        $parts = preg_split('/\s*[\/／|,，|｜]\s*/u', (string) $chunk) ?: [];
+        foreach ($parts as $part) {
+            $part = trim((string) $part);
+            if ($part !== '') {
+                $tokens[] = $part;
+            }
+        }
+    }
+
+    $size = '';
+    $color = '';
+    foreach ($tokens as $token) {
+        if ($token === '' || preg_match('/^顏色隨機出貨$/u', $token)) {
+            continue;
+        }
+        if (hoet_looks_like_size_token($token)) {
+            if ($size === '') {
+                $size = strtoupper($token) === 'F' ? 'F' : $token;
+            }
+            continue;
+        }
+        if ($color === '') {
+            $color = $token;
+        }
+    }
+
+    if ($size === '') {
+        $first_parts = preg_split('/\s*[\/／|,，|｜]\s*/u', $size_raw) ?: [];
+        $first = trim((string) ($first_parts[0] ?? ''));
+        if ($first !== '' && $first !== $color && !preg_match('/^顏色隨機出貨$/u', $first)) {
+            $size = $first;
+        }
+    }
+
+    return [$size, $color];
+}
+
 /**
  * 規格文字（尺寸｜顏色）。後台作業欄位一律不顯示；
  * 隨機色贈品以「顏色隨機出貨」取代實際分配顏色（$mask_random_color=false 僅供內部比對品名）。
@@ -561,7 +616,9 @@ function hoet_item_options(WC_Order_Item_Product $item, bool $mask_random_color 
         'SKU'      => true,
         '貨號'     => true,
     ];
-    $bits = [];
+    $size_raw = '';
+    $color_raw = '';
+    $extras = [];
     $meta = $item->get_formatted_meta_data('_', true);
     foreach ($meta as $m) {
         $label = wp_strip_all_tags((string) $m->display_key);
@@ -573,16 +630,20 @@ function hoet_item_options(WC_Order_Item_Product $item, bool $mask_random_color 
             continue;
         }
         if (preg_match('/尺寸|size/i', $label)) {
-            $bits['size'] = $value;
+            if ($size_raw === '') {
+                $size_raw = $value;
+            }
         } elseif (preg_match('/顏色|color|colour/i', $label)) {
-            $bits['color'] = $value;
+            if ($color_raw === '') {
+                $color_raw = $value;
+            }
         } else {
-            $bits[] = $label . '：' . $value;
+            $extras[] = $value;
         }
     }
-    $size = $bits['size'] ?? '';
-    $color = $bits['color'] ?? '';
-    unset($bits['size'], $bits['color']);
+
+    [$size, $color] = hoet_normalize_size_color($size_raw, $color_raw, $extras);
+
     if ($mask_random_color && hoet_item_promo_kind($item) === 'gift' && hoet_item_promo_is_random($item)) {
         $color = '顏色隨機出貨';
     }
@@ -598,7 +659,7 @@ function hoet_item_options(WC_Order_Item_Product $item, bool $mask_random_color 
     if ($size !== '' || $color !== '') {
         return trim($size . ($size && $color ? '｜' : '') . $color);
     }
-    return implode('｜', array_map('strval', $bits));
+    return '';
 }
 
 function hoet_item_image_url(WC_Order_Item_Product $item): string

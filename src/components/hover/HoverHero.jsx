@@ -122,17 +122,31 @@ function loadYoutubeIframeApi() {
   return youtubeApiPromise;
 }
 
-function HeroYoutube({ videoId, isActive, dragging }) {
+function HeroYoutube({ videoId, isActive, dragging, shouldLoop, onEnded }) {
   const boxRef = useRef(null);
   const playerRef = useRef(null);
   const loopingRef = useRef(false);
+  const endedOnceRef = useRef(false);
+  const onEndedRef = useRef(onEnded);
+  const shouldLoopRef = useRef(shouldLoop);
   const [mounted, setMounted] = useState(isActive);
   const [showCover, setShowCover] = useState(true);
   const [needsTap, setNeedsTap] = useState(false);
   const posterUrl = getYoutubePosterUrl(videoId);
 
   useEffect(() => {
-    if (isActive) setMounted(true);
+    onEndedRef.current = onEnded;
+  }, [onEnded]);
+
+  useEffect(() => {
+    shouldLoopRef.current = shouldLoop;
+  }, [shouldLoop]);
+
+  useEffect(() => {
+    if (isActive) {
+      setMounted(true);
+      endedOnceRef.current = false;
+    }
   }, [isActive]);
 
   const restartLoop = useCallback((player) => {
@@ -147,6 +161,26 @@ function HeroYoutube({ videoId, isActive, dragging }) {
       // ignore
     }
   }, []);
+
+  const finishPlayback = useCallback(
+    (player) => {
+      if (endedOnceRef.current) return;
+      endedOnceRef.current = true;
+      if (shouldLoopRef.current) {
+        endedOnceRef.current = false;
+        restartLoop(player);
+        return;
+      }
+      setShowCover(true);
+      try {
+        player?.pauseVideo?.();
+      } catch {
+        // ignore
+      }
+      onEndedRef.current?.();
+    },
+    [restartLoop],
+  );
 
   const tryPlay = useCallback(() => {
     const player = playerRef.current;
@@ -174,7 +208,7 @@ function HeroYoutube({ videoId, isActive, dragging }) {
     let cancelled = false;
     let unlockTap = null;
     let failSafeTimer = null;
-    let loopWatch = null;
+    let endWatch = null;
     const box = boxRef.current;
 
     loadYoutubeIframeApi()
@@ -192,7 +226,7 @@ function HeroYoutube({ videoId, isActive, dragging }) {
         mount.style.height = "100%";
         box.appendChild(mount);
 
-        // 關閉 YouTube 內建 loop（結束重載常爆黑屏），改由我們提前 seek + 封面遮罩
+        // 關閉 YouTube 內建 loop；單張才自行循環，多張則播完換下一張
         const player = new YT.Player(mount, {
           videoId,
           width: "100%",
@@ -228,20 +262,22 @@ function HeroYoutube({ videoId, isActive, dragging }) {
                 }
               }, 1800);
 
-              // 結束前先跳回，縮短黑屏；跳轉瞬間用封面蓋住
-              loopWatch = window.setInterval(() => {
+              // 結束前先觸發換頁／循環，縮短 YouTube 結尾黑屏
+              endWatch = window.setInterval(() => {
                 const p = playerRef.current;
                 if (!p || typeof p.getCurrentTime !== "function") return;
                 try {
                   const state = p.getPlayerState?.();
                   if (state === YT.PlayerState.BUFFERING) {
-                    setShowCover(true);
+                    if (shouldLoopRef.current && loopingRef.current) {
+                      setShowCover(true);
+                    }
                     return;
                   }
                   const t = p.getCurrentTime() || 0;
                   const d = p.getDuration?.() || 0;
                   if (d > HERO_YOUTUBE_START_SEC + 1 && d - t <= 0.45) {
-                    restartLoop(p);
+                    finishPlayback(p);
                   }
                 } catch {
                   // ignore
@@ -258,11 +294,12 @@ function HeroYoutube({ videoId, isActive, dragging }) {
                 event.data === YT.PlayerState.BUFFERING ||
                 event.data === YT.PlayerState.CUED
               ) {
-                // 循環 seek 後的緩衝用封面蓋黑屏
-                if (loopingRef.current) setShowCover(true);
+                if (shouldLoopRef.current && loopingRef.current) {
+                  setShowCover(true);
+                }
               }
               if (event.data === YT.PlayerState.ENDED) {
-                restartLoop(event.target);
+                finishPlayback(event.target);
               }
             },
           },
@@ -290,7 +327,7 @@ function HeroYoutube({ videoId, isActive, dragging }) {
       cancelled = true;
       window.clearTimeout(uncover);
       if (failSafeTimer) window.clearTimeout(failSafeTimer);
-      if (loopWatch) window.clearInterval(loopWatch);
+      if (endWatch) window.clearInterval(endWatch);
       if (unlockTap) {
         document.removeEventListener("touchstart", unlockTap);
         document.removeEventListener("click", unlockTap);
@@ -303,13 +340,14 @@ function HeroYoutube({ videoId, isActive, dragging }) {
       playerRef.current = null;
       if (box) box.innerHTML = "";
     };
-  }, [mounted, videoId, tryPlay, restartLoop]);
+  }, [mounted, videoId, tryPlay, finishPlayback]);
 
   useEffect(() => {
     const player = playerRef.current;
     if (!player) return;
 
     if (isActive && !dragging) {
+      endedOnceRef.current = false;
       tryPlay();
       return;
     }
@@ -337,7 +375,7 @@ function HeroYoutube({ videoId, isActive, dragging }) {
 
   return (
     <div className="absolute inset-0 overflow-hidden bg-black">
-      {/* 底層永遠放封面，循環黑屏時至少不會整片黑 */}
+      {/* 底層永遠放封面，緩衝／結尾時至少不會整片黑 */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={posterUrl}
@@ -386,8 +424,10 @@ function HeroYoutube({ videoId, isActive, dragging }) {
   );
 }
 
-function HeroMedia({ slide, isActive, dragging }) {
+function HeroMedia({ slide, isActive, dragging, shouldLoop, onEnded }) {
   const videoRef = useRef(null);
+  const endedOnceRef = useRef(false);
+  const onEndedRef = useRef(onEnded);
   const youtubeId =
     slide.mediaType === "video"
       ? parseYoutubeVideoId(slide.video?.url || "")
@@ -399,6 +439,14 @@ function HeroMedia({ slide, isActive, dragging }) {
     Boolean(slide.video?.url);
 
   useEffect(() => {
+    onEndedRef.current = onEnded;
+  }, [onEnded]);
+
+  useEffect(() => {
+    if (isActive) endedOnceRef.current = false;
+  }, [isActive]);
+
+  useEffect(() => {
     const el = videoRef.current;
     if (!el || !isVideo) return undefined;
 
@@ -408,7 +456,7 @@ function HeroMedia({ slide, isActive, dragging }) {
     el.setAttribute("playsinline", "");
     el.setAttribute("webkit-playsinline", "");
     el.playsInline = true;
-    el.loop = true;
+    el.loop = Boolean(shouldLoop);
 
     const play = () => {
       el.muted = true;
@@ -416,32 +464,38 @@ function HeroMedia({ slide, isActive, dragging }) {
       if (p && typeof p.catch === "function") p.catch(() => {});
     };
 
-    // 部分瀏覽器 loop 屬性偶發失效，結束時手動重播
-    const onEnded = () => {
-      try {
-        el.currentTime = 0;
-      } catch {
-        /* ignore */
+    const handleEnded = () => {
+      if (shouldLoop) {
+        try {
+          el.currentTime = 0;
+        } catch {
+          /* ignore */
+        }
+        play();
+        return;
       }
-      play();
+      if (endedOnceRef.current) return;
+      endedOnceRef.current = true;
+      onEndedRef.current?.();
     };
 
-    el.addEventListener("ended", onEnded);
+    el.addEventListener("ended", handleEnded);
 
     if (isActive && !dragging) {
+      endedOnceRef.current = false;
       play();
       el.addEventListener("canplay", play);
       return () => {
         el.removeEventListener("canplay", play);
-        el.removeEventListener("ended", onEnded);
+        el.removeEventListener("ended", handleEnded);
       };
     }
 
     el.pause();
     return () => {
-      el.removeEventListener("ended", onEnded);
+      el.removeEventListener("ended", handleEnded);
     };
-  }, [isActive, dragging, isVideo, slide.video?.url]);
+  }, [isActive, dragging, isVideo, shouldLoop, slide.video?.url]);
 
   if (isYoutube && youtubeId) {
     return (
@@ -449,6 +503,8 @@ function HeroMedia({ slide, isActive, dragging }) {
         videoId={youtubeId}
         isActive={isActive}
         dragging={dragging}
+        shouldLoop={shouldLoop}
+        onEnded={onEnded}
       />
     );
   }
@@ -467,7 +523,7 @@ function HeroMedia({ slide, isActive, dragging }) {
           src={videoSrc}
           poster={poster}
           muted
-          loop
+          loop={shouldLoop}
           playsInline
           autoPlay={isActive && !dragging}
           preload="auto"
@@ -647,13 +703,24 @@ export default function HoverHero({ initialHero = null }) {
     [count, goTo],
   );
 
+  /** 影片播完換下一張：不觸發 pauseAutoplay，讓後續圖片照 interval 繼續轉 */
+  const advanceAfterMedia = useCallback(() => {
+    if (count <= 1) return;
+    if (draggingRef.current) return;
+    const current = indexRef.current;
+    const next = (current + 1) % count;
+    instantSnapRef.current = current === count - 1 && next === 0;
+    setIndex(next);
+  }, [count]);
+
   const activeIsVideo =
     count > 0 && slides[index] ? isHeroVideoSlide(slides[index]) : false;
+  const shouldLoopVideo = count <= 1;
 
   useEffect(() => {
     if (count <= 1) return undefined;
 
-    // 影片主視覺（上傳檔／YouTube）自身無限循環，停留該張不自動切下一張
+    // 影片主視覺播完整段後由 onEnded 換頁，不在此用 interval 截斷
     if (activeIsVideo) return undefined;
 
     const timer = window.setInterval(() => {
@@ -754,6 +821,8 @@ export default function HoverHero({ initialHero = null }) {
                   slide={slide}
                   isActive={isActive}
                   dragging={dragging}
+                  shouldLoop={shouldLoopVideo}
+                  onEnded={isActive ? advanceAfterMedia : undefined}
                 />
 
                 <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/25 via-transparent to-black/10" />

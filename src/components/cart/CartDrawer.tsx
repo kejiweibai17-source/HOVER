@@ -329,10 +329,6 @@ export default function CartSheet() {
                         {currency(needForFreeShip)}
                       </span>{" "}
                       即享免運
-                      <span className="text-[#888]">
-                        {" "}
-                        · 滿 {currency(threshold)}
-                      </span>
                     </p>
                   )}
 

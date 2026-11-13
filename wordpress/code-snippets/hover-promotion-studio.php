@@ -256,8 +256,16 @@ function hvpr_product_payload(int $id): ?array
             }
             if (hvpr_is_color_attribute($taxonomy, $tax_label)) {
                 $color_label = $display;
-            } else {
-                $size_label = $size_label === '' ? $display : $size_label . '／' . $display;
+                continue;
+            }
+            // 尺寸只取尺寸屬性；其餘屬性（色號等）不可併入 sizeLabel 造成「F／11」
+            if (hvpr_is_size_attribute($taxonomy, $tax_label, $display)) {
+                $size_label = $display;
+            } elseif ($size_label === '' && preg_match('/^(XXS|XS|S|M|L|XL|XXL|2XL|3XL|F)$/iu', $display)) {
+                $size_label = $display;
+            } elseif ($color_label === '') {
+                // 未標成顏色的色名／色號，歸顏色欄，避免跟尺寸黏在一起
+                $color_label = $display;
             }
         }
     } else {
@@ -313,7 +321,16 @@ function hvpr_payload_in_stock(array $product): bool
 function hvpr_is_color_attribute(string $key, string $label = ''): bool
 {
     $hay = strtolower(trim($key . ' ' . $label));
-    return (bool) preg_match('/color|colour|顏色|色彩|配色/', $hay);
+    return (bool) preg_match('/color|colour|顏色|色彩|配色|色號|色碼/', $hay);
+}
+
+function hvpr_is_size_attribute(string $key, string $label = '', string $value = ''): bool
+{
+    $hay = strtolower(trim($key . ' ' . $label));
+    if (preg_match('/size|尺寸|尺碼|規格大小/', $hay)) {
+        return true;
+    }
+    return (bool) preg_match('/^(XXS|XS|S|M|L|XL|XXL|2XL|3XL|F)$/iu', trim($value));
 }
 
 function hvpr_attribute_display_value(string $taxonomy, string $value): string

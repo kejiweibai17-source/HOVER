@@ -2,7 +2,7 @@ import Image from "next/image";
 import { Link } from "next-view-transitions";
 import ProductImageFrame from "@/components/hover/ProductImageFrame";
 import ColorSwatch from "@/components/hover/ColorSwatch";
-import { formatProductPrice } from "@/lib/utils";
+import ProductCardPrice from "@/components/hover/ProductCardPrice";
 
 export default function ProductCard({
   href = "#",
@@ -13,8 +13,6 @@ export default function ProductCard({
   salePrice,
   soldOut = false,
 }) {
-  const price = salePrice || originalPrice;
-
   return (
     <div className="group flex min-w-0 flex-col">
       <ProductImageFrame as={Link} href={href} className="block">
@@ -52,22 +50,12 @@ export default function ProductCard({
           </div>
         )}
 
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          {price && (
-            <span
-              className={`text-[12px] font-bold text-[#222] md:text-[13px] ${
-                soldOut ? "line-through" : ""
-              }`}
-            >
-              {formatProductPrice(price)}
-            </span>
-          )}
-          {soldOut && (
-            <span className="text-[12px] font-bold text-[#c90000] md:text-[13px]">
-              SOLD OUT
-            </span>
-          )}
-        </div>
+        <ProductCardPrice
+          originalPrice={originalPrice}
+          salePrice={salePrice}
+          soldOut={soldOut}
+          className="text-[12px] font-bold md:text-[13px]"
+        />
       </div>
     </div>
   );

@@ -15,7 +15,7 @@ import HoverMidVideo from "@/components/hover/HoverMidVideo";
 import { FALLBACK_BRAND_STORY_SLIDES } from "@/lib/brandStoryDefaults";
 import { FALLBACK_CATEGORY_TILES } from "@/lib/categoryGridDefaults";
 import { FALLBACK_PEOPLE_SLIDES } from "@/lib/peopleDefaults";
-import { formatProductPrice } from "@/lib/utils";
+import ProductCardPrice from "@/components/hover/ProductCardPrice";
 import { pickProductHoverSrc } from "@/lib/productCardImages";
 import ColorSwatch from "@/components/hover/ColorSwatch";
 
@@ -154,20 +154,11 @@ function ProductCard({ product }) {
           </div>
         ) : null}
 
-        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-          <span
-            className={`text-[14px] font-bold text-[#222] md:text-[15px] ${
-              product.soldOut ? "line-through" : ""
-            }`}
-          >
-            {formatProductPrice(product.salePrice ?? product.originalPrice)}
-          </span>
-          {product.soldOut && (
-            <span className="text-[12px] font-bold text-[#c90000] md:text-[13px]">
-              SOLD OUT
-            </span>
-          )}
-        </div>
+        <ProductCardPrice
+          originalPrice={product.originalPrice}
+          salePrice={product.salePrice}
+          soldOut={product.soldOut}
+        />
       </div>
     </article>
   );

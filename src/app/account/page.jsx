@@ -124,63 +124,87 @@ function getMetaValue(metaData, keys = []) {
   }
   return "";
 }
+/** HOVER 尺寸 token（含 F）；純數字色號／SKU 不當尺寸 */
+function looksLikeSizeToken(value) {
+  return /^(XXS|XS|S|M|L|XL|XXL|2XL|3XL|F)$/i.test(String(value || "").trim());
+}
+
+function splitSpecTokens(raw) {
+  return String(raw || "")
+    .split(/\s*[\/／|,，|｜]\s*/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/** 從混雜字串整理出 size／color（避免「F／白」又疊一次「白」） */
+function normalizeSizeColor(sizeRaw, colorRaw, extraTokens = []) {
+  const tokens = [
+    ...splitSpecTokens(sizeRaw),
+    ...splitSpecTokens(colorRaw),
+    ...extraTokens.flatMap((t) => splitSpecTokens(t)),
+  ];
+  let size = "";
+  let color = "";
+  for (const token of tokens) {
+    if (!token || /^顏色隨機出貨$/i.test(token)) continue;
+    if (looksLikeSizeToken(token)) {
+      if (!size) size = token.toUpperCase() === "F" ? "F" : token;
+      continue;
+    }
+    if (!color) color = token;
+  }
+  // size 欄整段不是尺寸 token 時（舊資料），仍保留第一段非色字
+  if (!size) {
+    const first = splitSpecTokens(sizeRaw)[0] || "";
+    if (first && first !== color && !/^顏色隨機出貨$/i.test(first)) {
+      size = first;
+    }
+  }
+  return { size, color };
+}
+
 function getItemVariantText(item) {
   const metas = Array.isArray(item?.meta_data) ? item.meta_data : [];
   const sizeKeys = /尺寸|size|pa_size|pa_尺寸/i;
   const colorKeys = /顏色|color|colour|pa_color|pa_顏色|pa_colour/i;
   const skipKeys =
-    /^(variant|_reduced_stock|數量|qty|quantity|_hover_promotion_type|_hover_promotion_name|_hover_promotion_id)$/i;
+    /^(variant|_reduced_stock|數量|qty|quantity|_hover_promotion_type|_hover_promotion_name|_hover_promotion_id|活動類型|成交單價|出貨\s*sku|出貨備註|貨號|sku)$/i;
 
-  let size = "";
-  let color = "";
+  let sizeRaw = "";
+  let colorRaw = "";
   const extras = [];
 
   for (const m of metas) {
     const key = String(m?.key || "").trim();
     const raw = String(m?.value || "").trim();
-    if (!raw || skipKeys.test(key)) continue;
+    if (!raw || skipKeys.test(key) || key.startsWith("_")) continue;
 
-    if (sizeKeys.test(key) && !size) {
-      size = raw;
+    if (sizeKeys.test(key) && !sizeRaw) {
+      sizeRaw = raw;
       continue;
     }
-    if (colorKeys.test(key) && !color) {
-      color = raw;
-      continue;
-    }
-
-    // 合併欄位（如 "S / 黑"）
-    if (/variant|規格|選項/i.test(key) || /\s*\/\s*/.test(raw)) {
-      const parts = raw
-        .split(/\s*\/\s*|\s*,\s*/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-      for (const p of parts) {
-        if (!size && /^[XSML]{1,3}$/i.test(p)) size = p;
-        else if (!color && !/^\d+$/.test(p)) color = color || p;
-        else if (p !== size && p !== color) extras.push(p);
-      }
+    if (colorKeys.test(key) && !colorRaw) {
+      colorRaw = raw;
       continue;
     }
 
-    if (!/^\d+$/.test(raw)) extras.push(raw);
+    // 合併欄位（如 "F / 白"）
+    if (/variant|規格|選項/i.test(key) || /[\/／|,，|｜]/.test(raw)) {
+      extras.push(...splitSpecTokens(raw));
+      continue;
+    }
+
+    extras.push(raw);
   }
 
-  // 隨機色贈品不可透露後台實際分配的顏色
-  const randomColor = isRandomColorGiftItem(item);
-  const parts = randomColor
-    ? [size, ...extras, "顏色隨機出貨"].filter(Boolean)
-    : [size, color, ...extras].filter(Boolean);
-  // 去重（保留順序）
-  const seen = new Set();
-  const unique = [];
-  for (const p of parts) {
-    const k = p.toLowerCase();
-    if (seen.has(k)) continue;
-    seen.add(k);
-    unique.push(p);
+  const { size, color } = normalizeSizeColor(sizeRaw, colorRaw, extras);
+
+  // 隨機色贈品：只顯示尺寸＋「顏色隨機出貨」，不露出實際色／色號
+  if (isRandomColorGiftItem(item)) {
+    return [size, "顏色隨機出貨"].filter(Boolean).join("｜");
   }
-  return unique.join(" | ");
+
+  return [size, color].filter(Boolean).join("｜");
 }
 
 function getItemPromotionKind(item) {
@@ -213,7 +237,9 @@ function getItemDisplayName(item) {
   const name = String(item?.name || "").trim();
   const variant = getItemVariantText(item);
   if (!name || !variant) return name;
-  const esc = variant.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s*\/\s*/g, "\\s*[\\/,]\\s*");
+  const esc = variant
+    .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+    .replace(/\s*[\/／|｜]\s*/g, "\\s*[\\/,／|｜]\\s*");
   return name
     .replace(new RegExp(`\\s*[\\-–—]?\\s*${esc}\\s*$`, "i"), "")
     .replace(/\s*[\-–—]\s*$/, "")
@@ -2332,10 +2358,6 @@ function AccountPageContent() {
                               }}
                               selectClassName="box-border min-h-[44px] w-full appearance-none border-0 border-b border-[#bbb] bg-transparent px-0 py-2 text-[16px] text-black outline-none focus:border-black"
                             />
-                            <p className="mt-1 text-[12px] text-[#888]">
-                              須年滿 13 歲；點日曆標題可完整選擇年份（最早至
-                              1920）。
-                            </p>
                             {birthdayMessage && (
                               <p className="text-[12px] text-red-600">
                                 {birthdayMessage}

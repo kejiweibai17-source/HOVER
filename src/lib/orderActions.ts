@@ -405,7 +405,18 @@ function formatReturnYmd(value?: string | null): string {
   return formatTaipei(value, false);
 }
 
-/** 規格：尺寸 / 顏色（略過活動 meta，避免帶入錯誤欄位） */
+function looksLikeSizeToken(value: string): boolean {
+  return /^(XXS|XS|S|M|L|XL|XXL|2XL|3XL|F)$/i.test(String(value || "").trim());
+}
+
+function splitSpecTokens(raw: string): string[] {
+  return String(raw || "")
+    .split(/\s*[\/／|,，|｜]\s*/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/** 規格：尺寸｜顏色（略過活動 meta；隨機贈只顯示「顏色隨機出貨」） */
 function itemVariantForReturn(
   item: NonNullable<OrderLike["line_items"]>[number],
 ): string {
@@ -413,10 +424,10 @@ function itemVariantForReturn(
   const sizeKeys = /尺寸|size|pa_size|pa_尺寸/i;
   const colorKeys = /顏色|color|colour|pa_color|pa_顏色|pa_colour/i;
   const skipKeys =
-    /^(variant|_reduced_stock|數量|qty|quantity|_hover_promotion|活動類型|活動名稱|活動編號|成交單價|貨號|sku|id)$/i;
+    /^(variant|_reduced_stock|數量|qty|quantity|_hover_promotion|活動類型|活動名稱|活動編號|成交單價|貨號|sku|id|出貨\s*sku|出貨備註)$/i;
 
-  let size = "";
-  let color = "";
+  let sizeRaw = "";
+  let colorRaw = "";
   const extras: string[] = [];
 
   for (const m of metas) {
@@ -424,43 +435,43 @@ function itemVariantForReturn(
     const raw = String(m?.value || "").trim();
     if (!raw || skipKeys.test(key) || key.startsWith("_")) continue;
 
-    if (sizeKeys.test(key) && !size) {
-      size = raw;
+    if (sizeKeys.test(key) && !sizeRaw) {
+      sizeRaw = raw;
       continue;
     }
-    if (colorKeys.test(key) && !color) {
-      color = raw;
+    if (colorKeys.test(key) && !colorRaw) {
+      colorRaw = raw;
       continue;
     }
-    if (/variant|規格|選項/i.test(key) || /\s*\/\s*/.test(raw)) {
-      const parts = raw
-        .split(/\s*\/\s*|\s*,\s*/)
-        .map((s) => s.trim())
-        .filter(Boolean);
-      for (const p of parts) {
-        if (!size && /^[XSML]{1,3}$|^F$/i.test(p)) size = p;
-        else if (!color && !/^\d+$/.test(p)) color = color || p;
-        else if (p !== size && p !== color) extras.push(p);
-      }
+    if (/variant|規格|選項/i.test(key) || /[\/／|,，|｜]/.test(raw)) {
+      extras.push(...splitSpecTokens(raw));
       continue;
     }
-    if (!/^\d+$/.test(raw)) extras.push(raw);
+    extras.push(raw);
+  }
+
+  const tokens = [
+    ...splitSpecTokens(sizeRaw),
+    ...splitSpecTokens(colorRaw),
+    ...extras.flatMap((t) => splitSpecTokens(t)),
+  ];
+  let size = "";
+  let color = "";
+  for (const token of tokens) {
+    if (!token || /^顏色隨機出貨$/i.test(token)) continue;
+    if (looksLikeSizeToken(token)) {
+      if (!size) size = token.toUpperCase() === "F" ? "F" : token;
+      continue;
+    }
+    if (!color) color = token;
   }
 
   const randomColor =
     String(item?.promotion_kind || "") === "gift" && Boolean(item?.random_color);
-  const parts = randomColor
-    ? [size, ...extras, "顏色隨機出貨"].filter(Boolean)
-    : [size, color, ...extras].filter(Boolean);
-  const seen = new Set<string>();
-  const unique: string[] = [];
-  for (const p of parts) {
-    const k = p.toLowerCase();
-    if (seen.has(k)) continue;
-    seen.add(k);
-    unique.push(p);
+  if (randomColor) {
+    return [size, "顏色隨機出貨"].filter(Boolean).join("｜");
   }
-  return unique.join(" / ");
+  return [size, color].filter(Boolean).join("｜");
 }
 
 function itemPromotionPrefix(

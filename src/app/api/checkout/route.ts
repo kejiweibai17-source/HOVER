@@ -164,6 +164,36 @@ function extractSpecFromWcProduct(product: any): LineSpec {
   return { size, color };
 }
 
+function looksLikeSizeToken(value: string): boolean {
+  return /^(XXS|XS|S|M|L|XL|XXL|2XL|3XL|F)$/i.test(String(value || "").trim());
+}
+
+/** 拆開「F／白」「F / 11」這類混在 sizeLabel 的字串 */
+function sanitizeLineSpec(sizeRaw: string, colorRaw: string): LineSpec {
+  const tokens = `${sizeRaw}｜${colorRaw}`
+    .split(/\s*[\/／|,，|｜]\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .filter((part) => !/^顏色隨機出貨$/i.test(part));
+  let size = "";
+  let color = "";
+  for (const token of tokens) {
+    if (looksLikeSizeToken(token)) {
+      if (!size) size = token.toUpperCase() === "F" ? "F" : token;
+      continue;
+    }
+    if (!color) color = token;
+  }
+  if (!size) {
+    const first = String(sizeRaw || "")
+      .split(/\s*[\/／|,，|｜]\s*/)
+      .map((part) => part.trim())
+      .find(Boolean);
+    if (first && first !== color) size = first;
+  }
+  return { size, color };
+}
+
 function resolveLineSpec(input: {
   options?: Record<string, string>;
   title?: string;
@@ -183,19 +213,23 @@ function resolveLineSpec(input: {
     String(input.colorLabel || "").trim() ||
     String(input.wcColor || "").trim() ||
     fromTitle.color;
-  return { size, color };
+  return sanitizeLineSpec(size, color);
 }
 
 /** 訂單 line item 可見 meta（信件 hoet_item_options 讀 尺寸／顏色） */
-function buildVariantDisplayMeta(spec: LineSpec): Array<{ key: string; value: string }> {
+function buildVariantDisplayMeta(
+  spec: LineSpec,
+  options?: { hideColor?: boolean },
+): Array<{ key: string; value: string }> {
   const meta: Array<{ key: string; value: string }> = [];
-  if (spec.size) {
-    meta.push({ key: "尺寸", value: spec.size });
-    meta.push({ key: "_hover_size", value: spec.size });
+  const cleaned = sanitizeLineSpec(spec.size, options?.hideColor ? "" : spec.color);
+  if (cleaned.size) {
+    meta.push({ key: "尺寸", value: cleaned.size });
+    meta.push({ key: "_hover_size", value: cleaned.size });
   }
-  if (spec.color) {
-    meta.push({ key: "顏色", value: spec.color });
-    meta.push({ key: "_hover_color", value: spec.color });
+  if (!options?.hideColor && cleaned.color) {
+    meta.push({ key: "顏色", value: cleaned.color });
+    meta.push({ key: "_hover_color", value: cleaned.color });
   }
   return meta;
 }
@@ -963,6 +997,7 @@ export async function POST(req: Request) {
                 sizeLabel: line.sizeLabel,
                 colorLabel: line.colorLabel,
               });
+              const hideRandomColor = Boolean(line.promotion.randomColor);
               const meta: Array<{ key: string; value: string }> = [
                 {
                   key: "_hover_promotion_type",
@@ -992,13 +1027,14 @@ export async function POST(req: Request) {
                   key: "成交單價",
                   value: isGift ? "NT$0" : `NT$${line.price}`,
                 },
-                ...buildVariantDisplayMeta(spec),
+                // 隨機色贈品不寫入實際顏色 meta，前台／信件統一顯示「顏色隨機出貨」
+                ...buildVariantDisplayMeta(spec, { hideColor: hideRandomColor }),
               ];
               if (sku) {
                 meta.push({ key: "_hover_fulfillment_sku", value: sku });
                 meta.push({ key: "出貨 SKU", value: sku });
               }
-              if (line.promotion.randomColor) {
+              if (hideRandomColor) {
                 meta.push({ key: "_hover_random_color", value: "yes" });
                 meta.push({
                   key: "_hover_display_name",

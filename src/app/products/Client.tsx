@@ -25,7 +25,7 @@ import {
   EMPTY_PRODUCT_FILTER_OPTIONS,
   type ProductFilterOptions,
 } from "@/lib/productFilters";
-import { formatProductPrice } from "@/lib/utils";
+import ProductCardPrice from "@/components/hover/ProductCardPrice";
 import { pickProductHoverImage } from "@/lib/productCardImages";
 import ColorSwatch from "@/components/hover/ColorSwatch";
 
@@ -40,6 +40,8 @@ export type Product = {
   slug: string;
   name: string;
   price: string;
+  regularPrice?: string;
+  salePrice?: string;
   images: { id?: number; src: string; alt?: string }[];
   category?: string;
   isNew?: boolean;
@@ -48,6 +50,7 @@ export type Product = {
   categories?: string[];
   colorLabels?: string[];
   sizes?: string[];
+  soldOut?: boolean;
 };
 
 const SORT_OPTIONS = ["最新上架", "人氣排序", "價格: 低至高", "價格: 高至低"];
@@ -519,9 +522,11 @@ const ProductCard = memo(function ProductCard({
           </div>
         )}
 
-        <p className="text-[14px] font-bold text-[#222] md:text-[15px]">
-          {formatProductPrice(product.price)}
-        </p>
+        <ProductCardPrice
+          originalPrice={product.regularPrice || product.price}
+          salePrice={product.salePrice}
+          soldOut={product.soldOut}
+        />
       </div>
     </Link>
   );
