@@ -218,13 +218,14 @@ export function alignColorLabel(
   const exactCi = options.find((o) => o.toLowerCase() === lower);
   if (exactCi) return exactCi;
 
+  // 只允許「短名 → 更長完整名」（紅→酒紅、奶茶→淺奶茶）
+  // 禁止「黑白 → 黑」：組合色名含單色字時会被誤縮，導致同款色票被去重掉
   const contains = options.filter(
-    (o) => o.includes(raw) || raw.includes(o),
+    (o) => o.length > raw.length && o.includes(raw),
   );
   if (contains.length === 1) return contains[0];
   if (contains.length > 1) {
     contains.sort((a, b) => b.length - a.length || a.localeCompare(b, "zh-Hant"));
-    // 最短短名對到最長完整名（紅→酒紅、奶茶→淺奶茶）
     return contains[0];
   }
 

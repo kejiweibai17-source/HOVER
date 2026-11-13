@@ -261,16 +261,22 @@ function hccs_align_color_label(string $label, array $candidates): string
             return $opt;
         }
     }
+    // 只允許短名 → 更長完整名（紅→酒紅）；禁止黑白→黑
     $matches = [];
+    $label_len = function_exists('mb_strlen') ? mb_strlen($label) : strlen($label);
     foreach ($candidates as $opt) {
         $opt = trim((string) $opt);
         if ($opt === '') {
             continue;
         }
-        if (
-            (function_exists('mb_strpos') && (mb_strpos($opt, $label) !== false || mb_strpos($label, $opt) !== false))
-            || (!function_exists('mb_strpos') && (strpos($opt, $label) !== false || strpos($label, $opt) !== false))
-        ) {
+        $opt_len = function_exists('mb_strlen') ? mb_strlen($opt) : strlen($opt);
+        if ($opt_len <= $label_len) {
+            continue;
+        }
+        $hit = function_exists('mb_strpos')
+            ? (mb_strpos($opt, $label) !== false)
+            : (strpos($opt, $label) !== false);
+        if ($hit) {
             $matches[] = $opt;
         }
     }
