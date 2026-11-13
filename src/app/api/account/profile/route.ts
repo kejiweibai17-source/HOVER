@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth";
 import { cookies } from "next/headers";
 import jwt from "jsonwebtoken";
 import { authOptions } from "@/lib/auth-options";
+import { JWT_SECRET } from "@/lib/jwtSecret";
 import {
   buildExclusiveMetaUpdates,
   computeMembership,
@@ -21,12 +22,6 @@ const BASE =
   process.env.WC_API_BASE || "https://inf.fjg.mybluehost.me/website_4ad5d5f2";
 const CK = process.env.WC_CONSUMER_KEY;
 const CS = process.env.WC_CONSUMER_SECRET;
-const JWT_SECRET =
-  process.env.RESET_TOKEN_SECRET ||
-  process.env.NEXTAUTH_SECRET ||
-  process.env.JWT_SECRET ||
-  "secret";
-
 function basicAuth() {
   if (!CK || !CS) return undefined;
   return "Basic " + Buffer.from(`${CK}:${CS}`).toString("base64");
@@ -191,10 +186,7 @@ async function getAuthenticatedEmail() {
     email = session?.user?.email || null;
   }
 
-  if (!email) {
-    const emailCookie = cookieStore.get("user_email");
-    if (emailCookie?.value) email = emailCookie.value;
-  }
+  // ⚠️ 不再信任未簽名的 `user_email` cookie（可被任意偽造 → 讀取他人資料）
 
   if (!email) {
     email = readAuthTokenEmail();

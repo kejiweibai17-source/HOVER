@@ -14,11 +14,7 @@ import {
 } from "@/lib/socialAccount";
 import { getMemberSession } from "@/lib/memberSession";
 
-const JWT_SECRET =
-  process.env.RESET_TOKEN_SECRET ||
-  process.env.NEXTAUTH_SECRET ||
-  process.env.JWT_SECRET ||
-  "secret";
+import { JWT_SECRET } from "@/lib/jwtSecret";
 
 const BASE = () => (process.env.WC_API_BASE || "").replace(/\/$/, "");
 

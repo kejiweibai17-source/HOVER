@@ -29,11 +29,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 const BASE = process.env.WC_API_BASE || "";
-const JWT_SECRET =
-  process.env.RESET_TOKEN_SECRET ||
-  process.env.NEXTAUTH_SECRET ||
-  process.env.JWT_SECRET ||
-  "secret";
+import { JWT_SECRET } from "@/lib/jwtSecret";
 
 const isProd = process.env.NODE_ENV === "production";
 const COOKIE_DOMAIN = process.env.COOKIE_DOMAIN || undefined;

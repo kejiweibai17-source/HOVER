@@ -1,7 +1,6 @@
 // src/app/api/admin/customer-orders/route.ts
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth-options";
+import { isVerifiedAdmin } from "@/lib/verifiedMember";
 import { wcGmtToIso } from "@/lib/taipeiTime";
 
 export const dynamic = "force-dynamic";
@@ -25,7 +24,14 @@ function parseAdminEmails() {
 }
 
 async function assertAdmin(noCache: Record<string, string>) {
-  // 保持你原本的註解邏輯
+  // 只信任有簽章的登入身分（auth_token／NextAuth／WP JWT），並比對 ADMIN_EMAILS 白名單
+  const isAdmin = await isVerifiedAdmin();
+  if (!isAdmin) {
+    return NextResponse.json(
+      { ok: false, message: "Forbidden" },
+      { status: 403, headers: noCache },
+    );
+  }
   return null;
 }
 

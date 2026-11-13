@@ -32,7 +32,17 @@ function applyRobotsHeader(path: string, response: NextResponse) {
 function hasValidPreviewCookie(request: NextRequest, secret: string): boolean {
   if (!secret) return false;
   const cookie = request.cookies.get(SITE_PREVIEW_COOKIE)?.value || "";
-  return cookie === secret;
+  return constantTimeEqual(cookie, secret);
+}
+
+/** Edge runtime 沒有 timingSafeEqual，手動做常數時間比對 */
+function constantTimeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) {
+    diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  }
+  return diff === 0;
 }
 
 function previewCookieOpts(maxAge: number) {

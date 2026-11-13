@@ -1,6 +1,7 @@
 // app/api/checkout/route.ts
 import { NextResponse } from "next/server";
 import crypto from "crypto";
+import { signLinePayConfirm } from "@/lib/linepaySign";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
 import {
@@ -1170,7 +1171,8 @@ export async function POST(req: Request) {
           }
         ],
         redirectUrls: {
-          confirmUrl: `${domain}/api/linepay/confirm?orderId=${orderId}&tradeNo=${tradeNo}&amount=${finalGatewayAmount}`, 
+          // sig：伺服器簽章（orderId＋tradeNo＋amount），confirm 時驗證，防止瀏覽器端竄改訂單或金額
+          confirmUrl: `${domain}/api/linepay/confirm?orderId=${orderId}&tradeNo=${tradeNo}&amount=${finalGatewayAmount}&sig=${signLinePayConfirm(orderId, tradeNo, finalGatewayAmount)}`, 
           cancelUrl: `${domain}/cart` 
         }
       };

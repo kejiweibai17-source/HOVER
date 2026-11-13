@@ -1,6 +1,7 @@
 // app/api/linepay/confirm/route.ts
 import { NextResponse } from "next/server";
 import crypto from "crypto";
+import { verifyLinePayConfirm } from "@/lib/linepaySign";
 import {
   invoicePreferenceFromOrderMeta,
   issueEcpayInvoice,
@@ -39,12 +40,24 @@ export async function GET(req: Request) {
     const transactionId = url.searchParams.get("transactionId");
     const orderId = url.searchParams.get("orderId");
     const urlAmount = url.searchParams.get("amount");
+    const tradeNo = url.searchParams.get("tradeNo") || "";
+    const sig = url.searchParams.get("sig") || "";
 
     console.log("=========================================");
     console.log("🟢 [LINE Pay] 進入 Confirm 階段");
 
     if (!transactionId || !orderId) {
       return NextResponse.redirect(new URL(`/cart?error=missing`, req.url));
+    }
+
+    // 驗證結帳時簽發的簽章：orderId／tradeNo／amount 任一被改動都會失敗
+    if (
+      !/^\d{1,12}$/.test(orderId) ||
+      !urlAmount ||
+      !verifyLinePayConfirm(orderId, tradeNo, urlAmount, sig)
+    ) {
+      console.warn("⛔ [LINE Pay] confirm 簽章驗證失敗，已拒絕");
+      return NextResponse.redirect(new URL(`/cart?error=invalid`, req.url));
     }
 
     const auth = basicAuth();

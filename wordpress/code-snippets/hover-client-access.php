@@ -41,10 +41,11 @@ if (!defined('HOVER_CLIENT_SITE_NAME')) {
     // 登入頁下方「前往 ○○」顯示名稱
     define('HOVER_CLIENT_SITE_NAME', 'HOVER 威爾特');
 }
-if (!defined('HOVER_CLIENT_BOOTSTRAP_PASSWORD')) {
-    // 首次建立帳號用的臨時密碼；建立後請客戶自行修改
-    define('HOVER_CLIENT_BOOTSTRAP_PASSWORD', 'HoverClient2026!');
-}
+// 首次建立帳號用的臨時密碼：
+// 不再把密碼寫死在程式碼裡（會被版控／外流）。
+// - 若要自訂，請在 wp-config.php 定義 HOVER_CLIENT_BOOTSTRAP_PASSWORD
+// - 未定義時，建立帳號當下會自動產生一組隨機密碼，只在後台通知顯示一次
+$GLOBALS['hover_client_generated_password'] = '';
 
 const HOVER_CLIENT_ROLE          = 'hover_client';
 const HOVER_CLIENT_ROLE_VERSION  = 3;
@@ -160,9 +161,16 @@ function hover_client_ensure_user(): array
         ];
     }
 
+    if (defined('HOVER_CLIENT_BOOTSTRAP_PASSWORD') && HOVER_CLIENT_BOOTSTRAP_PASSWORD !== '') {
+        $bootstrap_password = (string) HOVER_CLIENT_BOOTSTRAP_PASSWORD;
+    } else {
+        $bootstrap_password = wp_generate_password(20, true, false);
+    }
+    $GLOBALS['hover_client_generated_password'] = $bootstrap_password;
+
     $user_id = wp_insert_user([
         'user_login'   => HOVER_CLIENT_LOGIN,
-        'user_pass'    => HOVER_CLIENT_BOOTSTRAP_PASSWORD,
+        'user_pass'    => $bootstrap_password,
         'user_email'   => HOVER_CLIENT_EMAIL,
         'display_name' => HOVER_CLIENT_DISPLAY_NAME,
         'first_name'   => HOVER_CLIENT_DISPLAY_NAME,
@@ -208,7 +216,7 @@ add_action('admin_init', function () {
         add_action('admin_notices', function () use ($result) {
             echo '<div class="notice notice-success"><p><strong>HOVER 客戶帳號已建立。</strong>'
                 . '登入帳號：<code>' . esc_html(HOVER_CLIENT_LOGIN) . '</code>，'
-                . '密碼：<code>' . esc_html(HOVER_CLIENT_BOOTSTRAP_PASSWORD) . '</code>，'
+                . '密碼：<code>' . esc_html((string) ($GLOBALS['hover_client_generated_password'] ?? '')) . '</code>（僅顯示一次，請立即記下並登入後修改），'
                 . '請登入後立即修改。後台入口：<code>'
                 . esc_html(wp_login_url()) . '</code></p></div>';
         });

@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "crypto";
 import { generateCheckMacValue } from "@/lib/ecpay";
 import { getEcpayPaymentCredentials } from "@/lib/ecpayEnv";
 
@@ -37,7 +38,10 @@ export function verifyEcpayMac(data: Record<string, string>) {
   if (!hashKey || !hashIv) return false;
   const received = data.CheckMacValue || "";
   const computed = generateCheckMacValue(data, hashKey, hashIv);
-  return received === computed;
+  // 常數時間比對，避免 timing attack
+  const a = Buffer.from(received.toUpperCase());
+  const b = Buffer.from(String(computed).toUpperCase());
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 /**

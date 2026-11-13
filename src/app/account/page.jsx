@@ -1641,6 +1641,10 @@ function AccountPageContent() {
         bind_login_required: "請重新登入後再綁定社群帳號。",
         line_login_failed: "LINE 授權取消或失敗，請再試一次。",
         facebook_login_failed: "Facebook 授權取消或失敗，請再試一次。",
+        google_login_failed: "Google 授權取消或失敗，請再試一次。",
+        google_config: "Google 綁定設定異常，請稍後再試或聯繫客服。",
+        google_state_invalid: "Google 綁定驗證失敗，請再試一次。",
+        google_server_error: "Google 綁定暫時失敗，請稍後再試。",
       };
       setBindErrorMessage(
         messages[bindError] || "社群綁定失敗，請稍後再試。",
@@ -2467,6 +2471,11 @@ function AccountPageContent() {
                       </p>
                       <div className="space-y-3">
                         {[
+                          {
+                            id: "google",
+                            label: "Google",
+                            href: "/api/auth/google/start?from=account&next=%2Faccount",
+                          },
                           {
                             id: "line",
                             label: "LINE",

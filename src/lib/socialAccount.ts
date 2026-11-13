@@ -8,6 +8,7 @@
 
 import type { NextResponse } from "next/server";
 import { cookies } from "next/headers";
+import { randomBytes } from "crypto";
 import { membershipBaselineMeta } from "@/lib/membership";
 
 export type SocialProvider = "google" | "facebook" | "line";
@@ -200,10 +201,8 @@ export async function upsertSocialCustomer(input: UpsertSocialInput) {
       username: createEmail,
       first_name: first || "",
       last_name: last || "",
-      password:
-        Math.random().toString(36).slice(2, 12) +
-        Math.random().toString(36).slice(2, 12) +
-        "Aa1!",
+      // 使用密碼學安全亂數（不再使用 Math.random）
+      password: randomBytes(18).toString("base64url") + "Aa1!",
       meta_data: [
         ...metaBase,
         { key: "email_verified", value: realEmail ? "1" : "0" },

@@ -3,11 +3,7 @@ import { getServerSession } from "next-auth";
 import jwt from "jsonwebtoken";
 import { authOptions } from "@/lib/auth-options";
 
-const JWT_SECRET =
-  process.env.RESET_TOKEN_SECRET ||
-  process.env.NEXTAUTH_SECRET ||
-  process.env.JWT_SECRET ||
-  "secret";
+import { JWT_SECRET } from "@/lib/jwtSecret";
 
 export type MemberSession = {
   email: string;

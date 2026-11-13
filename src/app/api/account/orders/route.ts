@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { getServerSession } from "next-auth";
 import jwt from "jsonwebtoken"; // 💡 新增：用來解析 LINE 登入的 Token
 import { authOptions } from "@/lib/auth-options";
+import { JWT_SECRET } from "@/lib/jwtSecret";
 import { formatShippingMethodLabel } from "@/lib/utils";
 import { wcGmtToIso } from "@/lib/taipeiTime";
 import {
@@ -19,9 +20,6 @@ const BASE =
   process.env.WC_API_BASE || "https://inf.fjg.mybluehost.me/website_4ad5d5f2";
 const CK = process.env.WC_CONSUMER_KEY;
 const CS = process.env.WC_CONSUMER_SECRET;
-// 💡 新增：用來解密 Token 的金鑰
-const JWT_SECRET = process.env.RESET_TOKEN_SECRET || process.env.JWT_SECRET || "secret";
-
 function basicAuth() {
   if (!CK || !CS) return undefined;
   return "Basic " + Buffer.from(`${CK}:${CS}`).toString("base64");
@@ -233,7 +231,7 @@ export async function GET() {
       email = readAuthTokenEmail();
     }
     if (!email) email = session?.user?.email || null;
-    if (!email) email = cookieStore.get("user_email")?.value || null;
+    // ⚠️ 不再信任未簽名的 `user_email` cookie（可被任意偽造 → 讀取他人訂單）
     if (!email) email = readAuthTokenEmail();
 
     let wpUserId: number | null = null;

@@ -1,5 +1,6 @@
 // src/app/api/webhooks/order-referral/route.ts
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 
 export const runtime = "nodejs";
 
@@ -118,7 +119,30 @@ async function isFirstValidOrder(order: any): Promise<boolean> {
 
 export async function POST(req: Request) {
   try {
-    const payload = await req.json().catch(() => null);
+    const rawBody = await req.text();
+
+    // 若有設定 WC_WEBHOOK_SECRET（與 WooCommerce Webhook 的「密鑰」相同），就驗證簽章；
+    // 未設定時維持原本行為（相容現行設定），設定後即可擋掉偽造請求。
+    const webhookSecret = process.env.WC_WEBHOOK_SECRET || "";
+    if (webhookSecret) {
+      const given = req.headers.get("x-wc-webhook-signature") || "";
+      const expected = crypto
+        .createHmac("sha256", webhookSecret)
+        .update(rawBody)
+        .digest("base64");
+      const a = Buffer.from(given);
+      const b = Buffer.from(expected);
+      if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+        return NextResponse.json({ ok: false }, { status: 401 });
+      }
+    }
+
+    let payload: any = null;
+    try {
+      payload = rawBody ? JSON.parse(rawBody) : null;
+    } catch {
+      payload = null;
+    }
 
     const orderId = Number(payload?.id || payload?.resource?.id || 0);
     if (!orderId) return NextResponse.json({ ok: true });

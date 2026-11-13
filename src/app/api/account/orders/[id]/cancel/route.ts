@@ -3,6 +3,7 @@ import { cookies } from "next/headers";
 import { getServerSession } from "next-auth";
 import jwt from "jsonwebtoken";
 import { authOptions } from "@/lib/auth-options";
+import { JWT_SECRET } from "@/lib/jwtSecret";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -10,12 +11,6 @@ export const revalidate = 0;
 const BASE = (process.env.WC_API_BASE || "").replace(/\/$/, "");
 const KEY = process.env.WC_CONSUMER_KEY || "";
 const SECRET = process.env.WC_CONSUMER_SECRET || "";
-const JWT_SECRET =
-  process.env.RESET_TOKEN_SECRET ||
-  process.env.NEXTAUTH_SECRET ||
-  process.env.JWT_SECRET ||
-  "secret";
-
 function noCacheHeaders() {
   return {
     "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
@@ -93,7 +88,7 @@ async function resolveMemberIdentity(): Promise<{
     email = readAuthTokenEmail();
   }
   if (!email) email = session?.user?.email || null;
-  if (!email) email = cookieStore.get("user_email")?.value || null;
+  // ⚠️ 不再信任未簽名的 `user_email` cookie（可被任意偽造 → 取消他人訂單）
   if (!email) email = readAuthTokenEmail();
 
   let wpUserId: number | null = null;

@@ -1,7 +1,6 @@
 // src/app/api/admin/customers/route.ts
 import { NextResponse } from "next/server";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth-options";
+import { isVerifiedAdmin } from "@/lib/verifiedMember";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -24,17 +23,14 @@ function parseAdminEmails() {
 }
 
 async function assertAdmin(noCache: Record<string, string>) {
-  // const session = await getServerSession(authOptions);
-  // const adminEmails = parseAdminEmails();
-  // const userEmail = String(session?.user?.email || "").trim().toLowerCase();
-  // const isAdmin = !!userEmail && adminEmails.includes(userEmail);
-
-  // if (!session || !isAdmin) {
-  //   return NextResponse.json(
-  //     { ok: false, message: "Forbidden" },
-  //     { status: 403, headers: noCache }
-  //   );
-  // }
+  // 只信任有簽章的登入身分（auth_token／NextAuth／WP JWT），並比對 ADMIN_EMAILS 白名單
+  const isAdmin = await isVerifiedAdmin();
+  if (!isAdmin) {
+    return NextResponse.json(
+      { ok: false, message: "Forbidden" },
+      { status: 403, headers: noCache },
+    );
+  }
   return null;
 }
 
