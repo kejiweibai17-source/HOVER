@@ -9,6 +9,10 @@
  *    訂單編輯頁：右側「HOVER 列印」區塊也有相同按鈕
  * 4. 點擊後開新分頁，自動叫出瀏覽器列印（可存成 PDF）
  *
+ * 組合包（hover_bundle_components）：
+ * - 揀貨單：展開為實際子商品列（例如黑襪＋白襪），總件數為實揀件數
+ * - 訂單明細：仍顯示組合包一列，規格附「含：…」出貨內容
+ *
  * 不依賴 WebToffee / mPDF，版面 100% 由本檔 HTML/CSS 控制。
  */
 
@@ -155,15 +159,156 @@ function hop_is_color_attr_key(string $key): bool
 }
 
 /**
+ * 讀取訂單列的組合包子商品快照（下單時寫入 _hover_bundle_components）。
+ *
+ * @return array<int, array{product_id?:int,variation_id?:int,qty?:int,name?:string}>
+ */
+function hop_item_bundle_components($item): array
+{
+    if (!is_object($item) || !method_exists($item, 'get_meta')) {
+        return [];
+    }
+    $raw = $item->get_meta('_hover_bundle_components', true);
+    if (is_string($raw) && $raw !== '') {
+        $decoded = json_decode($raw, true);
+        if (is_array($decoded)) {
+            $raw = $decoded;
+        }
+    }
+    if (!is_array($raw) || !$raw) {
+        if (function_exists('hpbs_get_components') && method_exists($item, 'get_product_id')) {
+            $raw = hpbs_get_components((int) $item->get_product_id());
+        } else {
+            return [];
+        }
+    }
+    $out = [];
+    foreach ($raw as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $product_id = absint($row['product_id'] ?? 0);
+        $variation_id = absint($row['variation_id'] ?? 0);
+        $qty = max(1, absint($row['qty'] ?? 1));
+        if ($product_id <= 0 && $variation_id <= 0) {
+            continue;
+        }
+        $out[] = [
+            'product_id'   => $product_id,
+            'variation_id' => $variation_id,
+            'qty'          => $qty,
+            'name'         => sanitize_text_field((string) ($row['name'] ?? '')),
+        ];
+    }
+    return $out;
+}
+
+/**
+ * 組合包子商品 → 列印列（名稱／規格／數量）。
+ *
+ * @param array{product_id?:int,variation_id?:int,qty?:int,name?:string} $component
+ * @return array{name:string,spec:string,qty:int}
+ */
+function hop_component_print_row(array $component, int $pack_qty): array
+{
+    $variation_id = absint($component['variation_id'] ?? 0);
+    $product_id = absint($component['product_id'] ?? 0);
+    $id = $variation_id > 0 ? $variation_id : $product_id;
+    $product = $id > 0 ? wc_get_product($id) : null;
+
+    $name = '';
+    $specs = [];
+    if ($product instanceof WC_Product) {
+        if ($product->is_type('variation')) {
+            $parent = wc_get_product($product->get_parent_id());
+            $name = $parent ? $parent->get_name() : $product->get_name();
+            foreach ($product->get_attributes() as $taxonomy => $value) {
+                if ($value === '' || $value === null) {
+                    continue;
+                }
+                $value = (string) $value;
+                if (taxonomy_exists((string) $taxonomy)) {
+                    $term = get_term_by('slug', $value, (string) $taxonomy);
+                    $specs[] = ($term && !is_wp_error($term)) ? $term->name : $value;
+                } else {
+                    $specs[] = $value;
+                }
+            }
+        } else {
+            $name = $product->get_name();
+        }
+    }
+
+    if ($name === '') {
+        $fallback = trim((string) ($component['name'] ?? ''));
+        // 「經典緹花中筒襪 - F, 黑」→ 名稱／規格拆開
+        if (preg_match('/^(.+?)\s+[–—-]\s+(.+)$/u', $fallback, $m)) {
+            $name = trim($m[1]);
+            foreach (preg_split('/\s*[,，]\s*/u', trim($m[2])) ?: [] as $part) {
+                $part = trim((string) $part);
+                if ($part !== '') {
+                    $specs[] = $part;
+                }
+            }
+        } else {
+            $name = $fallback !== '' ? $fallback : ('#' . $id);
+        }
+    }
+
+    $name = trim((string) preg_replace('/\s+[–—-]\s+.+$/u', '', $name));
+    $per = max(1, absint($component['qty'] ?? 1));
+
+    return [
+        'name' => $name !== '' ? $name : ('#' . $id),
+        'spec' => implode(' / ', array_values(array_filter(array_map('strval', $specs)))),
+        'qty'  => $per * max(1, $pack_qty),
+    ];
+}
+
+/** 訂單明細用：組合內容摘要（含：黑 F ×1、白 F ×1） */
+function hop_bundle_contents_label(array $components, int $pack_qty): string
+{
+    $parts = [];
+    foreach ($components as $component) {
+        $row = hop_component_print_row($component, $pack_qty);
+        $label = $row['name'];
+        if ($row['spec'] !== '') {
+            $label .= ' ' . $row['spec'];
+        }
+        $label .= ' ×' . $row['qty'];
+        $parts[] = $label;
+    }
+    return $parts ? ('含：' . implode('、', $parts)) : '';
+}
+
+/**
  * 取得商品列：[['name' => ..., 'spec' => '黑 / L', 'qty' => 1], ...]
  * 商品名稱取母商品名稱（與結帳顯示一致），規格取變體屬性，避免名稱裡重複帶尺寸顏色。
  * 隨機出貨：名稱不含「隨機出貨」；規格統一「顏色隨機出貨」（滿額贈不加實際色／SKU）。
+ *
+ * 組合包：
+ * - 揀貨單：展開為實際子商品列（倉庫依此揀貨）
+ * - 訂單明細：仍顯示組合包一列，規格附「含：…」內容
+ *
+ * @param string $doc detail|picking
  */
-function hop_get_items(WC_Order $order): array
+function hop_get_items(WC_Order $order, string $doc = 'detail'): array
 {
+    $is_picking = ($doc === 'picking');
     $rows = [];
     foreach ($order->get_items() as $item) {
         /** @var WC_Order_Item_Product $item */
+        $pack_qty = max(1, (int) $item->get_quantity());
+        $components = hop_item_bundle_components($item);
+
+        // 揀貨單：組合包展開成子商品（黑襪、白襪各一列）
+        if ($is_picking && $components) {
+            foreach ($components as $component) {
+                $rows[] = hop_component_print_row($component, $pack_qty);
+            }
+            continue;
+        }
+
         $product = $item->get_product();
         $name    = $item->get_name();
 
@@ -201,7 +346,13 @@ function hop_get_items(WC_Order $order): array
         }
 
         $specs = [];
-        if ($product instanceof WC_Product && $product->is_type('variation')) {
+        // 組合包明細：規格改顯示實際出貨內容，不顯示組合包自己的尺寸／顏色（常與子商品不符）
+        if ($components) {
+            $contents = hop_bundle_contents_label($components, $pack_qty);
+            if ($contents !== '') {
+                $specs[] = $contents;
+            }
+        } elseif ($product instanceof WC_Product && $product->is_type('variation')) {
             foreach ($product->get_attributes() as $taxonomy => $value) {
                 if ($value === '' || $value === null) {
                     continue;
@@ -220,7 +371,7 @@ function hop_get_items(WC_Order $order): array
             }
         }
 
-        if (!$specs) {
+        if (!$specs && !$components) {
             foreach ($item->get_formatted_meta_data('_', true) as $meta) {
                 $label = trim(wp_strip_all_tags((string) ($meta->display_key ?? '')));
                 $val = trim(wp_strip_all_tags((string) $meta->display_value));
@@ -256,7 +407,7 @@ function hop_get_items(WC_Order $order): array
         $rows[] = [
             'name' => $name,
             'spec' => implode(' / ', array_filter($specs)),
-            'qty'  => (int) $item->get_quantity(),
+            'qty'  => $pack_qty,
         ];
     }
     return $rows;
@@ -380,7 +531,7 @@ function hop_output_document(WC_Order $order, string $doc): void
 {
     $is_picking = ($doc === 'picking');
 
-    $items     = hop_get_items($order);
+    $items     = hop_get_items($order, $doc);
     $total_qty = array_sum(array_column($items, 'qty'));
 
     // 補空白列：不足時補到至少 5 列（與範本的空行一致）

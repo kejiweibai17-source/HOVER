@@ -586,6 +586,15 @@ function hoet_item_options(WC_Order_Item_Product $item, bool $mask_random_color 
     if ($mask_random_color && hoet_item_promo_kind($item) === 'gift' && hoet_item_promo_is_random($item)) {
         $color = '顏色隨機出貨';
     }
+
+    // 組合包：信件規格改顯示實際出貨內容（與訂單明細／揀貨邏輯一致）
+    if (function_exists('hpbs_order_item_contents_label')) {
+        $bundle_label = hpbs_order_item_contents_label($item);
+        if ($bundle_label !== '') {
+            return $bundle_label;
+        }
+    }
+
     if ($size !== '' || $color !== '') {
         return trim($size . ($size && $color ? '｜' : '') . $color);
     }

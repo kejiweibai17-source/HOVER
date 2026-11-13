@@ -7,7 +7,7 @@
  *
  * 使用方式（Code Snippets）：
  * 1. 新增 snippet，貼上本檔 → Everywhere → 啟用
- * 2. 編輯組合包商品 →「HOVER 組合扣庫存」綁定白襪／黑襪變體
+ * 2. 編輯組合包商品 →「HOVER 組合扣庫存」用下拉搜尋商品、再選尺寸／變體
  * 3. 組合包請關閉「管理庫存」（儲存綁定時會自動關閉）
  *
  * Meta：hover_bundle_components
@@ -213,16 +213,111 @@ add_action('add_meta_boxes', function () {
     );
 });
 
+add_action('admin_enqueue_scripts', function ($hook) {
+    if ($hook !== 'post.php' && $hook !== 'post-new.php') {
+        return;
+    }
+    $screen = function_exists('get_current_screen') ? get_current_screen() : null;
+    if (!$screen || $screen->post_type !== 'product') {
+        return;
+    }
+    wp_enqueue_style('woocommerce_admin_styles');
+    wp_enqueue_script('selectWoo');
+    wp_enqueue_script('wc-enhanced-select');
+});
+
+add_action('wp_ajax_hpbs_get_variations', function () {
+    if (!current_user_can('edit_products')) {
+        wp_send_json_error(['message' => 'forbidden'], 403);
+    }
+    check_ajax_referer('hpbs_admin', 'security');
+
+    $product_id = isset($_GET['product_id']) ? absint($_GET['product_id']) : 0;
+    $product = $product_id ? wc_get_product($product_id) : null;
+    if (!$product) {
+        wp_send_json_success(['variations' => [], 'type' => 'missing']);
+    }
+
+    if (!$product->is_type('variable')) {
+        wp_send_json_success([
+            'variations' => [],
+            'type'       => $product->get_type(),
+            'label'      => $product->get_name(),
+        ]);
+    }
+
+    $variations = [];
+    foreach ($product->get_children() as $vid) {
+        $variation = wc_get_product((int) $vid);
+        if (!$variation || $variation->get_status() === 'trash') {
+            continue;
+        }
+        $attrs = function_exists('wc_get_formatted_variation')
+            ? wp_strip_all_tags(wc_get_formatted_variation($variation, true, false, true))
+            : '';
+        if ($attrs === '') {
+            $attrs = $variation->get_name();
+        }
+        $stock = $variation->managing_stock() ? $variation->get_stock_quantity() : null;
+        $variations[] = [
+            'id'    => (int) $vid,
+            'label' => sprintf('#%d — %s%s', (int) $vid, $attrs, $stock !== null ? '（庫存 ' . $stock . '）' : ''),
+        ];
+    }
+
+    wp_send_json_success([
+        'variations' => $variations,
+        'type'       => 'variable',
+        'label'      => $product->get_name(),
+    ]);
+});
+
+function hpbs_component_select_payload(array $components): array
+{
+    $out = [];
+    foreach ($components as $row) {
+        $product_id = absint($row['product_id'] ?? 0);
+        $variation_id = absint($row['variation_id'] ?? 0);
+        $product = $product_id ? wc_get_product($product_id) : null;
+        $variation = $variation_id ? wc_get_product($variation_id) : null;
+        $product_label = $product
+            ? sprintf('%s (#%d)', $product->get_name(), $product_id)
+            : ($product_id ? '#' . $product_id : '');
+        $variation_label = '';
+        if ($variation) {
+            $attrs = function_exists('wc_get_formatted_variation')
+                ? wp_strip_all_tags(wc_get_formatted_variation($variation, true, false, true))
+                : '';
+            $variation_label = sprintf('#%d — %s', $variation_id, $attrs !== '' ? $attrs : $variation->get_name());
+        }
+        $out[] = [
+            'product_id'      => $product_id,
+            'variation_id'    => $variation_id,
+            'qty'             => max(1, absint($row['qty'] ?? 1)),
+            'name'            => (string) ($row['name'] ?? ''),
+            'product_label'   => $product_label,
+            'variation_label' => $variation_label,
+        ];
+    }
+    return $out;
+}
+
 function hpbs_render_metabox($post): void
 {
     wp_nonce_field('hpbs_save_meta', 'hpbs_nonce');
     $components = hpbs_get_components((int) $post->ID);
     $available = $components ? hpbs_available_packs($components) : null;
+    $payload = hpbs_component_select_payload($components);
+    $search_nonce = wp_create_nonce('search-products');
+    $admin_nonce = wp_create_nonce('hpbs_admin');
     ?>
     <div class="hpbs-admin" id="hpbs-admin-root"
-         data-components="<?php echo esc_attr(wp_json_encode($components, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)); ?>">
+         data-components="<?php echo esc_attr(wp_json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES)); ?>"
+         data-ajax-url="<?php echo esc_url(admin_url('admin-ajax.php')); ?>"
+         data-search-nonce="<?php echo esc_attr($search_nonce); ?>"
+         data-admin-nonce="<?php echo esc_attr($admin_nonce); ?>">
         <p class="description" style="margin-top:0;">
-            <?php esc_html_e('前台仍顯示這一筆組合包；下單後改扣下方子商品／變體庫存。白或黑任一售完，組合包即不可買。', 'hover'); ?>
+            <?php esc_html_e('前台仍顯示這一筆組合包；下單後改扣下方綁定的子商品／變體庫存。任一子商品售完或缺量，組合包即不可買。可自由搭配多款（不限顏色、不限兩件）。', 'hover'); ?>
         </p>
         <p style="margin:8px 0 12px;">
             <strong><?php esc_html_e('目前可賣包數：', 'hover'); ?></strong>
@@ -236,14 +331,13 @@ function hpbs_render_metabox($post): void
             }
             ?>
         </p>
-        <table class="widefat striped" style="max-width:920px;">
+        <table class="widefat striped hpbs-table">
             <thead>
                 <tr>
-                    <th style="width:120px;"><?php esc_html_e('商品 ID', 'hover'); ?></th>
-                    <th style="width:120px;"><?php esc_html_e('變體 ID', 'hover'); ?></th>
-                    <th style="width:80px;"><?php esc_html_e('每包數量', 'hover'); ?></th>
-                    <th><?php esc_html_e('名稱', 'hover'); ?></th>
-                    <th style="width:60px;"></th>
+                    <th style="width:38%;"><?php esc_html_e('商品', 'hover'); ?></th>
+                    <th style="width:38%;"><?php esc_html_e('尺寸／變體', 'hover'); ?></th>
+                    <th style="width:12%;"><?php esc_html_e('每包數量', 'hover'); ?></th>
+                    <th style="width:12%;"></th>
                 </tr>
             </thead>
             <tbody class="hpbs-rows"></tbody>
@@ -253,65 +347,180 @@ function hpbs_render_metabox($post): void
         </p>
         <input type="hidden" name="hpbs_components_json" id="hpbs_components_json" value="">
         <p class="description">
-            <?php esc_html_e('變體商品請填父商品 ID + 變體 ID（例如白襪商品 ID、尺寸 F 的 variation ID）。簡單商品變體 ID 留空。', 'hover'); ?>
+            <?php esc_html_e('用下拉搜尋商品，再選尺寸／變體。簡單商品選「無變體（整件商品）」。每包數量＝賣出 1 組時要扣幾件。', 'hover'); ?>
         </p>
     </div>
+    <style>
+        .hpbs-table { max-width: 980px; }
+        .hpbs-table td { vertical-align: middle; }
+        .hpbs-table .select2-container { width: 100% !important; max-width: 100%; }
+        .hpbs-qty { width: 72px; }
+    </style>
     <script>
-    (function(){
+    (function($){
         var root = document.getElementById('hpbs-admin-root');
-        if (!root) return;
-        var tbody = root.querySelector('.hpbs-rows');
-        var hidden = document.getElementById('hpbs_components_json');
+        if (!root || !window.jQuery) return;
+        var $root = $(root);
+        var $tbody = $root.find('.hpbs-rows');
+        var $hidden = $('#hpbs_components_json');
+        var ajaxUrl = root.getAttribute('data-ajax-url') || ajaxurl;
+        var searchNonce = root.getAttribute('data-search-nonce') || '';
+        var adminNonce = root.getAttribute('data-admin-nonce') || '';
         var initial = [];
         try { initial = JSON.parse(root.getAttribute('data-components') || '[]') || []; } catch (e) { initial = []; }
 
-        function rowHtml(row){
-            row = row || {};
-            return '<tr class="hpbs-row">' +
-                '<td><input type="number" class="hpbs-product-id" min="1" step="1" value="'+(row.product_id||'')+'" style="width:100%"></td>' +
-                '<td><input type="number" class="hpbs-variation-id" min="0" step="1" value="'+(row.variation_id||'')+'" style="width:100%" placeholder="可空"></td>' +
-                '<td><input type="number" class="hpbs-qty" min="1" step="1" value="'+(row.qty||1)+'" style="width:100%"></td>' +
-                '<td class="hpbs-name">'+(row.name ? String(row.name).replace(/</g,'&lt;') : '—')+'</td>' +
-                '<td><button type="button" class="button-link-delete hpbs-remove">移除</button></td>' +
-            '</tr>';
+        function esc(s){
+            return $('<div/>').text(s || '').html();
         }
 
         function sync(){
             var rows = [];
-            tbody.querySelectorAll('.hpbs-row').forEach(function(tr){
-                var productId = parseInt(tr.querySelector('.hpbs-product-id').value, 10) || 0;
+            $tbody.find('.hpbs-row').each(function(){
+                var $tr = $(this);
+                var productId = parseInt($tr.find('.hpbs-product-select').val(), 10) || 0;
                 if (!productId) return;
                 rows.push({
                     product_id: productId,
-                    variation_id: parseInt(tr.querySelector('.hpbs-variation-id').value, 10) || 0,
-                    qty: Math.max(1, parseInt(tr.querySelector('.hpbs-qty').value, 10) || 1)
+                    variation_id: parseInt($tr.find('.hpbs-variation-select').val(), 10) || 0,
+                    qty: Math.max(1, parseInt($tr.find('.hpbs-qty').val(), 10) || 1)
                 });
             });
-            hidden.value = JSON.stringify(rows);
+            $hidden.val(JSON.stringify(rows));
         }
 
-        function render(list){
-            if (!list.length) list = [{ product_id: '', variation_id: '', qty: 1, name: '' }];
-            tbody.innerHTML = list.map(rowHtml).join('');
-            sync();
-        }
-
-        root.querySelector('.hpbs-add-row').addEventListener('click', function(){
-            tbody.insertAdjacentHTML('beforeend', rowHtml({ qty: 1 }));
-            sync();
-        });
-        tbody.addEventListener('click', function(e){
-            if (e.target && e.target.classList.contains('hpbs-remove')) {
-                var tr = e.target.closest('tr');
-                if (tr) tr.remove();
-                if (!tbody.querySelector('.hpbs-row')) render([]);
-                sync();
+        function initProductSelect($select, selectedId, selectedLabel){
+            if (selectedId) {
+                var opt = new Option(selectedLabel || ('#' + selectedId), selectedId, true, true);
+                $select.append(opt);
             }
+            $select.selectWoo({
+                allowClear: true,
+                placeholder: '搜尋商品…',
+                minimumInputLength: 1,
+                ajax: {
+                    url: ajaxUrl,
+                    dataType: 'json',
+                    delay: 250,
+                    data: function(params){
+                        return {
+                            term: params.term,
+                            action: 'woocommerce_json_search_products',
+                            security: searchNonce
+                        };
+                    },
+                    processResults: function(data){
+                        var results = [];
+                        if (data) {
+                            $.each(data, function(id, text){
+                                results.push({ id: id, text: text });
+                            });
+                        }
+                        return { results: results };
+                    },
+                    cache: true
+                }
+            });
+        }
+
+        function fillVariationSelect($select, variations, selectedId, productType){
+            $select.empty();
+            if (!variations || !variations.length) {
+                $select.append(new Option('無變體（整件商品）', '0', true, true));
+                $select.prop('disabled', productType === 'missing');
+            } else {
+                $select.append(new Option('請選擇尺寸／變體', '', false, false));
+                variations.forEach(function(v){
+                    var selected = String(v.id) === String(selectedId);
+                    $select.append(new Option(v.label, v.id, selected, selected));
+                });
+                if (selectedId && !$select.find('option[value="'+selectedId+'"]').length) {
+                    $select.append(new Option('#' + selectedId, selectedId, true, true));
+                }
+                $select.prop('disabled', false);
+            }
+            if ($select.hasClass('select2-hidden-accessible')) {
+                $select.trigger('change.select2');
+            } else {
+                $select.selectWoo({ width: '100%', placeholder: '選擇變體…' });
+            }
+        }
+
+        function loadVariations($tr, productId, selectedVariationId){
+            var $varSelect = $tr.find('.hpbs-variation-select');
+            if (!productId) {
+                fillVariationSelect($varSelect, [], 0, 'missing');
+                sync();
+                return;
+            }
+            $varSelect.prop('disabled', true);
+            $.getJSON(ajaxUrl, {
+                action: 'hpbs_get_variations',
+                security: adminNonce,
+                product_id: productId
+            }).done(function(resp){
+                var data = (resp && resp.data) ? resp.data : {};
+                fillVariationSelect($varSelect, data.variations || [], selectedVariationId || 0, data.type || '');
+                sync();
+            }).fail(function(){
+                fillVariationSelect($varSelect, [], selectedVariationId || 0, 'missing');
+                sync();
+            });
+        }
+
+        function addRow(row){
+            row = row || {};
+            var $tr = $([
+                '<tr class="hpbs-row">',
+                '<td><select class="hpbs-product-select" style="width:100%"></select></td>',
+                '<td><select class="hpbs-variation-select" style="width:100%"></select></td>',
+                '<td><input type="number" class="hpbs-qty" min="1" step="1" value="'+esc(row.qty || 1)+'"></td>',
+                '<td><button type="button" class="button-link-delete hpbs-remove">移除</button></td>',
+                '</tr>'
+            ].join(''));
+            $tbody.append($tr);
+            initProductSelect(
+                $tr.find('.hpbs-product-select'),
+                row.product_id || null,
+                row.product_label || row.name || ''
+            );
+            if (row.product_id) {
+                // 先放已選變體，再异步刷新清單
+                if (row.variation_id && row.variation_label) {
+                    fillVariationSelect(
+                        $tr.find('.hpbs-variation-select'),
+                        [{ id: row.variation_id, label: row.variation_label }],
+                        row.variation_id,
+                        'variable'
+                    );
+                }
+                loadVariations($tr, row.product_id, row.variation_id || 0);
+            } else {
+                fillVariationSelect($tr.find('.hpbs-variation-select'), [], 0, 'missing');
+            }
+            sync();
+        }
+
+        $root.on('click', '.hpbs-add-row', function(){
+            addRow({ qty: 1 });
         });
-        tbody.addEventListener('input', sync);
-        document.getElementById('post').addEventListener('submit', sync);
-        render(initial);
-    })();
+        $root.on('click', '.hpbs-remove', function(){
+            $(this).closest('tr').remove();
+            if (!$tbody.find('.hpbs-row').length) addRow({ qty: 1 });
+            sync();
+        });
+        $root.on('change', '.hpbs-product-select', function(){
+            var $tr = $(this).closest('tr');
+            loadVariations($tr, $(this).val(), 0);
+        });
+        $root.on('change input', '.hpbs-variation-select, .hpbs-qty', sync);
+        $('#post').on('submit', sync);
+
+        if (initial.length) {
+            initial.forEach(addRow);
+        } else {
+            addRow({ qty: 1 });
+        }
+    })(jQuery);
     </script>
     <?php
 }
@@ -499,6 +708,99 @@ add_action('woocommerce_restore_order_stock', function ($order) {
         hpbs_sync_bundle_stock_status((int) $item->get_product_id());
     }
 }, 20);
+
+/**
+ * 組合包子商品顯示標籤（揀貨／後台／信件共用）。
+ * 例：經典緹花中筒襪｜黑｜F
+ */
+function hpbs_component_label(array $component): string
+{
+    $variation_id = absint($component['variation_id'] ?? 0);
+    $product_id = absint($component['product_id'] ?? 0);
+    $id = $variation_id > 0 ? $variation_id : $product_id;
+    $product = $id > 0 ? wc_get_product($id) : null;
+    $name = '';
+    $specs = [];
+
+    if ($product instanceof WC_Product) {
+        if ($product->is_type('variation')) {
+            $parent = wc_get_product($product->get_parent_id());
+            $name = $parent ? $parent->get_name() : $product->get_name();
+            foreach ($product->get_attributes() as $taxonomy => $value) {
+                if ($value === '' || $value === null) {
+                    continue;
+                }
+                $value = (string) $value;
+                if (taxonomy_exists((string) $taxonomy)) {
+                    $term = get_term_by('slug', $value, (string) $taxonomy);
+                    $specs[] = ($term && !is_wp_error($term)) ? $term->name : $value;
+                } else {
+                    $specs[] = $value;
+                }
+            }
+        } else {
+            $name = $product->get_name();
+        }
+    }
+
+    if ($name === '') {
+        $fallback = trim((string) ($component['name'] ?? ''));
+        if (preg_match('/^(.+?)\s+[–—-]\s+(.+)$/u', $fallback, $m)) {
+            $name = trim($m[1]);
+            foreach (preg_split('/\s*[,，]\s*/u', trim($m[2])) ?: [] as $part) {
+                $part = trim((string) $part);
+                if ($part !== '') {
+                    $specs[] = $part;
+                }
+            }
+        } else {
+            $name = $fallback !== '' ? $fallback : ('#' . $id);
+        }
+    }
+
+    $name = trim((string) preg_replace('/\s+[–—-]\s+.+$/u', '', $name));
+    $label = $name !== '' ? $name : ('#' . $id);
+    if ($specs) {
+        $label .= '｜' . implode('｜', array_values(array_filter(array_map('strval', $specs))));
+    }
+    return $label;
+}
+
+/** 訂單列 →「含：A ×1、B ×1」 */
+function hpbs_order_item_contents_label($item): string
+{
+    if (!is_object($item) || !method_exists($item, 'get_quantity')) {
+        return '';
+    }
+    $components = function_exists('hpbs_item_components')
+        ? hpbs_item_components($item)
+        : [];
+    if (!$components) {
+        return '';
+    }
+    $pack = max(1, (int) $item->get_quantity());
+    $parts = [];
+    foreach ($components as $component) {
+        $per = max(1, absint($component['qty'] ?? 1));
+        $parts[] = hpbs_component_label($component) . ' ×' . ($per * $pack);
+    }
+    return $parts ? ('含：' . implode('、', $parts)) : '';
+}
+
+/** 後台訂單項目：顯示組合包實際出貨內容（揀貨依據） */
+add_action('woocommerce_after_order_itemmeta', function ($item_id, $item) {
+    if (!$item instanceof WC_Order_Item_Product || !is_admin()) {
+        return;
+    }
+    $label = hpbs_order_item_contents_label($item);
+    if ($label === '') {
+        return;
+    }
+    echo '<div class="hpbs-ship-note" style="margin:8px 0 4px;padding:8px 10px;border-left:3px solid #2a514d;background:#f4f8f7;font-size:12px;line-height:1.65;">';
+    echo '<strong>組合包出貨內容：</strong>' . esc_html($label);
+    echo '<br><span style="color:#646970;">揀貨請依上列子商品／規格，勿只看組合包本身的尺寸。</span>';
+    echo '</div>';
+}, 25, 2);
 
 /** 子商品庫存變動時，更新有引用它的組合包狀態（輕量掃 meta） */
 add_action('woocommerce_product_set_stock', 'hpbs_on_child_stock_changed', 30);
