@@ -1,6 +1,7 @@
 import Image from "next/image";
 import { Link } from "next-view-transitions";
 import ProductImageFrame from "@/components/hover/ProductImageFrame";
+import ColorSwatch from "@/components/hover/ColorSwatch";
 import { formatProductPrice } from "@/lib/utils";
 
 export default function ProductCard({
@@ -37,13 +38,15 @@ export default function ProductCard({
         {colors.length > 0 && (
           <div className="flex items-center gap-1.5">
             {colors.map((color) => (
-              <span
+              <ColorSwatch
                 key={color.label}
+                label={color.label}
+                hex={color.hex}
+                hexes={color.hexes}
+                title={color.label}
                 className={`inline-block h-3 w-3 shrink-0 rounded-full border border-[#ccc] ${
                   color.active ? "ring-1 ring-neutral-400 ring-offset-1" : ""
                 }`}
-                style={{ backgroundColor: color.hex || "#4a6fa5" }}
-                title={color.label}
               />
             ))}
           </div>

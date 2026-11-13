@@ -270,9 +270,15 @@ export default async function ProductPage({ params }) {
   const finalPrice = woo ? Number(woo.price || 0) : 0;
   const availability =
     woo &&
-    (woo.variations?.length
-      ? woo.variations.some((v) => v.stockStatus === "instock" || v.stockStatus === "onbackorder")
-      : woo.stock_status === "instock" || woo.stock_status === "onbackorder")
+    (woo.bundleComponents?.length
+      ? woo.bundleInStock
+      : woo.variations?.length
+        ? woo.variations.some(
+            (v) =>
+              v.stockStatus === "instock" || v.stockStatus === "onbackorder",
+          )
+        : woo.stock_status === "instock" ||
+          woo.stock_status === "onbackorder")
       ? "https://schema.org/InStock"
       : "https://schema.org/OutOfStock";
 

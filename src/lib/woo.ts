@@ -12,10 +12,16 @@ import {
   extractColorSwatchesFromWooProduct,
   extractProductColors,
   extractProductSizes,
+  formatSwatchHexes,
   guessColorHex,
   guessColorLabelFromSlug,
   resolveSwatchHex,
 } from "./productColors";
+import {
+  bundleAvailableQtyFromWoo,
+  extractBundleComponentsFromWooProduct,
+  type BundleComponent,
+} from "./productBundle";
 import type { ColorGalleries } from "./variationGallery";
 import {
   buildColorGalleriesFromVariations,
@@ -86,7 +92,33 @@ export type WooProduct = {
   /** 簡易商品庫存（可變商品以各 variation.stock 為準） */
   stock: ProductStock;
   stock_status: string;
+  /** 動態組合包：綁定子商品／變體；有值時庫存以此為準 */
+  bundleComponents: BundleComponent[];
+  /** 可賣包數；null = 不限；有組合包時由 REST 計算 */
+  bundleAvailableQty: number | null;
+  bundleInStock: boolean;
 };
+
+function stockFromBundleAvailableQty(
+  availableQty: number | null,
+): ProductStock {
+  if (availableQty === null) {
+    return {
+      manageStock: false,
+      stockQuantity: null,
+      stockStatus: "instock",
+      backorders: "no",
+      purchasable: true,
+    };
+  }
+  return {
+    manageStock: true,
+    stockQuantity: availableQty,
+    stockStatus: availableQty > 0 ? "instock" : "outofstock",
+    backorders: "no",
+    purchasable: availableQty > 0,
+  };
+}
 
 /** 商品列表頁使用的精簡型別（與 products/Client 相容） */
 export type ListProduct = {
@@ -248,6 +280,24 @@ const mapWoo = (p: any): WooProduct => {
       "_yoast_wpseo_metadesc",
     );
   const prices = resolveWooPrices(p);
+  const bundleComponents = extractBundleComponentsFromWooProduct(p);
+  const bundleQtyRaw = bundleAvailableQtyFromWoo(p);
+  const bundleAvailableQty =
+    bundleComponents.length === 0
+      ? null
+      : bundleQtyRaw === undefined
+        ? p?.hover_bundle_in_stock === false
+          ? 0
+          : null
+        : bundleQtyRaw;
+  const bundleInStock =
+    bundleComponents.length === 0
+      ? String(p?.stock_status || "instock") !== "outofstock"
+      : bundleAvailableQty === null || bundleAvailableQty > 0;
+  const stock =
+    bundleComponents.length > 0
+      ? stockFromBundleAvailableQty(bundleAvailableQty)
+      : parseWooStock(p);
   return {
     id: p.id,
     name: p.name,
@@ -275,8 +325,15 @@ const mapWoo = (p: any): WooProduct => {
     productColor,
     colorSiblings,
     defaultAttributes: parseDefaultAttributes(p?.default_attributes),
-    stock: parseWooStock(p),
-    stock_status: String(p?.stock_status || "instock"),
+    stock,
+    stock_status: bundleComponents.length
+      ? bundleInStock
+        ? "instock"
+        : "outofstock"
+      : String(p?.stock_status || "instock"),
+    bundleComponents,
+    bundleAvailableQty,
+    bundleInStock,
   } as WooProduct;
 };
 
@@ -308,9 +365,11 @@ export function mapWooToListProduct(product: WooProduct): ListProduct {
   const primary =
     product.categories[product.categories.length - 1] || product.categories[0];
   const soldOut =
-    product.variations.length > 0
-      ? product.variations.every((v) => !isInStock(v.stock))
-      : !isInStock(product.stock);
+    product.bundleComponents?.length > 0
+      ? !product.bundleInStock
+      : product.variations.length > 0
+        ? product.variations.every((v) => !isInStock(v.stock))
+        : !isInStock(product.stock);
   return {
     id: product.id,
     slug: product.slug,
@@ -325,7 +384,13 @@ export function mapWooToListProduct(product: WooProduct): ListProduct {
       alt: image.alt,
     })),
     category: primary?.name || undefined,
-    colors: product.colors.map((color) => color.hex).filter(Boolean),
+    colors: product.colors
+      .map((color) =>
+        formatSwatchHexes(
+          color.hexes?.length ? color.hexes : [color.hex].filter(Boolean),
+        ),
+      )
+      .filter(Boolean),
     categories: product.categories.map((c) => c.name).filter(Boolean),
     colorLabels: product.colors.map((color) => color.label).filter(Boolean),
     sizes: product.sizes,
@@ -425,7 +490,17 @@ async function attachVariableProductData(
   const colorGalleries = Object.keys(fromProduct).length
     ? mergeColorGalleries(fromProduct, fromVariations)
     : fromVariations;
-  const variations = variationsRaw.map(parseWooVariation);
+  let variations = variationsRaw.map(parseWooVariation);
+
+  // 組合包：各尺寸變體共用子商品可賣包數
+  if (product.bundleComponents?.length) {
+    const bundleStock = stockFromBundleAvailableQty(product.bundleAvailableQty);
+    variations = variations.map((v) => ({
+      ...v,
+      stock: bundleStock,
+      stockStatus: bundleStock.stockStatus,
+    }));
+  }
 
   return { ...product, colorGalleries, variations };
 }

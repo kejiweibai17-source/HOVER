@@ -33,7 +33,11 @@ import {
 } from "@/lib/shippingDefaults";
 import { useShippingSettings } from "@/lib/useShippingSettings";
 import { buildCartOrderSummary } from "@/lib/orderSummary";
-import { guessColorHex } from "@/lib/productColors";
+import {
+  colorSwatchBackground,
+  guessColorHex,
+  parseSwatchHexes,
+} from "@/lib/productColors";
 import OrderSummaryRows from "@/components/order/OrderSummaryRows";
 import {
   isValidLoveCode,
@@ -1246,7 +1250,11 @@ function PromotionOfferCard({
                   ? "border-[#2a514d] ring-1 ring-[#2a514d] ring-offset-1"
                   : "border-[#ccc]"
               }`}
-              style={{ backgroundColor: hex }}
+              style={{
+                background: colorSwatchBackground(
+                  parseSwatchHexes(hex, displayLabel),
+                ),
+              }}
             >
               {isLight ? (
                 <span className="block h-full w-full rounded-full border border-[#e5e5e5]" />

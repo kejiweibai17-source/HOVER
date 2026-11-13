@@ -18,6 +18,8 @@ import {
 } from "@/lib/sizeGuide";
 import {
   DEFAULT_PRODUCT_COLORS,
+  colorSwatchBackground,
+  parseSwatchHexes,
   type ProductColor,
 } from "@/lib/productColors";
 import { formatProductPrice, hasRichHtmlContent, sanitizeRichHtml } from "@/lib/utils";
@@ -374,7 +376,11 @@ function ProductPurchasePanel({
                       ? "border-black ring-1 ring-black ring-offset-2"
                       : "border-[#ccc] hover:border-[#888]"
                   }`}
-                  style={{ backgroundColor: c.hex }}
+                  style={{
+                    background: colorSwatchBackground(
+                      c.hexes?.length ? c.hexes : parseSwatchHexes(c.hex, c.label),
+                    ),
+                  }}
                 />
               );
             })}

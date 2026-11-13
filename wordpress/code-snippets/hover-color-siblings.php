@@ -36,6 +36,22 @@ const HCCS_COLOR_META = 'hover_product_color';
 if (!function_exists('hccs_guess_hex')) :
 function hccs_guess_hex(string $label): string
 {
+    $key = trim($label);
+    if ($key === '') {
+        return '#cccccc';
+    }
+    // 優先走色票模組（支援「黑/白」雙色）
+    if (function_exists('hcsw_guess_hex')) {
+        return (string) hcsw_guess_hex($key);
+    }
+    if (preg_match('/[\/／]/u', $key)) {
+        $parts = preg_split('/\s*[\/／]\s*/u', $key) ?: [];
+        $parts = array_values(array_filter(array_map('trim', $parts)));
+        $parts = array_slice($parts, 0, 2);
+        if (count($parts) >= 2) {
+            return hccs_guess_hex($parts[0]) . '/' . hccs_guess_hex($parts[1]);
+        }
+    }
     $map = [
         '黑' => '#111111', '黑色' => '#111111',
         '白' => '#ffffff', '白色' => '#ffffff',
@@ -53,12 +69,8 @@ function hccs_guess_hex(string $label): string
         '棕' => '#8b5a2b', '棕色' => '#8b5a2b',
         '深藍' => '#1a3a5c', '海軍藍' => '#1a3a5c', '藏青' => '#1a2744',
     ];
-    $key = trim($label);
     if (isset($map[$key])) {
         return $map[$key];
-    }
-    if (function_exists('hcsw_guess_hex')) {
-        return (string) hcsw_guess_hex($key);
     }
     return '#cccccc';
 }

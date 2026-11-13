@@ -25,6 +25,7 @@ import {
 import { motion, AnimatePresence } from "framer-motion";
 import HoverIcon from "@/components/hover/HoverIcon";
 import WishlistIcon from "@/components/hover/WishlistIcon";
+import ColorSwatch from "@/components/hover/ColorSwatch";
 import { BirthdaySelect, PasswordInput } from "@/components/hover/AuthField";
 import { useShippingSettings } from "@/lib/useShippingSettings";
 import {
@@ -2986,9 +2987,10 @@ function AccountPageContent() {
 
                           {item.colorHex && (
                             <div className="flex items-center gap-1.5 pt-0.5">
-                              <span
+                              <ColorSwatch
+                                hex={item.colorHex}
+                                label={item.colorLabel || ""}
                                 className="inline-block h-3 w-3 shrink-0 rounded-full border border-[#ccc]"
-                                style={{ background: item.colorHex }}
                               />
                             </div>
                           )}

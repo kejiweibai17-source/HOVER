@@ -17,6 +17,7 @@ import { FALLBACK_CATEGORY_TILES } from "@/lib/categoryGridDefaults";
 import { FALLBACK_PEOPLE_SLIDES } from "@/lib/peopleDefaults";
 import { formatProductPrice } from "@/lib/utils";
 import { pickProductHoverSrc } from "@/lib/productCardImages";
+import ColorSwatch from "@/components/hover/ColorSwatch";
 
 // 預設 HOVER PEOPLE 圖（後台「HOVER PEOPLE」未設定時使用）
 const PEOPLE_ITEMS = FALLBACK_PEOPLE_SLIDES;
@@ -145,10 +146,10 @@ function ProductCard({ product }) {
 
         {product.colorHex ? (
           <div className="flex min-w-0 items-center gap-1.5">
-            <span
+            <ColorSwatch
+              hex={product.colorHex}
+              label={product.colorLabel || ""}
               className="inline-block h-3 w-3 shrink-0 rounded-full border border-[#ccc]"
-              style={{ background: product.colorHex }}
-              aria-hidden
             />
           </div>
         ) : null}

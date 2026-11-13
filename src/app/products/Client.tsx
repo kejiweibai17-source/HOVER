@@ -27,6 +27,7 @@ import {
 } from "@/lib/productFilters";
 import { formatProductPrice } from "@/lib/utils";
 import { pickProductHoverImage } from "@/lib/productCardImages";
+import ColorSwatch from "@/components/hover/ColorSwatch";
 
 type ProductsCategoryMeta = Record<
   string,
@@ -509,10 +510,10 @@ const ProductCard = memo(function ProductCard({
         {product.colors && product.colors.length > 0 && (
           <div className="flex items-center gap-1.5">
             {product.colors.map((c, i) => (
-              <span
+              <ColorSwatch
                 key={i}
+                hex={c}
                 className="inline-block h-3 w-3 shrink-0 rounded-full border border-[#ccc]"
-                style={{ backgroundColor: c }}
               />
             ))}
           </div>

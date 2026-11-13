@@ -9,11 +9,12 @@
  *
  * 功能：
  * - 商品編輯頁「屬性」分頁：屬性名稱為 顏色 / Color 時，顯示色票選擇器
+ * - 支援雙色組合（最多 2 色）：色碼存「#111111/#ffffff」，前台對角切半顯示
  * - 商品 → 屬性 → 顏色（全域屬性）：可為每個顏色詞彙設定預設色碼
  * - REST API 輸出 hover_color_swatches，供 Next.js 前台色票方塊使用
  *
- * Meta key：hover_color_swatches（JSON，商品層級覆寫）
- * Term meta：hover_color_hex（全域顏色屬性詞彙）
+ * Meta key：hover_color_swatches（JSON，商品層級覆寫；值可為單色或雙色字串）
+ * Term meta：hover_color_hex（全域顏色屬性詞彙；單色）
  */
 
 if (!defined('ABSPATH')) {
@@ -73,11 +74,55 @@ function hcsw_default_hex_map(): array
     ];
 }
 
+function hcsw_split_concat_color_label(string $label): array
+{
+    $label = trim($label);
+    $map = hcsw_default_hex_map();
+    if ($label === '' || isset($map[$label])) {
+        return [];
+    }
+    $names = array_keys($map);
+    usort($names, static function ($a, $b) {
+        return mb_strlen((string) $b) <=> mb_strlen((string) $a);
+    });
+    foreach ($names as $first) {
+        $first = (string) $first;
+        if ($first === '' || mb_strpos($label, $first) !== 0) {
+            continue;
+        }
+        $rest = mb_substr($label, mb_strlen($first));
+        if ($rest === '') {
+            continue;
+        }
+        foreach ($names as $second) {
+            $second = (string) $second;
+            if ($rest === $second) {
+                return [$first, $second];
+            }
+        }
+    }
+    return [];
+}
+
 function hcsw_guess_hex(string $label): string
 {
     $label = trim($label);
     if ($label === '') {
         return '#cccccc';
+    }
+    // 雙色標籤（黑/白、黑／白）→ 最多兩色字串
+    if (preg_match('/[\/／]/u', $label)) {
+        $parts = preg_split('/\s*[\/／]\s*/u', $label) ?: [];
+        $parts = array_values(array_filter(array_map('trim', $parts), static function ($p) {
+            return $p !== '';
+        }));
+        $parts = array_slice($parts, 0, 2);
+        if (count($parts) >= 2) {
+            return hcsw_guess_hex($parts[0]) . '/' . hcsw_guess_hex($parts[1]);
+        }
+        if (count($parts) === 1) {
+            return hcsw_guess_hex($parts[0]);
+        }
     }
     if (preg_match('/^#[0-9a-f]{3,8}$/i', $label)) {
         return strtolower($label);
@@ -89,6 +134,11 @@ function hcsw_guess_hex(string $label): string
     $lower = strtolower($label);
     if (isset($map[$lower])) {
         return $map[$lower];
+    }
+    // 「黑白」這類無斜線雙色名
+    $concat = hcsw_split_concat_color_label($label);
+    if (count($concat) >= 2) {
+        return hcsw_guess_hex($concat[0]) . '/' . hcsw_guess_hex($concat[1]);
     }
     return '#cccccc';
 }
@@ -111,6 +161,33 @@ function hcsw_sanitize_hex(string $hex, string $fallback = '#cccccc'): string
     return $fallback;
 }
 
+/** 單色或雙色（#111/#fff），最多兩色 */
+function hcsw_sanitize_swatch_value(string $value, string $label = ''): string
+{
+    $value = trim($value);
+    $parts = preg_split('/\s*[\/／]\s*/u', $value) ?: [];
+    $hexes = [];
+    foreach ($parts as $part) {
+        $part = trim((string) $part);
+        if ($part === '') {
+            continue;
+        }
+        if (preg_match('/^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i', $part)) {
+            $hexes[] = strtolower($part);
+        }
+        if (count($hexes) >= 2) {
+            break;
+        }
+    }
+    if (count($hexes) >= 2) {
+        return $hexes[0] . '/' . $hexes[1];
+    }
+    if (count($hexes) === 1) {
+        return $hexes[0];
+    }
+    return hcsw_guess_hex($label !== '' ? $label : '#cccccc');
+}
+
 function hcsw_normalize_swatches(array $data): array
 {
     $out = [];
@@ -119,7 +196,7 @@ function hcsw_normalize_swatches(array $data): array
         if ($label === '') {
             continue;
         }
-        $out[$label] = hcsw_sanitize_hex((string) $hex, hcsw_guess_hex($label));
+        $out[$label] = hcsw_sanitize_swatch_value((string) $hex, $label);
     }
     return $out;
 }
@@ -583,12 +660,67 @@ function hcsw_admin_js(): string
         return list.indexOf(raw) !== -1 || list.indexOf(normalized) !== -1;
     }
 
-    function guessHex(label){
+    function isValidHex(hex){
+        return /^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(hex || '');
+    }
+
+    function guessSingleHex(label){
         if (!label) return '#cccccc';
-        if (/^#[0-9a-f]{3,8}$/i.test(label)) return label.toLowerCase();
+        if (isValidHex(label)) return label.toLowerCase();
         if (defaults[label]) return defaults[label];
         if (termColors[label]) return termColors[label];
         return '#cccccc';
+    }
+
+    function splitConcatLabel(label){
+        var key = String(label || '').trim();
+        if (!key || defaults[key] || termColors[key]) return null;
+        var names = Object.keys(defaults).concat(Object.keys(termColors));
+        names = names.filter(Boolean).sort(function(a, b){ return b.length - a.length; });
+        for (var i = 0; i < names.length; i++) {
+            var first = names[i];
+            if (key.indexOf(first) !== 0) continue;
+            var rest = key.slice(first.length);
+            if (!rest) continue;
+            for (var j = 0; j < names.length; j++) {
+                if (rest === names[j]) return [first, names[j]];
+            }
+        }
+        return null;
+    }
+
+    function guessHex(label){
+        if (!label) return '#cccccc';
+        if (/[\/／]/.test(label)) {
+            var parts = String(label).split(/[\/／]/).map(function(p){ return $.trim(p); }).filter(Boolean).slice(0, 2);
+            if (parts.length >= 2) return guessSingleHex(parts[0]) + '/' + guessSingleHex(parts[1]);
+            if (parts.length === 1) return guessSingleHex(parts[0]);
+        }
+        if (defaults[label] || termColors[label]) return guessSingleHex(label);
+        var concat = splitConcatLabel(label);
+        if (concat) return guessSingleHex(concat[0]) + '/' + guessSingleHex(concat[1]);
+        return guessSingleHex(label);
+    }
+
+    function splitSwatch(value){
+        var raw = String(value || '').trim();
+        if (!raw) return ['#cccccc', ''];
+        var parts = raw.split(/[\/／]/).map(function(p){ return $.trim(p); }).filter(Boolean).slice(0, 2);
+        var hex1 = isValidHex(parts[0]) ? parts[0].toLowerCase() : '';
+        var hex2 = parts[1] && isValidHex(parts[1]) ? parts[1].toLowerCase() : '';
+        return [hex1 || '#cccccc', hex2];
+    }
+
+    function joinSwatch(hex1, hex2){
+        var a = isValidHex(hex1) ? hex1.toLowerCase() : '#cccccc';
+        var b = isValidHex(hex2) ? hex2.toLowerCase() : '';
+        return b ? (a + '/' + b) : a;
+    }
+
+    function swatchCss(value){
+        var pair = splitSwatch(value);
+        if (pair[1]) return 'linear-gradient(135deg, ' + pair[0] + ' 50%, ' + pair[1] + ' 50%)';
+        return pair[0];
     }
 
     function getAttrRow($node){
@@ -758,10 +890,12 @@ function hcsw_admin_js(): string
         var previewHtml = '';
         $builder.find('.hcs-color-item').each(function(){
             var label = $.trim($(this).find('.hcs-name-input').val());
-            var hex = $.trim($(this).find('.hcs-hex-input').val()) || $(this).find('.hcs-color-input').val();
-            if (!label || !/^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(hex)) return;
+            var hex1 = $.trim($(this).find('.hcs-hex-input').val()) || $(this).find('.hcs-color-input').val();
+            var hex2 = $.trim($(this).find('.hcs-hex2-input').val()) || ($(this).find('.hcs-color2-input').val() || '');
+            var stored = joinSwatch(hex1, hex2);
+            if (!label || !isValidHex(hex1)) return;
             previewHtml += '<span class="hcs-preview-chip" title="'+escHtml(label)+'">';
-            previewHtml += '<span class="hcs-preview-chip-color" style="background:'+escHtml(hex)+'"></span>';
+            previewHtml += '<span class="hcs-preview-chip-color" style="background:'+escHtml(swatchCss(stored))+'"></span>';
             previewHtml += '<span class="hcs-preview-chip-label">'+escHtml(label)+'</span>';
             previewHtml += '</span>';
         });
@@ -775,9 +909,13 @@ function hcsw_admin_js(): string
 
         $builder.find('.hcs-color-item').each(function(){
             var label = $.trim($(this).find('.hcs-name-input').val()) || '未命名';
-            var hex = $.trim($(this).find('.hcs-hex-input').val()) || $(this).find('.hcs-color-input').val() || '#cccccc';
-            $(this).find('.hcs-row-preview-swatch').css('background', hex);
+            var hex1 = $.trim($(this).find('.hcs-hex-input').val()) || $(this).find('.hcs-color-input').val() || '#cccccc';
+            var hex2 = $.trim($(this).find('.hcs-hex2-input').val()) || ($(this).find('.hcs-color2-input').val() || '');
+            var stored = joinSwatch(hex1, hex2);
+            $(this).find('.hcs-row-preview-swatch').css('background', swatchCss(stored));
             $(this).find('.hcs-row-preview-label').text(label);
+            $(this).find('.hcs-swatch-face').css('background', swatchCss(stored));
+            $(this).toggleClass('is-dual', !!hex2 && isValidHex(hex2));
         });
     }
 
@@ -787,17 +925,33 @@ function hcsw_admin_js(): string
 
         var html = '';
         labels.forEach(function(label, index){
-            var hex = rowState[key][label] || saved[label] || termColors[label] || guessHex(label);
-            rowState[key][label] = hex;
+            var stored = rowState[key][label] || saved[label] || termColors[label] || guessHex(label);
+            var pair = splitSwatch(stored);
+            // 雙色名稱（黑/白、黑白）且尚未設第二色時，自動帶入猜色
+            if (!pair[1] && label) {
+                var guessed = splitSwatch(guessHex(label));
+                if (guessed[1]) {
+                    pair[1] = guessed[1];
+                    if (!isValidHex(pair[0]) || pair[0] === '#cccccc') pair[0] = guessed[0];
+                }
+            }
+            stored = joinSwatch(pair[0], pair[1]);
+            rowState[key][label] = stored;
             var displayLabel = label || '未命名';
-            html += '<tr class="hcs-color-item" data-index="'+index+'">';
-            html += '<td class="hcs-td-picker"><label class="hcs-swatch-btn" title="選擇色碼">';
-            html += '<input type="color" class="hcs-color-input" value="'+escHtml(hex)+'">';
-            html += '<span class="hcs-swatch-face" style="background:'+escHtml(hex)+'"></span>';
-            html += '</label></td>';
-            html += '<td class="hcs-td-name"><input type="text" class="regular-text hcs-name-input" value="'+escHtml(label)+'" placeholder="例如：黑色、軍綠"></td>';
-            html += '<td class="hcs-td-hex"><input type="text" class="regular-text hcs-hex-input" value="'+escHtml(hex)+'" placeholder="#111111" spellcheck="false"></td>';
-            html += '<td class="hcs-td-preview"><span class="hcs-row-preview"><span class="hcs-row-preview-swatch" style="background:'+escHtml(hex)+'"></span><span class="hcs-row-preview-label">'+escHtml(displayLabel)+'</span></span></td>';
+            html += '<tr class="hcs-color-item'+(pair[1] ? ' is-dual' : '')+'" data-index="'+index+'">';
+            html += '<td class="hcs-td-picker"><div class="hcs-picker-stack">';
+            html += '<label class="hcs-swatch-btn" title="第一色">';
+            html += '<input type="color" class="hcs-color-input" value="'+escHtml(pair[0])+'">';
+            html += '<span class="hcs-swatch-face" style="background:'+escHtml(swatchCss(stored))+'"></span>';
+            html += '</label>';
+            html += '<label class="hcs-swatch-btn hcs-swatch-btn-2" title="第二色（組合，可空）">';
+            html += '<input type="color" class="hcs-color2-input" value="'+escHtml(pair[1] || '#ffffff')+'">';
+            html += '<span class="hcs-swatch-face-2" style="background:'+escHtml(pair[1] || 'transparent')+'"></span>';
+            html += '</label>';
+            html += '</div></td>';
+            html += '<td class="hcs-td-name"><input type="text" class="regular-text hcs-name-input" value="'+escHtml(label)+'" placeholder="例如：黑/白、軍綠"></td>';
+            html += '<td class="hcs-td-hex"><input type="text" class="regular-text hcs-hex-input" value="'+escHtml(pair[0])+'" placeholder="#111111" spellcheck="false"><input type="text" class="regular-text hcs-hex2-input" value="'+escHtml(pair[1])+'" placeholder="第二色可空" spellcheck="false"></td>';
+            html += '<td class="hcs-td-preview"><span class="hcs-row-preview"><span class="hcs-row-preview-swatch" style="background:'+escHtml(swatchCss(stored))+'"></span><span class="hcs-row-preview-label">'+escHtml(displayLabel)+'</span></span></td>';
             html += '<td class="hcs-td-action"><button type="button" class="button hcs-remove-color" title="刪除此顏色"><span class="dashicons dashicons-trash"></span></button></td>';
             html += '</tr>';
         });
@@ -819,10 +973,16 @@ function hcsw_admin_js(): string
         var next = {};
         $builder.find('.hcs-color-item').each(function(){
             var label = $.trim($(this).find('.hcs-name-input').val());
-            var hex = $.trim($(this).find('.hcs-hex-input').val()) || $(this).find('.hcs-color-input').val();
+            var hex1 = $.trim($(this).find('.hcs-hex-input').val()) || $(this).find('.hcs-color-input').val();
+            var hex2 = $.trim($(this).find('.hcs-hex2-input').val()) || '';
             if (!label) return;
-            if (!/^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(hex)) hex = guessHex(label);
-            next[label] = hex.toLowerCase();
+            if (!isValidHex(hex1)) {
+                var guessed = splitSwatch(guessHex(label));
+                hex1 = guessed[0];
+                if (!hex2) hex2 = guessed[1];
+            }
+            if (hex2 && !isValidHex(hex2)) hex2 = '';
+            next[label] = joinSwatch(hex1, hex2);
         });
         rowState[key] = next;
     }
@@ -870,7 +1030,7 @@ function hcsw_admin_js(): string
                             '<div class="hcs-brand">HOVER</div>' +
                             '<div class="hcs-card-copy">' +
                                 '<strong>顏色色票設定</strong>' +
-                                '<span>在下方新增顏色與色碼，系統會自動寫入 WooCommerce 屬性數值；請先按「儲存屬性」再更新商品。</span>' +
+                                '<span>單色填第一色即可；雙色組合（如「黑/白」）再填第二色，前台會對角切半顯示。最多兩色。請先「儲存屬性」再更新商品。</span>' +
                             '</div>' +
                         '</div>' +
                         '<div class="hcs-toolbar">' +
@@ -882,7 +1042,7 @@ function hcsw_admin_js(): string
                                 '<thead><tr>' +
                                     '<th class="hcs-th-picker">色票</th>' +
                                     '<th>顏色名稱</th>' +
-                                    '<th class="hcs-th-hex">色碼</th>' +
+                                    '<th class="hcs-th-hex">色碼（可雙色）</th>' +
                                     '<th class="hcs-th-preview">列預覽</th>' +
                                     '<th class="hcs-th-action"></th>' +
                                 '</tr></thead>' +
@@ -951,22 +1111,46 @@ function hcsw_admin_js(): string
         syncHidden();
     });
 
-    $(document).on('input change', '.hcs-name-input, .hcs-color-input, .hcs-hex-input', function(){
+    $(document).on('input change', '.hcs-name-input, .hcs-color-input, .hcs-color2-input, .hcs-hex-input, .hcs-hex2-input', function(){
         var $item = $(this).closest('.hcs-color-item');
         var $builder = $(this).closest('.hcs-color-builder');
         var $row = getAttrRow($builder);
 
         if ($(this).hasClass('hcs-color-input')) {
-            var hex = $(this).val();
-            $item.find('.hcs-hex-input').val(hex);
-            $item.find('.hcs-swatch-face').css('background', hex);
+            $item.find('.hcs-hex-input').val($(this).val());
+        }
+
+        if ($(this).hasClass('hcs-color2-input')) {
+            $item.find('.hcs-hex2-input').val($(this).val());
         }
 
         if ($(this).hasClass('hcs-hex-input')) {
             var manual = $(this).val();
-            if (/^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(manual)) {
+            if (isValidHex(manual)) {
                 $item.find('.hcs-color-input').val(manual);
-                $item.find('.hcs-swatch-face').css('background', manual);
+            }
+        }
+
+        if ($(this).hasClass('hcs-hex2-input')) {
+            var manual2 = $.trim($(this).val());
+            if (isValidHex(manual2)) {
+                $item.find('.hcs-color2-input').val(manual2);
+                $item.find('.hcs-swatch-face-2').css('background', manual2);
+            } else if (!manual2) {
+                $item.find('.hcs-swatch-face-2').css('background', 'transparent');
+            }
+        }
+
+        if ($(this).hasClass('hcs-name-input')) {
+            var nameVal = $.trim($(this).val());
+            var hex2Now = $.trim($item.find('.hcs-hex2-input').val());
+            var autoPair = nameVal ? splitSwatch(guessHex(nameVal)) : ['', ''];
+            if (nameVal && autoPair[1] && !hex2Now) {
+                $item.find('.hcs-hex-input').val(autoPair[0]);
+                $item.find('.hcs-color-input').val(autoPair[0]);
+                $item.find('.hcs-hex2-input').val(autoPair[1]);
+                $item.find('.hcs-color2-input').val(autoPair[1]);
+                $item.find('.hcs-swatch-face-2').css('background', autoPair[1]);
             }
         }
 
@@ -1192,9 +1376,35 @@ add_action('admin_head', function () {
             border-top: 1px solid #eef0f2;
         }
         .hover-cs-admin .hcs-th-picker,
-        .hover-cs-admin .hcs-td-picker { width: 72px; text-align: center; }
+        .hover-cs-admin .hcs-td-picker { width: 88px; text-align: center; }
         .hover-cs-admin .hcs-th-hex,
-        .hover-cs-admin .hcs-td-hex { width: 110px; }
+        .hover-cs-admin .hcs-td-hex { width: 126px; }
+        .hover-cs-admin .hcs-picker-stack {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+        }
+        .hover-cs-admin .hcs-swatch-btn-2 {
+            width: 28px;
+            height: 28px;
+        }
+        .hover-cs-admin .hcs-swatch-face-2 {
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            border: 1px dashed rgba(0,0,0,.18);
+            pointer-events: none;
+            position: relative;
+            z-index: 1;
+            background: transparent;
+        }
+        .hover-cs-admin .hcs-hex2-input {
+            margin-top: 6px !important;
+            opacity: .85;
+        }
+        .hover-cs-admin .hcs-color-item.is-dual .hcs-swatch-face-2 {
+            border-style: solid;
+        }
         .hover-cs-admin .hcs-th-preview,
         .hover-cs-admin .hcs-td-preview { width: 130px; }
         .hover-cs-admin .hcs-th-action,

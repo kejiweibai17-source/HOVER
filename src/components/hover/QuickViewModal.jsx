@@ -12,6 +12,10 @@ import { useCartStore } from "@/lib/cartStore";
 import { useWishlistStore } from "@/lib/wishlistStore";
 import { useAuthStore } from "@/lib/authStore";
 import { formatProductPrice } from "@/lib/utils";
+import {
+  colorSwatchBackground,
+  parseSwatchHexes,
+} from "@/lib/productColors";
 
 const DEFAULT_COLORS = [
   { label: "藍", hex: "#9ab3d4" },
@@ -328,8 +332,14 @@ export default function QuickViewModal({ product, onClose }) {
                             selectedColor === c.label
                               ? "scale-110 border-black"
                               : "border-transparent hover:border-[#999]"
-                          } ${c.label === "白" ? "border border-[#ccc]" : ""}`}
-                          style={{ backgroundColor: c.hex }}
+                          } ${c.label === "白" || /[/／]/.test(c.label) ? "border border-[#ccc]" : ""}`}
+                          style={{
+                            background: colorSwatchBackground(
+                              c.hexes?.length
+                                ? c.hexes
+                                : parseSwatchHexes(c.hex, c.label),
+                            ),
+                          }}
                         />
                       ))}
                     </div>

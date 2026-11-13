@@ -5,6 +5,10 @@ import {
   STOCK_SOLD_OUT_MSG,
   type ProductStock,
 } from "@/lib/productStock";
+import {
+  extractBundleComponentsFromWooProduct,
+  type BundleComponent,
+} from "@/lib/productBundle";
 
 export type StockLineInput = {
   wcProductId?: number;
@@ -13,6 +17,8 @@ export type StockLineInput = {
   qty: number;
   title?: string;
   name?: string;
+  /** 若呼叫端已帶入組合包元件，可略過再打一次 API */
+  bundleComponents?: BundleComponent[];
 };
 
 export type StockCheckResult = {
@@ -43,6 +49,90 @@ async function fetchProductOrVariation(
   return res.json();
 }
 
+type DemandGroup = {
+  productId: number;
+  variationId: number | null;
+  qty: number;
+  name: string;
+};
+
+/**
+ * 將購物車列展開成實際要扣的庫存需求：
+ * - 一般商品：自身
+ * - 組合包：改為各子商品 × 每包數量（不檢查組合包本身庫存）
+ */
+async function expandStockDemands(
+  base: string,
+  auth: string,
+  items: StockLineInput[],
+): Promise<DemandGroup[]> {
+  const demands = new Map<string, DemandGroup>();
+
+  const addDemand = (
+    productId: number,
+    variationId: number | null,
+    qty: number,
+    name: string,
+  ) => {
+    if (!productId || qty <= 0) return;
+    const key = `${productId}:${variationId || 0}`;
+    const prev = demands.get(key);
+    if (prev) {
+      prev.qty += qty;
+      return;
+    }
+    demands.set(key, { productId, variationId, qty, name });
+  };
+
+  for (const item of items) {
+    const productId = Number(item.wcProductId || item.id);
+    if (!productId) continue;
+    const variationId = item.wcVariationId
+      ? Number(item.wcVariationId)
+      : null;
+    const packQty = Number(item.qty) || 0;
+    if (packQty <= 0) continue;
+    const cartName = String(item.title || item.name || "商品");
+
+    let components =
+      Array.isArray(item.bundleComponents) && item.bundleComponents.length
+        ? item.bundleComponents
+        : null;
+
+    if (!components) {
+      const parentRaw = await fetchProductOrVariation(
+        base,
+        auth,
+        productId,
+        null,
+      );
+      components = parentRaw
+        ? extractBundleComponentsFromWooProduct(parentRaw)
+        : [];
+    }
+
+    if (components.length) {
+      for (const component of components) {
+        const need = packQty * Math.max(1, component.qty || 1);
+        const label =
+          component.name ||
+          `組合包「${cartName}」所需商品 #${component.productId}`;
+        addDemand(
+          component.productId,
+          component.variationId,
+          need,
+          label,
+        );
+      }
+      continue;
+    }
+
+    addDemand(productId, variationId, packQty, cartName);
+  }
+
+  return Array.from(demands.values());
+}
+
 export async function checkCartStock(
   base: string,
   auth: string,
@@ -52,34 +142,8 @@ export async function checkCartStock(
   message?: string;
   results: StockCheckResult[];
 }> {
-  // 合併同商品／變體數量
-  const groups = new Map<
-    string,
-    { productId: number; variationId: number | null; qty: number; name: string }
-  >();
+  const groupList = await expandStockDemands(base, auth, items);
 
-  for (const item of items) {
-    const productId = Number(item.wcProductId || item.id);
-    if (!productId) continue;
-    const variationId = item.wcVariationId
-      ? Number(item.wcVariationId)
-      : null;
-    const key = `${productId}:${variationId || 0}`;
-    const prev = groups.get(key);
-    const name = String(item.title || item.name || "商品");
-    if (prev) {
-      prev.qty += Number(item.qty) || 0;
-    } else {
-      groups.set(key, {
-        productId,
-        variationId,
-        qty: Number(item.qty) || 0,
-        name,
-      });
-    }
-  }
-
-  const groupList = Array.from(groups.values());
   const fetched = await Promise.all(
     groupList.map(async (group) => {
       const raw = await fetchProductOrVariation(
