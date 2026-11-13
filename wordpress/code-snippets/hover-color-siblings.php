@@ -454,9 +454,17 @@ function hccs_get_siblings(int $product_id): array
         if ($color === '') {
             $color = '色' . $pid;
         }
+        // WP 偶發把中文存成字面 %e7%b6...；REST 回傳解碼後的可讀 slug
+        $slug = (string) $post->post_name;
+        if ($slug !== '' && preg_match('/%[0-9a-f]{2}/i', $slug)) {
+            $decoded = rawurldecode($slug);
+            if (is_string($decoded) && $decoded !== '') {
+                $slug = $decoded;
+            }
+        }
         $out[] = [
             'id'    => $pid,
-            'slug'  => $post->post_name,
+            'slug'  => $slug,
             'name'  => get_the_title($pid),
             'color' => $color,
             'hex'   => hccs_resolve_hex($color, $pid),

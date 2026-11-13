@@ -1,14 +1,18 @@
 // app/products/[slug]/page.jsx
+import { notFound, permanentRedirect } from "next/navigation";
 import { fetchAllProductSlugs, fetchProductBySlug } from "@/lib/woo";
-import { MOCK_PRODUCTS } from "@/lib/mockProducts";
 import ProductClient from "./Client";
-import { DEFAULT_SIZE_GUIDE } from "@/lib/sizeGuide";
-import { DEFAULT_WASHING_INSTRUCTIONS } from "@/lib/washingInstructions";
-import { DEFAULT_PRODUCT_COLORS } from "@/lib/productColors";
 import { pickWpSizeUrl, toOptimizedImageUrl } from "@/lib/listImageUrl";
 import { productDetailGallerySources } from "@/lib/productCardImages";
 import { stripHtmlToText } from "@/lib/utils";
 import { fetchShippingSettings } from "@/lib/shippingDefaults";
+import { normalizeStorefrontSlug } from "@/lib/productColors";
+
+/** 舊中文／壞掉的組合包 slug → 正確英文 slug */
+const LEGACY_PRODUCT_SLUG_REDIRECTS = {
+  "經典緹花中筒襪黑-白雙色組合包": "classic-socks-bw",
+  "經典緹花中筒襪-黑-白雙色組合包": "classic-socks-bw",
+};
 
 /** ISR：商品頁 60 秒熱快取（換圖較快同步）；庫存結帳仍走 /api/stock/check（no-store） */
 export const revalidate = 60;
@@ -101,9 +105,20 @@ export async function generateStaticParams() {
 }
 
 // ===================== Metadata 動態生成與 SEO 優化 =====================
+function resolveProductSlugParam(params) {
+  const raw = typeof params?.slug === "string" ? params.slug : "";
+  return normalizeStorefrontSlug(raw);
+}
+
 export async function generateMetadata({ params }) {
+  const slug = resolveProductSlugParam(params);
+  const legacy = LEGACY_PRODUCT_SLUG_REDIRECTS[slug];
+  if (legacy) {
+    return { alternates: { canonical: `/products/${legacy}` } };
+  }
+
   const [p, shipping] = await Promise.all([
-    fetchProductBySlug(params.slug),
+    fetchProductBySlug(slug),
     fetchShippingSettings(),
   ]);
   const siteName = "HOVER";
@@ -132,7 +147,7 @@ export async function generateMetadata({ params }) {
       ? cleanDesc
       : `探索 HOVER【${p.name}】——以舒適剪裁與簡約質感，為日常穿搭帶來更多可能。全館滿 NT$${shipping.freeShipThreshold.toLocaleString("zh-TW")} 享免運。`);
 
-  const productPath = `/products/${params.slug}`; // 相對路徑配合 metadataBase
+  const productPath = `/products/${p.slug || slug}`; // 相對路徑配合 metadataBase
 
   const safeImages = p?.images;
   const gallerySources = productDetailGallerySources(safeImages);
@@ -194,11 +209,17 @@ export async function generateMetadata({ params }) {
 }
 
 export default async function ProductPage({ params }) {
+  const slug = resolveProductSlugParam(params);
+  const legacyTarget = LEGACY_PRODUCT_SLUG_REDIRECTS[slug];
+  if (legacyTarget) {
+    permanentRedirect(`/products/${legacyTarget}`);
+  }
+
   let woo = null;
   let shipping;
   try {
     const result = await Promise.all([
-      fetchProductBySlug(params.slug),
+      fetchProductBySlug(slug),
       fetchShippingSettings(),
     ]);
     woo = result[0];
@@ -208,69 +229,30 @@ export default async function ProductPage({ params }) {
     shipping = await fetchShippingSettings();
   }
 
-  const defaultFallback = {
-    id: "hover-product",
-    name: "LACOSTE FOR BEAUTY&YOUTH ONE-TONE SHORT SLEEVE T SHIRT",
-    subname: "",
-    price: 1280,
-    regularPrice: 1280,
-    salePrice: null,
-    shortDescription: "",
-    description: "",
-    images: [
-      "/images/hover/product-2.jpg",
-      "/images/hover/people-3.jpg",
-      "/images/hover/product-4.jpg",
-    ],
-    attributes: [],
-    acf: null,
-  };
+  if (!woo) {
+    notFound();
+  }
 
-  const mock = MOCK_PRODUCTS.find((p) => p.slug === params.slug);
-  const fallback = mock
-    ? {
-        id: String(mock.id),
-        name: mock.name,
-        subname: "",
-        price: Number(mock.price),
-        regularPrice: Number(mock.price),
-        salePrice: null,
-        shortDescription: "",
-        description: "",
-        images: [
-          "/images/hover/product-2.jpg",
-          "/images/hover/people-3.jpg",
-          "/images/hover/product-4.jpg",
-        ].filter(Boolean),
-        attributes: [],
-        acf: null,
-      }
-    : defaultFallback;
-
-  const productFAQs = woo
-    ? getProductFAQs(woo.name, shipping.freeShipThreshold)
-    : [];
+  const productFAQs = getProductFAQs(woo.name, shipping.freeShipThreshold);
   // 內頁大圖：WP sizes → Photon（小檔）；OptimizedImage 404 時回退原圖。
-  const schemaImages =
-    woo && Array.isArray(woo.images)
-      ? productDetailGallerySources(woo.images)
-          .map((i) => {
-            if (!i?.src) return "";
-            return toOptimizedImageUrl(
-              pickWpSizeUrl(i.sizes, "pdp", "") || i.src,
-              "pdp",
-            );
-          })
-          .filter(Boolean)
-      : [];
+  const schemaImages = Array.isArray(woo.images)
+    ? productDetailGallerySources(woo.images)
+        .map((i) => {
+          if (!i?.src) return "";
+          return toOptimizedImageUrl(
+            pickWpSizeUrl(i.sizes, "pdp", "") || i.src,
+            "pdp",
+          );
+        })
+        .filter(Boolean)
+    : [];
 
-  const pureDescription = woo
-    ? stripHtmlToText(woo.short_description || woo.description || "")
-    : "";
-  const finalPrice = woo ? Number(woo.price || 0) : 0;
-  const availability =
-    woo &&
-    (woo.bundleComponents?.length
+  const pureDescription = stripHtmlToText(
+    woo.short_description || woo.description || "",
+  );
+  const finalPrice = Number(woo.price || 0);
+  const availability = (
+    woo.bundleComponents?.length
       ? woo.bundleInStock
       : woo.variations?.length
         ? woo.variations.some(
@@ -278,9 +260,10 @@ export default async function ProductPage({ params }) {
               v.stockStatus === "instock" || v.stockStatus === "onbackorder",
           )
         : woo.stock_status === "instock" ||
-          woo.stock_status === "onbackorder")
-      ? "https://schema.org/InStock"
-      : "https://schema.org/OutOfStock";
+          woo.stock_status === "onbackorder"
+  )
+    ? "https://schema.org/InStock"
+    : "https://schema.org/OutOfStock";
 
   // ===================== 👑 結構化資料 1：商家與品牌實體 =====================
   const schemaBusiness = {
@@ -301,84 +284,77 @@ export default async function ProductPage({ params }) {
   };
 
   // ===================== 👑 結構化資料 2：商品與報價 =====================
-  const schemaProduct = woo
-    ? {
-        "@context": "https://schema.org",
-        "@type": "Product",
-        name: woo.name,
-        image: schemaImages,
-        description: pureDescription || `探索 HOVER 精選 ${woo.name}。`,
-        sku: woo.sku || String(woo.id),
-        brand: { "@id": `${SITE_URL}/#organization` }, // 👈 完美關聯上方品牌
-        // 預設給予一個優良的綜合評價
-        aggregateRating: {
-          "@type": "AggregateRating",
-          ratingValue: "5.0",
-          reviewCount: "114",
-          bestRating: "5",
-          worstRating: "1",
+  const schemaProduct = {
+    "@context": "https://schema.org",
+    "@type": "Product",
+    name: woo.name,
+    image: schemaImages,
+    description: pureDescription || `探索 HOVER 精選 ${woo.name}。`,
+    sku: woo.sku || String(woo.id),
+    brand: { "@id": `${SITE_URL}/#organization` },
+    aggregateRating: {
+      "@type": "AggregateRating",
+      ratingValue: "5.0",
+      reviewCount: "114",
+      bestRating: "5",
+      worstRating: "1",
+    },
+    offers: {
+      "@type": "Offer",
+      url: `${SITE_URL}/products/${woo.slug}`,
+      priceCurrency: "TWD",
+      price: finalPrice,
+      priceValidUntil: new Date(
+        new Date().setFullYear(new Date().getFullYear() + 1),
+      )
+        .toISOString()
+        .split("T")[0],
+      itemCondition: "https://schema.org/NewCondition",
+      availability: availability,
+      seller: { "@id": `${SITE_URL}/#organization` },
+      hasMerchantReturnPolicy: {
+        "@type": "MerchantReturnPolicy",
+        applicableCountry: "TW",
+        returnPolicyCategory:
+          "https://schema.org/MerchantReturnFiniteReturnWindow",
+        merchantReturnDays: 7,
+        returnMethod: "https://schema.org/ReturnByMail",
+      },
+      shippingDetails: {
+        "@type": "OfferShippingDetails",
+        shippingDestination: {
+          "@type": "DefinedRegion",
+          addressCountry: "TW",
         },
-        offers: {
-          "@type": "Offer",
-          url: `${SITE_URL}/products/${woo.slug}`,
-          priceCurrency: "TWD",
-          price: finalPrice,
-          priceValidUntil: new Date(
-            new Date().setFullYear(new Date().getFullYear() + 1),
-          )
-            .toISOString()
-            .split("T")[0],
-          itemCondition: "https://schema.org/NewCondition",
-          availability: availability,
-          seller: { "@id": `${SITE_URL}/#organization` }, // 👈 完美關聯販售者
-
-          // 退貨政策
-          hasMerchantReturnPolicy: {
-            "@type": "MerchantReturnPolicy",
-            applicableCountry: "TW",
-            returnPolicyCategory:
-              "https://schema.org/MerchantReturnFiniteReturnWindow",
-            merchantReturnDays: 7,
-            returnMethod: "https://schema.org/ReturnByMail",
+        shippingRate: {
+          "@type": "MonetaryAmount",
+          value: String(shipping.homeDeliveryFee || shipping.cvsFee || 0),
+          currency: "TWD",
+        },
+        deliveryTime: {
+          "@type": "ShippingDeliveryTime",
+          handlingTime: {
+            "@type": "QuantitativeValue",
+            minValue: 1,
+            maxValue: 2,
+            unitCode: "d",
           },
-
-          // 運費政策 (綁定在 Offer 內)
-          shippingDetails: {
-            "@type": "OfferShippingDetails",
-            shippingDestination: {
-              "@type": "DefinedRegion",
-              addressCountry: "TW",
-            },
-            shippingRate: {
-              "@type": "MonetaryAmount",
-              value: String(shipping.homeDeliveryFee || shipping.cvsFee || 0),
-              currency: "TWD",
-            },
-            deliveryTime: {
-              "@type": "ShippingDeliveryTime",
-              handlingTime: {
-                "@type": "QuantitativeValue",
-                minValue: 1,
-                maxValue: 2,
-                unitCode: "d",
-              },
-              transitTime: {
-                "@type": "QuantitativeValue",
-                minValue: 1,
-                maxValue: 3,
-                unitCode: "d",
-              },
-            },
+          transitTime: {
+            "@type": "QuantitativeValue",
+            minValue: 1,
+            maxValue: 3,
+            unitCode: "d",
           },
         },
-      }
-    : null;
+      },
+    },
+  };
 
   // ===================== 👑 結構化資料 3：常見問題 =====================
   const schemaFAQ = {
     "@context": "https://schema.org",
     "@type": "FAQPage",
-    "@id": `${SITE_URL}/products/${params.slug}/#faq`,
+    "@id": `${SITE_URL}/products/${woo.slug}/#faq`,
     mainEntity: productFAQs.map((faq) => ({
       "@type": "Question",
       name: faq.question,
@@ -387,97 +363,79 @@ export default async function ProductPage({ params }) {
   };
 
   // ===================== 👑 結構化資料 4：麵包屑導覽 =====================
-  const schemaBreadcrumb = woo
-    ? {
-        "@context": "https://schema.org",
-        "@type": "BreadcrumbList",
-        "@id": `${SITE_URL}/products/${woo.slug}/#breadcrumb`,
-        itemListElement: [
-          {
-            "@type": "ListItem",
-            position: 1,
-            name: "首頁",
-            item: SITE_URL,
-          },
-          {
-            "@type": "ListItem",
-            position: 2,
-            name: "所有商品",
-            item: `${SITE_URL}/products`,
-          },
-          {
-            "@type": "ListItem",
-            position: 3,
-            name: woo.name,
-            item: `${SITE_URL}/products/${woo.slug}`,
-          },
-        ],
-      }
-    : null;
+  const schemaBreadcrumb = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "@id": `${SITE_URL}/products/${woo.slug}/#breadcrumb`,
+    itemListElement: [
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "首頁",
+        item: SITE_URL,
+      },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: "所有商品",
+        item: `${SITE_URL}/products`,
+      },
+      {
+        "@type": "ListItem",
+        position: 3,
+        name: woo.name,
+        item: `${SITE_URL}/products/${woo.slug}`,
+      },
+    ],
+  };
 
   return (
     <>
-      {/* 獨立拆分，逐一注入 JSON-LD，確保不在 div 包裝內 */}
       <script
         type="application/ld+json"
         id="schema-business"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaBusiness) }}
       />
-      {woo && (
-        <script
-          type="application/ld+json"
-          id="schema-product"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaProduct) }}
-        />
-      )}
+      <script
+        type="application/ld+json"
+        id="schema-product"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaProduct) }}
+      />
       <script
         type="application/ld+json"
         id="schema-faq"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaFAQ) }}
       />
-      {woo && (
-        <script
-          type="application/ld+json"
-          id="schema-breadcrumb"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaBreadcrumb) }}
-        />
-      )}
+      <script
+        type="application/ld+json"
+        id="schema-breadcrumb"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaBreadcrumb) }}
+      />
 
-      {/* 渲染 Client 端元件 */}
       <ProductClient
         faqs={productFAQs}
-        product={
-          woo
-            ? {
-                id: String(woo.id),
-                name: woo.name,
-                subname: "",
-                price: Number(woo.price || 0),
-                regularPrice: Number(woo.regular_price || woo.price || 0),
-                salePrice: woo.sale_price ? Number(woo.sale_price) : null,
-                shortDescription: woo.short_description || "",
-                description: woo.description || "",
-                images: schemaImages,
-                attributes: woo.attributes || [],
-                acf: woo.acf || null,
-                sizeGuide: woo.sizeGuide,
-                washingInstructions: woo.washingInstructions,
-                colors: woo.colors,
-                sizes: woo.sizes,
-                colorGalleries: woo.colorGalleries,
-                variations: woo.variations,
-                defaultAttributes: woo.defaultAttributes,
-                productColor: woo.productColor,
-                stock: woo.stock,
-              }
-            : {
-                ...fallback,
-                sizeGuide: DEFAULT_SIZE_GUIDE,
-                washingInstructions: DEFAULT_WASHING_INSTRUCTIONS,
-                colors: DEFAULT_PRODUCT_COLORS,
-                sizes: ["S", "M", "L", "XL"],
-              }
-        }
+        product={{
+          id: String(woo.id),
+          name: woo.name,
+          subname: "",
+          price: Number(woo.price || 0),
+          regularPrice: Number(woo.regular_price || woo.price || 0),
+          salePrice: woo.sale_price ? Number(woo.sale_price) : null,
+          shortDescription: woo.short_description || "",
+          description: woo.description || "",
+          images: schemaImages,
+          attributes: woo.attributes || [],
+          acf: woo.acf || null,
+          sizeGuide: woo.sizeGuide,
+          washingInstructions: woo.washingInstructions,
+          colors: woo.colors,
+          sizes: woo.sizes,
+          colorGalleries: woo.colorGalleries,
+          variations: woo.variations,
+          defaultAttributes: woo.defaultAttributes,
+          productColor: woo.productColor,
+          stock: woo.stock,
+        }}
       />
     </>
   );

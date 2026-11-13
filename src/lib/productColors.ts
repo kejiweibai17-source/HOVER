@@ -232,6 +232,22 @@ export function alignColorLabel(
   return raw;
 }
 
+/**
+ * WP 偶發把中文 slug 存成字面 `%e7%b6...`；前台連結應解碼成可讀路徑。
+ * 已是英文／中文原字則原樣回傳。
+ */
+export function normalizeStorefrontSlug(slug: string): string {
+  const raw = String(slug || "").trim();
+  if (!raw) return "";
+  if (!/%[0-9a-f]{2}/i.test(raw)) return raw;
+  try {
+    const decoded = decodeURIComponent(raw);
+    return decoded || raw;
+  } catch {
+    return raw;
+  }
+}
+
 /** 同款多色獨立商品 → 色票清單（優先於變體顏色） */
 export function buildColorsFromSiblings(
   siblings: ColorSibling[] | undefined | null,
@@ -245,7 +261,7 @@ export function buildColorsFromSiblings(
   for (const row of siblings) {
     const rawLabel = String(row?.color || "").trim();
     const label = alignColorLabel(rawLabel, candidates) || rawLabel;
-    const slug = String(row?.slug || "").trim();
+    const slug = normalizeStorefrontSlug(String(row?.slug || "").trim());
     if (!label || !slug || seen.has(label)) continue;
     seen.add(label);
     const rawHex = String(row.hex || "").trim();

@@ -8,6 +8,7 @@ import type { ColorSibling, ProductColor } from "./productColors";
 import {
   alignColorLabel,
   buildColorsFromSiblings,
+  normalizeStorefrontSlug,
   ensureCurrentColorInList,
   extractColorSwatchesFromWooProduct,
   extractProductColors,
@@ -125,7 +126,12 @@ export type ListProduct = {
   id: number;
   slug: string;
   name: string;
+  /** 現價（特價中則為特價） */
   price: string;
+  /** 原價（未促銷時與 price 相同） */
+  regularPrice?: string;
+  /** 有效特價；無則空／省略 */
+  salePrice?: string;
   images: { id?: number; src: string; alt?: string }[];
   category?: string;
   isNew?: boolean;
@@ -193,7 +199,7 @@ const mapWoo = (p: any): WooProduct => {
     ? p.hover_color_siblings
         .map((row: any) => ({
           id: Number(row?.id) || 0,
-          slug: String(row?.slug || "").trim(),
+          slug: normalizeStorefrontSlug(String(row?.slug || "").trim()),
           name: String(row?.name || "").trim() || undefined,
           color: String(row?.color || "").trim(),
           hex: String(row?.hex || "").trim() || guessColorHex(String(row?.color || "")),
@@ -207,7 +213,7 @@ const mapWoo = (p: any): WooProduct => {
   });
   const siblingColors = buildColorsFromSiblings(colorSiblings, colorSwatches);
   const colorGroup = String(p?.hover_color_group || "").trim();
-  const slug = String(p?.slug || "");
+  const slug = normalizeStorefrontSlug(String(p?.slug || ""));
   const nameCandidates = [
     ...Object.keys(colorSwatches),
     ...attrColors.map((c) => c.label),
@@ -375,6 +381,8 @@ export function mapWooToListProduct(product: WooProduct): ListProduct {
     slug: product.slug,
     name: product.name,
     price: product.price,
+    regularPrice: product.regular_price || product.price,
+    salePrice: product.sale_price || "",
     images: product.images.map((image) => ({
       id: image.id,
       src: toOptimizedImageUrl(
