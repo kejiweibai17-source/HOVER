@@ -1,5 +1,6 @@
 export type HomeCarouselProduct = {
   id: number | string;
+  slug?: string;
   href: string;
   name: string;
   image: string;
@@ -99,8 +100,10 @@ function normalizeProduct(raw: unknown, index: number): HomeCarouselProduct | nu
   const originalPrice = Number(o.originalPrice);
   const saleRaw = o.salePrice == null || o.salePrice === "" ? null : Number(o.salePrice);
 
+  const slugFromHref = href.replace(/^\/products\//, "").replace(/\/$/, "");
   return {
     id: (o.id as number | string) || `home-product-${index + 1}`,
+    slug: String(o.slug || slugFromHref || "").trim() || undefined,
     href,
     name,
     image,

@@ -740,7 +740,7 @@ export default function ProductClient({ product }: ProductProps) {
       slug: productSlug,
       name: product.name,
       price: String(displayPrice),
-      image: gallery[0],
+      image: gallery[0] || baseGallery[0] || "",
     });
   };
 

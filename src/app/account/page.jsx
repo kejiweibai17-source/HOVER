@@ -11,6 +11,8 @@ import Image from "next/image";
 import { Link } from "next-view-transitions";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useWishlistStore } from "@/lib/wishlistStore";
+import { wishlistProductHref } from "@/lib/wishlistItem";
+import OptimizedImage from "@/components/hover/OptimizedImage";
 import { taipeiParts } from "@/lib/taipeiTime";
 import {
   formatProductPrice,
@@ -1386,6 +1388,7 @@ function AccountPageContent() {
 
   const wishlistItems = useWishlistStore((state) => state.items);
   const removeFromWishlist = useWishlistStore((state) => state.removeItem);
+  const mergeHydratedWishlist = useWishlistStore((state) => state.mergeHydrated);
 
   const [loading, setLoading] = useState(true);
   const [loggedIn, setLoggedIn] = useState(false);
@@ -1680,6 +1683,49 @@ function AccountPageContent() {
       loadAvailableCoupons();
     }
   }, [loggedIn, loadOrders, loadReferral, loadAvailableCoupons]);
+
+  const wishlistIdsKey = useMemo(
+    () =>
+      wishlistItems
+        .map((item) => String(item.id))
+        .filter(Boolean)
+        .sort()
+        .join(","),
+    [wishlistItems],
+  );
+
+  // 收藏：用 Woo 最新資料回填圖片／slug（修舊資料缺圖、數字 ID 當 slug）
+  useEffect(() => {
+    if (!loggedIn || !wishlistIdsKey) return undefined;
+    const ids = wishlistIdsKey
+      .split(",")
+      .map((id) => Number(id))
+      .filter((id) => Number.isFinite(id) && id > 0);
+    if (!ids.length) return undefined;
+
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const res = await fetch("/api/wishlist/hydrate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ids }),
+        });
+        if (!res.ok || cancelled) return;
+        const data = await res.json();
+        if (!cancelled && Array.isArray(data?.items)) {
+          mergeHydratedWishlist(data.items);
+        }
+      } catch {
+        // 靜默失敗；仍顯示 localStorage 既有資料
+      }
+    };
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [loggedIn, wishlistIdsKey, mergeHydratedWishlist]);
 
   useEffect(() => {
     if (!availableCoupons.length) return;
@@ -2968,15 +3014,23 @@ function AccountPageContent() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-                    {wishlistItems.map((item) => (
+                    {wishlistItems.map((item) => {
+                      const href = wishlistProductHref(item.slug, item.id);
+                      const canOpen = Boolean(
+                        item.slug && !/^\d+$/.test(String(item.slug)),
+                      );
+                      return (
                       <div key={item.id} className="group">
                         <Link
-                          href={`/products/${item.slug}`}
+                          href={canOpen ? href : "/products"}
                           className="relative mb-2 block aspect-[3/4] overflow-hidden bg-white"
+                          title={canOpen ? item.name : "商品已下架或不存在"}
                         >
                           {item.image ? (
-                            <Image
+                            <OptimizedImage
                               src={item.image}
+                              fullSrc={item.image}
+                              role="card"
                               alt={item.name}
                               fill
                               className="object-cover object-center"
@@ -2992,7 +3046,7 @@ function AccountPageContent() {
                         <div className="mt-2 min-w-0 space-y-1 px-0.5 text-left md:mt-3">
                           <div className="mb-0 flex min-h-9 min-w-0 items-center justify-between gap-2">
                             <Link
-                              href={`/products/${item.slug}`}
+                              href={canOpen ? href : "/products"}
                               className="flex min-w-0 flex-1 items-center break-words text-[14px] font-semibold leading-snug text-black line-clamp-2 hover:opacity-60 md:text-[15px]"
                             >
                               {item.name}
@@ -3022,7 +3076,8 @@ function AccountPageContent() {
                           </p>
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>

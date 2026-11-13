@@ -90,7 +90,14 @@ export default function QuickViewModal({ product, onClose }) {
 
   const productId = product?.id ?? "";
   const isSaved = product ? hasItem(productId) : false;
-  const slug = product?.href?.replace(/^\/products\//, "") || String(productId);
+  // 不可把商品 ID 當 slug，否則收藏點進去會「找不到商品」
+  const slug =
+    product?.slug ||
+    String(product?.href || "")
+      .replace(/^https?:\/\/[^/]+/i, "")
+      .replace(/^\/products\//, "")
+      .replace(/\/$/, "") ||
+    "";
 
   useEffect(() => {
     if (!product) return;
@@ -148,9 +155,10 @@ export default function QuickViewModal({ product, onClose }) {
     toggleItem({
       id: productId,
       slug,
+      href: product.href,
       name: product.name,
       price: String(displayPrice),
-      image: gallery[0] || product.image,
+      image: gallery[0] || product.image || "",
     });
   };
 

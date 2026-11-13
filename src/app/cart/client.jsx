@@ -1191,10 +1191,9 @@ function PromotionOfferCard({
     "";
   const productHref = productSlug ? `/products/${productSlug}` : null;
   const campaignName = String(promotion.name || "").trim();
+  // 活動文案常含商品名（如「滿 NT.3,500 贈 HOVER 經典帆布托特包」），不可用 includes 誤藏
   const showCampaign =
-    campaignName !== "" &&
-    campaignName !== productName &&
-    !campaignName.includes(productName);
+    campaignName !== "" && campaignName !== productName;
 
   const ProductTitle = ({ className = "" }) =>
     productHref ? (

@@ -45,8 +45,6 @@ function ProductCard({ product }) {
   const isSaved = hasItem(product.id);
   const [wishlistPending, setWishlistPending] = useState(false);
 
-  const slug = String(product.href || "").replace(/^\/products\//, "");
-
   const handleWishlist = async (e) => {
     e.preventDefault();
     e.stopPropagation();
@@ -62,10 +60,11 @@ function ProductCard({ product }) {
     }
     toggleItem({
       id: product.id,
-      slug,
+      slug: product.slug,
+      href: product.href,
       name: product.name,
       price: String(product.salePrice ?? product.originalPrice),
-      image: product.image,
+      image: product.image || product.gallery?.[0],
     });
   };
 

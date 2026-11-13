@@ -402,7 +402,10 @@ function WishlistHeart({ product }: { product: Product }) {
       slug: product.slug,
       name: product.name,
       price: product.price,
-      image: product.images?.[0]?.src,
+      image:
+        product.images?.[0]?.src ||
+        product.images?.[1]?.src ||
+        "",
     });
   };
 
