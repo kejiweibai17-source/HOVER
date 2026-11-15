@@ -34,13 +34,15 @@ export async function POST(req: Request) {
   try {
     const body = await req.json().catch(() => ({}));
     const rawIds = Array.isArray(body?.ids) ? body.ids : [];
-    const ids = [
-      ...new Set(
-        rawIds
-          .map((id: unknown) => Number(id))
-          .filter((id: number) => Number.isFinite(id) && id > 0),
-      ),
-    ].slice(0, 60);
+    const ids: number[] = [];
+    const seen = new Set<number>();
+    for (const raw of rawIds) {
+      const id = Number(raw);
+      if (!Number.isFinite(id) || id <= 0 || seen.has(id)) continue;
+      seen.add(id);
+      ids.push(id);
+      if (ids.length >= 60) break;
+    }
 
     if (!ids.length) {
       return NextResponse.json({ ok: true, items: [] });
