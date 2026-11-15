@@ -21,8 +21,6 @@ import {
 } from "@/lib/announcementDefaults";
 import { FALLBACK_NAV_CATEGORIES } from "@/lib/categoryNav";
 
-const SCROLL_TOP_THRESHOLD = 20;
-
 /**
  * 桌機 icon 光學對齊選單文字（15–16px semibold）。
  * PNG／SVG 有透明留白，繪製尺寸需略大於字級才會看起來一樣高。
@@ -116,7 +114,6 @@ export default function HoverHeader({
   const closeSearch = useSearchStore((state) => state.closeSearch);
   const searchOpen = useSearchStore(selectSearchOpen);
   const lenis = useLenis();
-  const [atTop, setAtTop] = useState(true);
   const [menuOpen, setMenuOpen] = useState(false);
   const [categories, setCategories] = useState([]);
   const [announcement, setAnnouncement] = useState(DEFAULT_ANNOUNCEMENT);
@@ -199,21 +196,6 @@ export default function HoverHeader({
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  useLenis((lenis) => {
-    const next = lenis.scroll <= SCROLL_TOP_THRESHOLD;
-    setAtTop((prev) => (prev === next ? prev : next));
-  });
-
-  useEffect(() => {
-    const onScroll = () => {
-      const next = window.scrollY <= SCROLL_TOP_THRESHOLD;
-      setAtTop((prev) => (prev === next ? prev : next));
-    };
-    onScroll();
-    window.addEventListener("scroll", onScroll, { passive: true });
-    return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
   useEffect(() => {
@@ -317,27 +299,14 @@ export default function HoverHeader({
 
         <MobileSearchBar open={searchOpen} inputRef={mobileSearchInputRef} />
 
-        {/* 桌機 — Logo + nav row */}
-        <div
-          className={`relative hidden flex-col items-center px-6 md:px-8 transition-all duration-500 ease-out md:flex ${
-            atTop ? "pt-2 pb-1" : "pt-3 pb-2"
-          }`}
-        >
+        {/* 桌機 — Logo + nav row（尺寸固定，不隨滾動縮放） */}
+        <div className="relative hidden flex-col items-center px-6 pt-2 pb-1 md:flex md:px-8">
           <Link href="/" className="block text-black" aria-label="HOVER">
-            <HoverLogo
-              aria-hidden
-              className={`w-auto transition-all duration-500 ease-out ${
-                atTop ? "h-8 md:h-11" : "h-8 md:h-9"
-              }`}
-            />
+            <HoverLogo aria-hidden className="h-8 w-auto md:h-11" />
           </Link>
 
           {/* Nav centered, icons right */}
-          <div
-            className={`grid w-full grid-cols-[1fr_auto_1fr] items-center px-0 ${
-              atTop ? "mt-1 pb-1" : "mt-2 pb-2"
-            }`}
-          >
+          <div className="mt-1 grid w-full grid-cols-[1fr_auto_1fr] items-center px-0 pb-1">
             <div aria-hidden className="hidden md:block" />
 
             <nav className="hidden flex-wrap items-center justify-center gap-x-6 gap-y-2 md:flex lg:gap-x-7 xl:gap-x-8">
