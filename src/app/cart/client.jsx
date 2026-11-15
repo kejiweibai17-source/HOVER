@@ -46,7 +46,7 @@ import {
   normalizeTwTaxId,
   normalizeMobileCarrier,
 } from "@/lib/invoicePreference";
-import { formatProductPrice } from "@/lib/utils";
+import { formatProductPrice, pageScrollBehavior } from "@/lib/utils";
 import CartThumbImg from "@/components/cart/CartThumbImg";
 import ConfirmDialog from "@/components/hover/ConfirmDialog";
 import {
@@ -2049,7 +2049,7 @@ function CheckoutStep({
   const submit = async () => {
     if (onRequireLogin && !(await onRequireLogin())) return;
     if (!validate()) {
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      window.scrollTo({ top: 0, behavior: pageScrollBehavior() });
       return;
     }
 

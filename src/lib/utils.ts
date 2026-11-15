@@ -40,6 +40,18 @@ export function cn(...classes: (string | undefined | null | false)[]) {
 }
 
 /**
+ * 桌機才用平滑捲動；手機／觸控回傳 "auto"，避免整體柔潤滾動與頁尾卡晃。
+ */
+export function pageScrollBehavior(): ScrollBehavior {
+  if (typeof window === "undefined") return "auto";
+  return window.matchMedia(
+    "(min-width: 768px) and (hover: hover) and (pointer: fine)",
+  ).matches
+    ? "smooth"
+    : "auto";
+}
+
+/**
  * 全站金額格式：NT.1,680（NT. 與數字不留空白，千分位逗號）
  * 例：NT.850、NT.1,680
  */

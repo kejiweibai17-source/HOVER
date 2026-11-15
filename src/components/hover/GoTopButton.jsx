@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useLenis } from "lenis/react";
 import HoverIcon from "@/components/hover/HoverIcon";
+import { pageScrollBehavior } from "@/lib/utils";
 
 const SHOW_AFTER = 320;
 
@@ -26,7 +27,7 @@ export default function GoTopButton() {
   }, []);
 
   const scrollToTop = () => {
-    window.scrollTo({ top: 0, behavior: "smooth" });
+    window.scrollTo({ top: 0, behavior: pageScrollBehavior() });
   };
 
   if (!visible) return null;

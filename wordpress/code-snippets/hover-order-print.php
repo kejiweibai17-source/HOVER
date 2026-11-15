@@ -26,7 +26,7 @@ if (defined('HOP_LOADED')) {
 define('HOP_LOADED', true);
 
 /** 官方 LINE（與官網／信件 footer 一致） */
-const HOP_LINE_ID = '@330kefmm';
+const HOP_LINE_ID = '@hover.tw';
 
 /* ─────────────────────────────────────────────
  * 1. 訂單列表：加「明細」「揀貨」按鈕

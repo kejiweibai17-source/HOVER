@@ -51,7 +51,8 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
         <HoverHeader hideAnnouncement={hideAnnouncement} />
 
         {/* Page content — offset for fixed header height (116px) */}
-        <main className="bg-hover-bg pt-[var(--hover-header-height,116px)] transition-[padding-top] duration-500 ease-out">
+        {/* padding 過渡只在桌機：手機 header 高度變動若加 transition 會連內容一起晃 */}
+        <main className="bg-hover-bg pt-[var(--hover-header-height,116px)] md:transition-[padding-top] md:duration-500 md:ease-out">
           {children}
         </main>
 

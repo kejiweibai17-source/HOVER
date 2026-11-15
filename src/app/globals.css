@@ -172,7 +172,14 @@ canvas {
   }
 }
 
-/* Lenis smooth scroll */
+/* 手機／觸控：強制原生即時捲動（取消整體平滑柔潤感） */
+@media (max-width: 767px), (hover: none) and (pointer: coarse) {
+  html {
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Lenis smooth scroll（僅桌機掛載時會加上 .lenis） */
 html.lenis,
 html.lenis body {
   height: auto;

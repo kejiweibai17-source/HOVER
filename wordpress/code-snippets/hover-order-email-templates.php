@@ -31,9 +31,9 @@ define('HOVER_ORDER_EMAIL_TEMPLATES_LOADED', true);
 const HOET_SITE_URL = 'https://hoverofficial.com';
 /** 會員訂單頁 */
 const HOET_ACCOUNT_ORDERS_URL = 'https://hoverofficial.com/account?tab=orders';
-/** 官方 LINE（HOVER Basic ID @330kefmm） */
-const HOET_LINE_ID = '@330kefmm';
-const HOET_LINE_URL = 'https://line.me/R/ti/p/@330kefmm';
+/** 官方 LINE（HOVER Basic ID @hover.tw） */
+const HOET_LINE_ID = '@hover.tw';
+const HOET_LINE_URL = 'https://line.me/R/ti/p/@hover.tw';
 /** 品牌綠 */
 const HOET_GREEN = '#2a514d';
 /** 信件標誌寬度 */
@@ -857,7 +857,7 @@ function hoet_footer_html(): string
 }
 
 /**
- * 移除信件常見服務套語；頁尾「HOVER 官方 LINE」補上可點擊連結（@330kefmm）
+ * 移除信件常見服務套語；頁尾「HOVER 官方 LINE」補上可點擊連結（@hover.tw）
  */
 function hoet_strip_service_phrase(string $html): string
 {

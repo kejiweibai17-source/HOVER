@@ -39,7 +39,7 @@ define('HOVER_REFUND_EMAIL_TEMPLATES_LOADED', true);
 const HRET_GREEN = '#2a514d';
 const HRET_SITE_URL = 'https://hoverofficial.com';
 const HRET_ACCOUNT_ORDERS_URL = 'https://hoverofficial.com/account?tab=orders';
-const HRET_LINE_URL = 'https://line.me/R/ti/p/@330kefmm';
+const HRET_LINE_URL = 'https://line.me/R/ti/p/@hover.tw';
 const HRET_META_FULFILLMENT = '_hover_refund_fulfillment';
 
 /* -------------------------------------------------------------------------- */

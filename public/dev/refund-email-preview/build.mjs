@@ -6,7 +6,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const G = "#2a514d";
 const LOGO = "/images/logo/title-logo.png";
 const SITE = "https://hoverofficial.com";
-const LINE = "https://line.me/R/ti/p/@330kefmm";
+const LINE = "https://line.me/R/ti/p/@hover.tw";
 const ORDERS = "https://hoverofficial.com/account?tab=orders";
 
 const check = `

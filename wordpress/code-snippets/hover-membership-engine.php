@@ -46,10 +46,10 @@ const HME_CODE_WELCOME = 'HOVER100';
 const HME_CODE_BDAY_FRIENDS = 'HBDAY100';
 const HME_CODE_BDAY_EXCLUSIVE = 'VIPBDAY300';
 
-/** 與官網／訂單信共用：官方 LINE @330kefmm */
+/** 與官網／訂單信共用：官方 LINE @hover.tw */
 const HME_SITE_URL = 'https://hoverofficial.com';
-const HME_LINE_ID = '@330kefmm';
-const HME_LINE_URL = 'https://line.me/R/ti/p/@330kefmm';
+const HME_LINE_ID = '@hover.tw';
+const HME_LINE_URL = 'https://line.me/R/ti/p/@hover.tw';
 const HME_BRAND_GREEN = '#2a514d';
 
 /** 正規化台灣手機為 09xxxxxxxx（僅數字） */

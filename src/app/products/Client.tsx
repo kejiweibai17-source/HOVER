@@ -28,6 +28,7 @@ import {
 import ProductCardPrice from "@/components/hover/ProductCardPrice";
 import { pickProductHoverImage } from "@/lib/productCardImages";
 import ColorSwatch from "@/components/hover/ColorSwatch";
+import { pageScrollBehavior } from "@/lib/utils";
 
 type ProductsCategoryMeta = Record<
   string,
@@ -662,7 +663,10 @@ export default function Client({
     setCurrentPage(1);
     setFilterOpen(false);
     setTimeout(() => {
-      gridRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      gridRef.current?.scrollIntoView({
+        behavior: pageScrollBehavior(),
+        block: "start",
+      });
     }, 50);
   }, [draftFilters]);
 
@@ -775,7 +779,7 @@ export default function Client({
                     total={totalPages}
                     onChange={(p) => {
                       setCurrentPage(p);
-                      window.scrollTo({ top: 0, behavior: "smooth" });
+                      window.scrollTo({ top: 0, behavior: pageScrollBehavior() });
                     }}
                   />
                 )}
@@ -856,7 +860,7 @@ export default function Client({
                   total={totalPages}
                   onChange={(p) => {
                     setCurrentPage(p);
-                    window.scrollTo({ top: 0, behavior: "smooth" });
+                    window.scrollTo({ top: 0, behavior: pageScrollBehavior() });
                   }}
                 />
               )}

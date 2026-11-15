@@ -5,10 +5,10 @@
 export const HOVER_SUPPORT_EMAIL = "service@hoverofficial.com";
 
 /** 官方 LINE Basic ID（搜尋／文案顯示用） */
-export const HOVER_LINE_OA_ID = "@330kefmm";
+export const HOVER_LINE_OA_ID = "@hover.tw";
 
 /** 官方 LINE 加好友連結 */
 export const HOVER_LINE_OA =
-  "https://line.me/R/ti/p/@330kefmm" as const;
+  "https://line.me/R/ti/p/@hover.tw" as const;
 
 export const HOVER_SITE_URL = "https://hoverofficial.com";
