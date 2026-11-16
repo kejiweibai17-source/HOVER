@@ -15,7 +15,9 @@ import {
 } from "@/lib/woo";
 import { fetchCategoryBannerSettings } from "@/lib/categoryBannerDefaults";
 import { buildProductFilterOptions } from "@/lib/productFilters";
-import { buildPublicPageMetadata } from "@/lib/seo";
+import { buildPublicPageMetadata, getSiteUrl } from "@/lib/seo";
+
+const SITE_URL = getSiteUrl();
 
 /**
  * 不在 Server 讀 searchParams（否則整頁變 dynamic、無法 ISR）。

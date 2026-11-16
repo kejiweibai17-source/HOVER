@@ -7,30 +7,64 @@ import {
   isConstructionPassthrough,
 } from "@/lib/siteConstruction";
 
-/** Facebook App 審核需可讀取的政策頁（其餘維持 noindex） */
-const INDEXABLE = new Set([
+/** 建置中仍允許索引的政策頁 */
+const INDEXABLE_DURING_CONSTRUCTION = new Set([
   "/privacy",
   "/terms",
   "/data-deletion",
   "/fb-data-deletion.html",
 ]);
 
+/** 正式上線後仍不收錄的私有路徑 */
+const PRIVATE_NOINDEX_PREFIXES = [
+  "/account",
+  "/cart",
+  "/checkout",
+  "/admin",
+  "/api",
+  "/login",
+  "/register",
+  "/forgot-password",
+  "/reset-password",
+  "/verify-email",
+  "/thank-you",
+  "/preview",
+  "/coming-soon",
+  "/auth",
+];
+
 const PREVIEW_COOKIE_MAX_AGE = 60 * 60 * 24 * 14; // 14 天
+
+function isPrivateNoindexPath(path: string): boolean {
+  return PRIVATE_NOINDEX_PREFIXES.some(
+    (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+  );
+}
 
 function applyRobotsHeader(
   path: string,
   response: NextResponse,
   constructionOn: boolean,
 ) {
-  // 建置中：僅政策頁可索引；正式上線後不再強制 noindex
-  if (constructionOn && !INDEXABLE.has(path)) {
+  // 建置中：僅政策頁可索引
+  if (constructionOn && !INDEXABLE_DURING_CONSTRUCTION.has(path)) {
     response.headers.set(
       "X-Robots-Tag",
       "noindex, nofollow, noarchive, nosnippet",
     );
-  } else if (INDEXABLE.has(path) || !constructionOn) {
-    response.headers.set("X-Robots-Tag", "index, follow");
+    return response;
   }
+
+  // 正式上線：公開頁可索引；會員／結帳等私有頁維持 noindex
+  if (!constructionOn && isPrivateNoindexPath(path)) {
+    response.headers.set(
+      "X-Robots-Tag",
+      "noindex, nofollow, noarchive, nosnippet",
+    );
+    return response;
+  }
+
+  response.headers.set("X-Robots-Tag", "index, follow");
   return response;
 }
 
