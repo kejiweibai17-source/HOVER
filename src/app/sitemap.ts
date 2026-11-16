@@ -27,7 +27,7 @@ export default async function sitemap() {
       .filter((product) => product?.slug)
       .map((product) => ({
         url: `${siteUrl}/products/${product.slug}`,
-        lastModified: new Date(product.date_modified || now),
+        lastModified: now,
         changeFrequency: "weekly" as const,
         priority: 0.9,
       }));
