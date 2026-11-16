@@ -250,9 +250,9 @@ export function resolveOrderDisplayPhase(order: OrderLike): OrderDisplayPhase {
     return "returned";
   }
 
+  // 真實貨態（到店／取件／逾期）優先；與 WC 是否 completed 無關
   if (phase === "arrived" || phase === "picked") return "arrived";
   if (phase === "unclaimed") return "arrived"; // 仍顯示已到貨語意，或可另標逾期
-  if (phase === "shipped") return "shipped";
 
   if (statusKey.includes("at-cvs") || statusKey.includes("wait-pick")) {
     return "arrived";
@@ -260,10 +260,14 @@ export function resolveOrderDisplayPhase(order: OrderLike): OrderDisplayPhase {
   if (statusKey.includes("out-cvs") || statusKey.includes("overdue")) {
     return "arrived";
   }
-  if (statusKey.includes("transport")) return "shipped";
 
-  if (s === "completed") return "shipped";
+  // 前台「已出貨」＝後台改為 completed（出貨）後才顯示。
+  // 綠界取號／RtnCode 300「訂單處理中」常提早寫入 logistics_phase=shipped，不可蓋過 processing。
   if (s === "processing" || s === "paid") return "processing";
+
+  if (phase === "shipped") return "shipped";
+  if (statusKey.includes("transport")) return "shipped";
+  if (s === "completed") return "shipped";
 
   return "other";
 }

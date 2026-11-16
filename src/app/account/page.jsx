@@ -350,9 +350,12 @@ function StatusPill({ status, type = "order" }) {
       label = "處理中";
       tone = "bg-[#ffea8a] text-[#8a6116] border-transparent";
       dotColor = "fill-[#8a6116]";
+    } else if (s === "paid" || s === "已付款") {
+      label = "已付款";
+      tone = "bg-[#d7e8f5] text-[#2a5a7a] border-transparent";
+      dotColor = "fill-[#2a5a7a]";
     } else if (
       s === "completed" ||
-      s === "paid" ||
       s === "已完成" ||
       s === "已出貨" ||
       s === "已到貨"

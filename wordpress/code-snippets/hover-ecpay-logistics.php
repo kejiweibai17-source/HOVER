@@ -490,12 +490,9 @@ add_action('ry_ecpay_shipping_get_cvs_no', function ($ipn = null, $shipping_info
             }
         }
     }
+    // 只存店到店／物流編號；取號 ≠ 已出貨。
+    // 前台「已出貨」改由後台將訂單設為 completed（或側欄「標記已出貨」）觸發。
     hel_save_cvs_meta($order, $fields, true);
-
-    $prev = (string) $order->get_meta('_hel_LogisticsPhase');
-    if (!in_array($prev, ['arrived', 'picked', 'unclaimed'], true)) {
-        hel_set_phase($order, 'shipped', '', 'RY 已取得物流編號');
-    }
 }, 20, 3);
 
 /** 整單批次取得編號後再掃一次 */
@@ -638,11 +635,12 @@ function hel_frontend_phase(WC_Order $order): string
     if (in_array($phase, ['arrived', 'picked', 'unclaimed'], true)) {
         return 'arrived';
     }
-    if ($phase === 'shipped' || $status === 'completed') {
-        return 'shipped';
-    }
+    // 取號／綠界「訂單處理中」可能提早寫入 shipped；processing 期間前台仍顯示處理中
     if (in_array($status, ['processing', 'pending', 'on-hold'], true)) {
         return 'processing';
+    }
+    if ($phase === 'shipped' || $status === 'completed') {
+        return 'shipped';
     }
     return $status ?: 'other';
 }
