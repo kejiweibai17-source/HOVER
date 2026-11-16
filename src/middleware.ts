@@ -156,8 +156,8 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  // 略過靜態資源與 Next 內部路徑
+  // 略過靜態資源、驗證檔、sitemap／robots（避免干擾 Google 擷取）
   matcher: [
-    "/((?!_next/static|_next/image|images/|favicon.ico|icon.png|icon-48.png|apple-touch-icon.png|fonts/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?|ttf)$).*)",
+    "/((?!_next/static|_next/image|images/|fonts/|favicon.ico|icon.png|icon-48.png|apple-touch-icon.png|robots.txt|sitemap.xml|google[^/]*\\.html|fb-data-deletion.html|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|woff2?|ttf|xml|txt)$).*)",
   ],
 };
