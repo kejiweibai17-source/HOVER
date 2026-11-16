@@ -1,40 +1,49 @@
 // app/layout.tsx  — Server Component root layout (App Router)
 import type { Metadata } from "next";
 import { isConstructionModeEnabled } from "@/lib/siteConstruction";
+import {
+  DEFAULT_DESCRIPTION,
+  INDEXABLE_ROBOTS,
+  NOINDEX_ROBOTS,
+  SITE_NAME,
+  getSiteUrl,
+} from "@/lib/seo";
 import "./fonts.css";
 import "./globals.css";
 import ClientLayout from "./ClientLayout";
 
 export async function generateMetadata(): Promise<Metadata> {
   const constructionOn = isConstructionModeEnabled();
+  const siteUrl = getSiteUrl();
+  const title = `${SITE_NAME}｜只為經典而生`;
 
   return {
-    metadataBase: new URL(
-      process.env.NEXT_PUBLIC_SITE_URL ||
-        (process.env.NEXT_PUBLIC_VERCEL_URL
-          ? `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`
-          : "http://localhost:3000"),
-    ),
-    title: "HOVER｜只為經典而生",
-    description:
-      "探索 HOVER 服飾、帽款、襪子與包袋。以中性設計、舒適剪裁與簡約質感，讓每一件單品自在融入生活，陪你走過每個日常。",
-    // 建置中：不進搜尋；正式上線（SITE_CONSTRUCTION_MODE=0）後開放索引
-    robots: constructionOn
-      ? {
-          index: false,
-          follow: false,
-          nocache: true,
-          googleBot: {
-            index: false,
-            follow: false,
-            noimageindex: true,
-            nosnippet: true,
-          },
-        }
-      : {
-          index: true,
-          follow: true,
+    metadataBase: new URL(siteUrl),
+    title,
+    description: DEFAULT_DESCRIPTION,
+    applicationName: SITE_NAME,
+    // 建置中：不進搜尋；正式上線後全站預設允許收錄（私有頁可再覆寫 noindex）
+    robots: constructionOn ? NOINDEX_ROBOTS : INDEXABLE_ROBOTS,
+    openGraph: {
+      type: "website",
+      locale: "zh_TW",
+      url: siteUrl,
+      siteName: SITE_NAME,
+      title,
+      description: DEFAULT_DESCRIPTION,
+      images: [
+        {
+          url: "/images/hover/hero.jpg",
+          alt: "HOVER 品牌主視覺",
         },
+      ],
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description: DEFAULT_DESCRIPTION,
+      images: ["/images/hover/hero.jpg"],
+    },
     icons: {
       icon: [
         { url: "/favicon.ico", sizes: "16x16 32x32 48x48", type: "image/x-icon" },

@@ -1,26 +1,16 @@
 import { Metadata } from "next";
 import Link from "next/link";
+import { buildPublicPageMetadata } from "@/lib/seo";
 
 export const revalidate = 60;
 
-const getSiteUrl = () => {
-  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
-  if (process.env.NEXT_PUBLIC_VERCEL_URL)
-    return `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`;
-  return "http://localhost:3000";
-};
-
-const SITE_URL = getSiteUrl();
-
-export const metadata: Metadata = {
-  metadataBase: new URL(SITE_URL),
+export const metadata: Metadata = buildPublicPageMetadata({
   title: "資料刪除說明｜HOVER",
   description:
     "說明如何申請刪除 HOVER 透過 Facebook 登入所取得的個人資料。",
-  alternates: { canonical: "/data-deletion" },
-  // Facebook App 審核會驗證此網址；其餘頁面仍維持 noindex
-  robots: { index: true, follow: true },
-};
+  path: "/data-deletion",
+  keywords: ["HOVER", "資料刪除", "Facebook"],
+});
 
 export default function DataDeletionPage() {
   return (

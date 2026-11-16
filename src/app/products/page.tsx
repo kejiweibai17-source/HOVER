@@ -15,9 +15,7 @@ import {
 } from "@/lib/woo";
 import { fetchCategoryBannerSettings } from "@/lib/categoryBannerDefaults";
 import { buildProductFilterOptions } from "@/lib/productFilters";
-
-const SITE_URL =
-  process.env.NEXT_PUBLIC_SITE_URL || "http://localhost:3000";
+import { buildPublicPageMetadata } from "@/lib/seo";
 
 /**
  * 不在 Server 讀 searchParams（否則整頁變 dynamic、無法 ISR）。
@@ -26,28 +24,13 @@ const SITE_URL =
 /** 商品列表 60 秒 ISR，與 PDP／Woo fetch 對齊，換圖較快出現 */
 export const revalidate = 60;
 
-export const metadata: Metadata = {
-  metadataBase: new URL(SITE_URL),
+export const metadata: Metadata = buildPublicPageMetadata({
   title: "所有商品｜HOVER",
   description:
     "探索 HOVER 全系列服飾、帽款、襪子與包袋，以舒適剪裁與簡約質感，陪伴每個日常。",
-  alternates: { canonical: "/products" },
-  openGraph: {
-    type: "website",
-    locale: "zh_TW",
-    url: "/products",
-    siteName: "HOVER",
-    title: "所有商品｜HOVER",
-    description:
-      "探索 HOVER 全系列服飾、帽款、襪子與包袋，以舒適剪裁與簡約質感，陪伴每個日常。",
-  },
-  twitter: {
-    card: "summary",
-    title: "所有商品｜HOVER",
-    description:
-      "探索 HOVER 全系列服飾、帽款、襪子與包袋，以舒適剪裁與簡約質感，陪伴每個日常。",
-  },
-};
+  path: "/products",
+  keywords: ["HOVER", "服飾", "商品", "帽款", "襪子", "包袋"],
+});
 
 type ProductsCategoryMeta = Record<
   string,

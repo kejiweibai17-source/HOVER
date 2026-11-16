@@ -10,6 +10,12 @@ Disallow: /api
 Disallow: /api/
 Disallow: /login
 Disallow: /register
+Disallow: /forgot-password
+Disallow: /reset-password
+Disallow: /verify-email
+Disallow: /thank-you
 Disallow: /preview
+Disallow: /coming-soon
+Disallow: /auth/
 
 Sitemap: https://www.hoverofficial.com/sitemap.xml

@@ -10,14 +10,12 @@ import { fetchCategoryTiles } from "@/lib/categoryGridDefaults";
 import { fetchPeopleSlides } from "@/lib/peopleDefaults";
 import { fetchHomeCarouselProducts } from "@/lib/homeProductsDefaults";
 import { fetchShippingSettings } from "@/lib/shippingDefaults";
-
-// 🌟 1. 動態獲取網址，解決本地端與正式機網址判定問題
-const getSiteUrl = () => {
-  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
-  if (process.env.NEXT_PUBLIC_VERCEL_URL)
-    return `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`;
-  return "http://localhost:3000";
-};
+import {
+  DEFAULT_DESCRIPTION,
+  INDEXABLE_ROBOTS,
+  SITE_NAME,
+  getSiteUrl,
+} from "@/lib/seo";
 
 const SITE_URL = getSiteUrl();
 
@@ -42,9 +40,8 @@ async function getHomeFaqs() {
   ];
 }
 
-const HOME_TITLE = "HOVER｜只為經典而生";
-const HOME_DESCRIPTION =
-  "探索 HOVER 服飾、帽款、襪子與包袋。以中性設計、舒適剪裁與簡約質感，讓每一件單品自在融入生活，陪你走過每個日常。";
+const HOME_TITLE = `${SITE_NAME}｜只為經典而生`;
+const HOME_DESCRIPTION = DEFAULT_DESCRIPTION;
 
 export async function generateMetadata() {
   const hero = await fetchHeroSettings();
@@ -56,12 +53,13 @@ export async function generateMetadata() {
     metadataBase: new URL(SITE_URL),
     title: HOME_TITLE,
     description: HOME_DESCRIPTION,
+    robots: INDEXABLE_ROBOTS,
     alternates: { canonical: "/" },
     openGraph: {
       type: "website",
       locale: "zh_TW",
       url: "/",
-      siteName: "HOVER",
+      siteName: SITE_NAME,
       title: HOME_TITLE,
       description: HOME_DESCRIPTION,
       images: [

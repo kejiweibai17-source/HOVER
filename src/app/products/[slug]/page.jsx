@@ -174,6 +174,17 @@ export async function generateMetadata({ params }) {
     metadataBase: new URL(SITE_URL), // 核心：設定 base URL，解決 localhost 與正式機圖片路徑問題
     title,
     description: descText,
+    robots: {
+      index: true,
+      follow: true,
+      googleBot: {
+        index: true,
+        follow: true,
+        "max-image-preview": "large",
+        "max-snippet": -1,
+        "max-video-preview": -1,
+      },
+    },
     keywords: [
       p.name,
       "HOVER",

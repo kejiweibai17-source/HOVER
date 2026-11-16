@@ -16,34 +16,12 @@ const getSiteUrl = () => {
 const SITE_URL = getSiteUrl();
 
 export const metadata = {
-  title: "購物袋｜HOVER｜只為經典而生",
+  title: "購物袋｜HOVER",
   description: "查看您在 HOVER 服飾選購的商品，確認數量與金額後完成結帳。",
-  keywords: ["HOVER", "服飾", "購物袋", "結帳"],
-  alternates: {
-    canonical: `${SITE_URL}/cart`,
-  },
-  openGraph: {
-    type: "website",
-    url: `${SITE_URL}/cart`,
-    siteName: "HOVER 威爾特",
-    title: "購物袋｜HOVER｜只為經典而生",
-    description:
-      "查看您在 HOVER 服飾選購的商品，確認數量與金額後完成結帳。",
-    images: [
-      {
-        url: "/images/hover/hero.jpg",
-        width: 1600,
-        height: 900,
-        alt: "HOVER 購物袋",
-      },
-    ],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "購物袋｜HOVER｜只為經典而生",
-    description:
-      "查看您在 HOVER 服飾選購的商品，確認數量與金額後完成結帳。",
-    images: ["/images/hover/hero.jpg"],
+  robots: {
+    index: false,
+    follow: false,
+    nocache: true,
   },
 };
 

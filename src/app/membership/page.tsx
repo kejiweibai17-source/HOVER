@@ -1,24 +1,16 @@
 import { Metadata } from "next";
 import MembershipClient from "./client";
+import { buildPublicPageMetadata } from "@/lib/seo";
 
 export const revalidate = 300;
 
-const getSiteUrl = () => {
-  if (process.env.NEXT_PUBLIC_SITE_URL) return process.env.NEXT_PUBLIC_SITE_URL;
-  if (process.env.NEXT_PUBLIC_VERCEL_URL)
-    return `https://${process.env.NEXT_PUBLIC_VERCEL_URL}`;
-  return "http://localhost:3000";
-};
-
-const SITE_URL = getSiteUrl();
-
-export const metadata: Metadata = {
-  metadataBase: new URL(SITE_URL),
+export const metadata: Metadata = buildPublicPageMetadata({
   title: "會員制度｜HOVER",
   description:
     "加入 HOVER 會員，享有入會禮、生日禮、會員優惠與消費累積升等，了解完整會員權益與專屬福利。",
-  alternates: { canonical: "/membership" },
-};
+  path: "/membership",
+  keywords: ["HOVER", "會員制度", "會員優惠", "購物金"],
+});
 
 export default function MembershipPage() {
   return <MembershipClient />;
