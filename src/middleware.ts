@@ -17,14 +17,19 @@ const INDEXABLE = new Set([
 
 const PREVIEW_COOKIE_MAX_AGE = 60 * 60 * 24 * 14; // 14 天
 
-function applyRobotsHeader(path: string, response: NextResponse) {
-  if (INDEXABLE.has(path)) {
-    response.headers.set("X-Robots-Tag", "index, follow");
-  } else {
+function applyRobotsHeader(
+  path: string,
+  response: NextResponse,
+  constructionOn: boolean,
+) {
+  // 建置中：僅政策頁可索引；正式上線後不再強制 noindex
+  if (constructionOn && !INDEXABLE.has(path)) {
     response.headers.set(
       "X-Robots-Tag",
       "noindex, nofollow, noarchive, nosnippet",
     );
+  } else if (INDEXABLE.has(path) || !constructionOn) {
+    response.headers.set("X-Robots-Tag", "index, follow");
   }
   return response;
 }
@@ -71,7 +76,7 @@ export function middleware(request: NextRequest) {
         ...previewCookieOpts(0),
         maxAge: 0,
       });
-      return applyRobotsHeader(path, res);
+      return applyRobotsHeader(path, res, constructionOn);
     }
 
     if (secret && key && key === secret) {
@@ -79,12 +84,12 @@ export function middleware(request: NextRequest) {
       const safe = next.startsWith("/") ? next : "/";
       const res = NextResponse.redirect(new URL(safe, request.url));
       res.cookies.set(SITE_PREVIEW_COOKIE, secret, previewCookieOpts(PREVIEW_COOKIE_MAX_AGE));
-      return applyRobotsHeader(path, res);
+      return applyRobotsHeader(path, res, constructionOn);
     }
 
     // 錯誤密鑰 → 建置中頁
     const res = NextResponse.redirect(new URL("/coming-soon", request.url));
-    return applyRobotsHeader(path, res);
+    return applyRobotsHeader(path, res, constructionOn);
   }
 
   // ── 建置中閘門 ──────────────────────────────────────────────
@@ -99,12 +104,12 @@ export function middleware(request: NextRequest) {
         );
       }
       const res = NextResponse.redirect(new URL("/coming-soon", request.url));
-      return applyRobotsHeader(path, res);
+      return applyRobotsHeader(path, res, constructionOn);
     }
   }
 
   const response = NextResponse.next();
-  return applyRobotsHeader(path, response);
+  return applyRobotsHeader(path, response, constructionOn);
 }
 
 export const config = {

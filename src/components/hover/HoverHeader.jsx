@@ -139,22 +139,18 @@ export default function HoverHeader({
   useEffect(() => {
     if (!menuOpen) return;
 
+    // 避免 body position:fixed 造成手機 navbar 上方／區塊間留白
     const scrollY = window.scrollY;
+    const html = document.documentElement;
     lenis?.stop();
-    document.body.style.position = "fixed";
-    document.body.style.top = `-${scrollY}px`;
-    document.body.style.left = "0";
-    document.body.style.right = "0";
-    document.body.style.width = "100%";
+    const prevHtmlOverflow = html.style.overflow;
+    const prevBodyOverflow = document.body.style.overflow;
+    html.style.overflow = "hidden";
     document.body.style.overflow = "hidden";
 
     return () => {
-      document.body.style.position = "";
-      document.body.style.top = "";
-      document.body.style.left = "";
-      document.body.style.right = "";
-      document.body.style.width = "";
-      document.body.style.overflow = "";
+      html.style.overflow = prevHtmlOverflow;
+      document.body.style.overflow = prevBodyOverflow;
       lenis?.start();
       window.scrollTo(0, scrollY);
     };

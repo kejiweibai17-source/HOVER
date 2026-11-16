@@ -56,7 +56,7 @@ export default function AnnouncementTicker({
       {href && href !== "#" ? (
         <Link
           href={href}
-          className="flex h-full w-full items-center justify-center my-3 px-4  transition-opacity hover:opacity-80"
+          className="flex h-full w-full items-center justify-center px-4 transition-opacity hover:opacity-80"
         >
           {inner}
         </Link>

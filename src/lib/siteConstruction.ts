@@ -7,6 +7,9 @@
  *
  * 測試網址：https://hoverofficial.com/preview?key=<SITE_PREVIEW_SECRET>
  * 會寫入 Cookie，之後同瀏覽器可正常購物／付款。
+ *
+ * 正式上線：將 Vercel Production 的 SITE_CONSTRUCTION_MODE 設為 0 並 redeploy
+ *（可用 scripts/go-live-public.sh；Mac Mini launchd 已排 11/16 12:00）。
  */
 
 export const SITE_PREVIEW_COOKIE = "hover_site_preview";
