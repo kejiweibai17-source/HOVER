@@ -8,6 +8,7 @@ import {
   SITE_NAME,
   getSiteUrl,
 } from "@/lib/seo";
+import GoogleTagManager from "@/components/GoogleTagManager";
 import "./fonts.css";
 import "./globals.css";
 import ClientLayout from "./ClientLayout";
@@ -63,6 +64,7 @@ export default function RootLayout({
   return (
     <html lang="zh-Hant">
       <body className="min-h-screen bg-hover-bg font-sans text-slate-900 antialiased">
+        <GoogleTagManager />
         <ClientLayout>{children}</ClientLayout>
       </body>
     </html>
