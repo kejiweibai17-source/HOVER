@@ -930,7 +930,8 @@ function OrderDetail({
       tip = "商品因逾期未取已依物流規定退回，客服將視情況與您聯繫。";
     } else if (logistics === "arrived" || displayPhase === "arrived") {
       tip = "商品已送達取貨門市，請於期限內完成取貨。";
-    } else if (logistics === "shipped" || displayPhase === "shipped") {
+    } else if (displayPhase === "shipped") {
+      // 僅後台 completed／標記已出貨；不因提早寫入的 logistics shipped 顯示
       tip = "商品已出貨，請留意物流與取貨通知。";
     }
 
