@@ -65,6 +65,15 @@ export function middleware(request: NextRequest) {
   const constructionOn = isConstructionModeEnabled();
   const secret = getPreviewSecret();
 
+  // 正式上線後：建置中頁不再對外，避免 LINE／社群仍抓到舊 SEO
+  if (!constructionOn && (path === "/coming-soon" || path.startsWith("/coming-soon/"))) {
+    return applyRobotsHeader(
+      path,
+      NextResponse.redirect(new URL("/", request.url), 308),
+      constructionOn,
+    );
+  }
+
   // ── 解鎖／關閉預覽 ──────────────────────────────────────────
   if (path === "/preview") {
     const key = (request.nextUrl.searchParams.get("key") || "").trim();

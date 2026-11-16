@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 import Image from "next/image";
 
 export const metadata: Metadata = {
-  title: "HOVER｜網站建置中",
-  description: "HOVER 官方網站建置中，即將開放。",
+  // 僅建置閘門期間內部使用；正式上線後 middleware 會導回首頁
+  title: "HOVER｜只為經典而生",
+  description:
+    "探索 HOVER 服飾、帽款、襪子與包袋。以中性設計、舒適剪裁與簡約質感，讓每一件單品自在融入生活，陪你走過每個日常。",
   robots: { index: false, follow: false },
 };
 
