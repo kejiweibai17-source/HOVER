@@ -225,10 +225,7 @@ export default function HoverHeader({
         className="fixed inset-x-0 top-0 z-[1000]"
         style={{ backgroundColor: bgColor }}
       >
-        {/* 手機 — 頂部留白 */}
-        <div className="h-5 w-full bg-white md:hidden" aria-hidden />
-
-        {/* 手機 — 公告列 */}
+        {/* 手機 — 公告列（貼齊視窗頂端，不留白） */}
         {!hideAnnouncement && showAnnouncement && (
           <div
             className="flex h-10 w-full items-center justify-center md:hidden"
