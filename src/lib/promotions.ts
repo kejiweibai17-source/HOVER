@@ -1,3 +1,5 @@
+import { resolveWooPrices } from "@/lib/productPricing";
+
 export type PromotionType = "gift" | "addon";
 
 export type PromotionProduct = {
@@ -170,13 +172,30 @@ export async function fetchPromotionRules(options?: {
 
 type PromotionProductFact = {
   categories: number[];
+  /** Woo 目前應付現價（特價期間＝特價；恢復原價後＝原價） */
   unitPrice: number;
 };
+
+/**
+ * 滿額贈／加價購門檻累計單價：
+ * 以購物袋最終優惠價為準（與免運進度一致）；不可高於 WC 現價以防灌水。
+ * 特價結束後購物袋／WC 皆回原價，差額自然改以原價計算。
+ */
+export function qualifyingUnitPrice(
+  item: PromotionCartItem,
+  fact: PromotionProductFact,
+): number {
+  const claimed = Number(item.price);
+  const hasClaimed = Number.isFinite(claimed) && claimed >= 0;
+  if (hasClaimed) return Math.min(claimed, fact.unitPrice);
+  return fact.unitPrice;
+}
 
 async function fetchProductFacts(
   base: string,
   auth: string,
   items: PromotionCartItem[],
+  options?: { cache?: RequestCache },
 ): Promise<Map<string, PromotionProductFact>> {
   const result = new Map<string, PromotionProductFact>();
   const uniqueItems = Array.from(
@@ -189,7 +208,14 @@ async function fetchProductFacts(
     ).values(),
   ).filter((item) => item.productId > 0);
 
+  const noStore = options?.cache === "no-store";
   const FACT_REVALIDATE = 30;
+  const fetchInit: RequestInit & { next?: { revalidate: number } } = {
+    headers: { Authorization: auth },
+    ...(noStore
+      ? { cache: "no-store" as RequestCache }
+      : { next: { revalidate: FACT_REVALIDATE } }),
+  };
 
   await Promise.all(
     uniqueItems.map(async ({ productId, variationId }) => {
@@ -197,10 +223,7 @@ async function fetchProductFacts(
       try {
         const productResponse = await fetch(
           `${base.replace(/\/$/, "")}/wp-json/wc/v3/products/${productId}`,
-          {
-            headers: { Authorization: auth },
-            next: { revalidate: FACT_REVALIDATE },
-          },
+          fetchInit,
         );
         if (!productResponse.ok) return;
         const product = await productResponse.json();
@@ -213,15 +236,12 @@ async function fetchProductFacts(
         if (variationId) {
           const variationResponse = await fetch(
             `${base.replace(/\/$/, "")}/wp-json/wc/v3/products/${productId}/variations/${variationId}`,
-            {
-              headers: { Authorization: auth },
-              next: { revalidate: FACT_REVALIDATE },
-            },
+            fetchInit,
           );
           if (!variationResponse.ok) return;
           priceSource = await variationResponse.json();
         }
-        const unitPrice = Number(priceSource?.price);
+        const unitPrice = resolveWooPrices(priceSource).price;
         if (!Number.isFinite(unitPrice) || unitPrice < 0) return;
         result.set(key, { categories, unitPrice });
       } catch {
@@ -242,7 +262,7 @@ export async function evaluatePromotions(
   const base = process.env.WC_API_BASE || process.env.WORDPRESS_API_URL || "";
   const factMap =
     base && auth
-      ? await fetchProductFacts(base, auth, items)
+      ? await fetchProductFacts(base, auth, items, options)
       : new Map<string, PromotionProductFact>();
 
   return rules.map((rule) => {
@@ -267,11 +287,8 @@ export async function evaluatePromotions(
         categories.some((id) => rule.includeCategoryIds.includes(id));
       if (!included) return sum;
 
-      return (
-        sum +
-        fact.unitPrice *
-          Math.max(0, Math.round(Number(item.qty) || 0))
-      );
+      const unit = qualifyingUnitPrice(item, fact);
+      return sum + unit * Math.max(0, Math.round(Number(item.qty) || 0));
     }, 0);
     const remaining = Math.max(0, rule.threshold - qualifyingSubtotal);
     return {
