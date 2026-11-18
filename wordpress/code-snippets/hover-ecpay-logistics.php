@@ -14,6 +14,8 @@
  *    - unclaimed → 商品逾期未取通知
  * 6. 客服「退貨處理中」→ 寄退貨處理中通知（hoet_send_returning_notice）
  * 7. 客服「退貨完成」→ 寄退貨完成通知（hoet_send_returned_notice）
+ * 8. 每 5 分鐘主動反查綠界貨態（QueryLogisticsTradeInfo/V5）
+ *    — 綠界推播非即時；反查可縮短到店／取貨前台空窗
  *
  * Code Snippets → Everywhere → 啟用（更新本檔即可；勿另開 hover-order-actions）
  */
@@ -55,14 +57,15 @@ function hel_map_rtn_phase(string $code, string $msg, string $logistics_type = '
         return 'unclaimed';
     }
     // 取件／簽收／宅配配達完成 → 消費者已收受（鑑賞期起算）
-    if (preg_match('/成功取件|消費者已取|客戶已取|取件完成|已簽收|收件人已收|買家已收|配達買家|貨物配達/u', $msg)) {
+    // 含全家常見「買家已到店取貨」（勿誤判成到店待取）
+    if (preg_match('/成功取件|消費者已取|客戶已取|取件完成|已簽收|收件人已收|買家已收|配達買家|貨物配達|買家已到店取貨|已到店取貨|到店取貨|完成取件/u', $msg)) {
         return 'picked';
     }
     if (preg_match('/配達完成|配送完成|成功送達|貨件配達/u', $msg)) {
         return 'picked';
     }
-    // 僅「到門市待取」— 不算收受
-    if (preg_match('/已送達門市|送達門市|等待取貨|貨到門市|可取貨/u', $msg)) {
+    // 僅「到門市待取」— 不算收受（不含「已到店取貨」）
+    if (preg_match('/已送達門市|送達門市|等待取貨|貨到門市|可取貨|包裹配達取件門市/u', $msg)) {
         return 'arrived';
     }
     // 宅配：訊息較籠統的「已送達」視為已配達簽收
@@ -456,6 +459,20 @@ add_action('woocommerce_order_status_changed', function ($order_id, $from, $to) 
     if (!$order) {
         return;
     }
+    // 後台下拉改「取消」時清掉貨態，避免前台仍顯示已到店／已取貨
+    $to_norm = strtolower(str_replace('_', '-', (string) $to));
+    if (in_array($to_norm, ['cancelled', 'canceled'], true)) {
+        $order->delete_meta_data('_hel_LogisticsPhase');
+        $order->delete_meta_data('_hover_return_status');
+        if (!(string) $order->get_meta('_hover_cancelled_by')) {
+            $order->update_meta_data('_hover_cancelled_by', 'admin');
+        }
+        if (!(string) $order->get_meta('_hover_cancelled_at')) {
+            $order->update_meta_data('_hover_cancelled_at', wp_date('Y-m-d H:i:s'));
+        }
+        $order->save();
+        return;
+    }
     $phase = hel_map_status_phase((string) $to);
     if ($phase) {
         hel_set_phase($order, $phase, '', 'status:' . $to);
@@ -632,7 +649,10 @@ function hel_frontend_phase(WC_Order $order): string
     if (in_array($ret, ['returning', 'processing'], true)) {
         return 'returning';
     }
-    if (in_array($phase, ['arrived', 'picked', 'unclaimed'], true)) {
+    if ($phase === 'picked') {
+        return 'picked';
+    }
+    if ($phase === 'arrived' || $phase === 'unclaimed') {
         return 'arrived';
     }
     // 取號／綠界「訂單處理中」可能提早寫入 shipped；processing 期間前台仍顯示處理中
@@ -650,7 +670,8 @@ function hel_frontend_phase_label(string $phase): string
     $map = [
         'processing' => '處理中',
         'shipped'    => '已出貨',
-        'arrived'    => '已到貨',
+        'arrived'    => '已到店（待取）',
+        'picked'     => '已取貨',
         'returning'  => '退貨處理中',
         'returned'   => '退貨完成',
         'cancelled'  => '已取消',
@@ -685,11 +706,9 @@ function hel_render_order_ops(WC_Order $order): void
     } elseif ($phase === 'shipped') {
         echo ' → 按鈕「聯繫客服」';
     } elseif ($phase === 'arrived') {
-        if ($arrived !== '') {
-            echo ' → 按鈕「申請退貨」（取貨／簽收日起 7 日內）／「聯繫客服」';
-        } else {
-            echo ' → 按鈕「聯繫客服」（到店待取，鑑賞期尚未開始）';
-        }
+        echo ' → 按鈕「聯繫客服」（到店待取，鑑賞期尚未開始）';
+    } elseif ($phase === 'picked') {
+        echo ' → 按鈕「申請退貨」（取貨／簽收日起 7 日內）／「聯繫客服」';
     } else {
         echo ' → 按鈕「聯繫客服」';
     }
@@ -718,7 +737,7 @@ function hel_render_order_ops(WC_Order $order): void
     if ($raw_phase === 'arrived') {
         $ops[] = ['pickup', '標記已取貨／已簽收', 'button button-primary', ''];
     }
-    if ($phase === 'arrived' && $arrived !== '') {
+    if ($phase === 'picked' && $arrived !== '') {
         $ops[] = ['returning', '退貨處理中', 'button', 'color:#6b21a8;border-color:#6b21a8;'];
     }
     if ($phase === 'returning') {
@@ -868,3 +887,342 @@ add_action('admin_post_hel_order_ops', function () {
     wp_safe_redirect($order->get_edit_order_url());
     exit;
 });
+
+/* ── 主動反查貨態（縮短綠界推播延遲） ── */
+
+/** phase 進度：只允許前進，不降級 */
+function hel_phase_rank(?string $phase): int
+{
+    $phase = strtolower((string) $phase);
+    return match ($phase) {
+        'shipped' => 1,
+        'arrived' => 2,
+        'picked', 'unclaimed' => 3,
+        default => 0,
+    };
+}
+
+/**
+ * 從 RY `_ecpay_shipping_info` 同步（免費；hook 漏接時補救）
+ */
+function hel_sync_from_ry_shipping_info(WC_Order $order): bool
+{
+    $list = $order->get_meta('_ecpay_shipping_info', true);
+    if (!is_array($list) || !$list) {
+        return false;
+    }
+    $prev = strtolower((string) $order->get_meta('_hel_LogisticsPhase'));
+    $best_phase = null;
+    $best_code = '';
+    $best_msg = '';
+    foreach ($list as $row) {
+        if (!is_array($row)) {
+            continue;
+        }
+        $code = sanitize_text_field((string) ($row['status'] ?? $row['LogisticsStatus'] ?? ''));
+        $msg  = sanitize_text_field((string) ($row['status_msg'] ?? $row['RtnMsg'] ?? ''));
+        $type = sanitize_text_field((string) ($row['LogisticsType'] ?? ''));
+        $phase = hel_map_rtn_phase($code, $msg, $type);
+        if ($phase === null) {
+            continue;
+        }
+        if (hel_phase_rank($phase) > hel_phase_rank($best_phase)) {
+            $best_phase = $phase;
+            $best_code = $code;
+            $best_msg = $msg !== '' ? $msg : 'RY shipping_info';
+        }
+    }
+    if ($best_phase === null || hel_phase_rank($best_phase) <= hel_phase_rank($prev)) {
+        return false;
+    }
+    hel_set_phase($order, $best_phase, $best_code, $best_msg . '（RY meta 補同步）');
+    return true;
+}
+
+/**
+ * 綠界／RY CheckMac（物流用 md5 + .NET 相容 URL encode）
+ *
+ * @param array<string, scalar> $params
+ */
+function hel_ecpay_logistics_check_mac(array $params, string $hash_key, string $hash_iv): string
+{
+    unset($params['CheckMacValue']);
+    uksort($params, 'strcasecmp');
+    $raw = 'HashKey=' . $hash_key;
+    foreach ($params as $k => $v) {
+        $raw .= '&' . $k . '=' . $v;
+    }
+    $raw .= '&HashIV=' . $hash_iv;
+    $encoded = strtolower(rawurlencode($raw));
+    $encoded = str_replace(
+        ['%2d', '%5f', '%2e', '%21', '%2a', '%28', '%29', '%20'],
+        ['-', '_', '.', '!', '*', '(', ')', '+'],
+        $encoded
+    );
+    return strtoupper(md5($encoded));
+}
+
+/**
+ * @return array{MerchantID:string,HashKey:string,HashIV:string,testmode:bool}|null
+ */
+function hel_ecpay_logistics_api_info(): ?array
+{
+    if (class_exists('RY_WT_WC_ECPay_Shipping') && method_exists('RY_WT_WC_ECPay_Shipping', 'instance')) {
+        try {
+            $info = RY_WT_WC_ECPay_Shipping::instance()->get_api_info();
+            if (!empty($info['MerchantID']) && !empty($info['HashKey']) && !empty($info['HashIV'])) {
+                return [
+                    'MerchantID' => (string) $info['MerchantID'],
+                    'HashKey'    => (string) $info['HashKey'],
+                    'HashIV'     => (string) $info['HashIV'],
+                    'testmode'   => !empty($info['testmode']),
+                ];
+            }
+        } catch (Throwable $e) {
+            // fall through
+        }
+    }
+
+    $info = apply_filters('hel_ecpay_logistics_api_info', null);
+    if (is_array($info)
+        && !empty($info['MerchantID'])
+        && !empty($info['HashKey'])
+        && !empty($info['HashIV'])
+    ) {
+        return [
+            'MerchantID' => (string) $info['MerchantID'],
+            'HashKey'    => (string) $info['HashKey'],
+            'HashIV'     => (string) $info['HashIV'],
+            'testmode'   => !empty($info['testmode']),
+        ];
+    }
+
+    return null;
+}
+
+/**
+ * 查詢綠界物流訂單（優先 RY API；否則自呼 V5）
+ *
+ * @return array<string, string>|null
+ */
+function hel_ecpay_query_logistics(string $logistics_id): ?array
+{
+    $logistics_id = trim($logistics_id);
+    if ($logistics_id === '') {
+        return null;
+    }
+
+    if (class_exists('RY_WT_WC_ECPay_Shipping_Api')
+        && method_exists('RY_WT_WC_ECPay_Shipping_Api', 'instance')
+    ) {
+        try {
+            $result = RY_WT_WC_ECPay_Shipping_Api::instance()->get_info($logistics_id);
+            if (is_array($result) && $result) {
+                return array_map('strval', $result);
+            }
+        } catch (Throwable $e) {
+            // fall through to direct HTTP
+        }
+    }
+
+    $api = hel_ecpay_logistics_api_info();
+    if (!$api) {
+        return null;
+    }
+
+    $url = $api['testmode']
+        ? 'https://logistics-stage.ecpay.com.tw/Helper/QueryLogisticsTradeInfo/V5'
+        : 'https://logistics.ecpay.com.tw/Helper/QueryLogisticsTradeInfo/V5';
+
+    $args = [
+        'MerchantID'        => $api['MerchantID'],
+        'AllPayLogisticsID' => $logistics_id,
+        'TimeStamp'         => (string) time(),
+    ];
+    $args['CheckMacValue'] = hel_ecpay_logistics_check_mac($args, $api['HashKey'], $api['HashIV']);
+
+    $response = wp_remote_post($url, [
+        'timeout' => 20,
+        'body'    => $args,
+        'headers' => [
+            'Content-Type' => 'application/x-www-form-urlencoded',
+        ],
+    ]);
+    if (is_wp_error($response)) {
+        return null;
+    }
+    if ((int) wp_remote_retrieve_response_code($response) !== 200) {
+        return null;
+    }
+
+    $body = (string) wp_remote_retrieve_body($response);
+    if ($body === '' || str_starts_with($body, '0|')) {
+        return null;
+    }
+
+    parse_str($body, $result);
+    if (!is_array($result) || empty($result['LogisticsStatus'])) {
+        return null;
+    }
+
+    return array_map('strval', $result);
+}
+
+/**
+ * 依查詢結果推進單一訂單貨態
+ */
+function hel_apply_query_result(WC_Order $order, array $result): bool
+{
+    $code = sanitize_text_field((string) (
+        $result['LogisticsStatus'] ?? $result['RtnCode'] ?? ''
+    ));
+    $msg = sanitize_text_field((string) (
+        $result['RtnMsg'] ?? $result['LogisticsStatusName'] ?? ''
+    ));
+    $type = sanitize_text_field((string) ($result['LogisticsType'] ?? ''));
+    if (str_contains(strtoupper($type), 'CVS')) {
+        $type = 'CVS';
+    } elseif (str_contains(strtoupper($type), 'HOME')) {
+        $type = 'HOME';
+    }
+    $when = sanitize_text_field((string) ($result['UpdateStatusDate'] ?? ''));
+    $phase = hel_map_rtn_phase($code, $msg, $type);
+    if ($phase === null) {
+        return false;
+    }
+
+    $prev = strtolower((string) $order->get_meta('_hel_LogisticsPhase'));
+    if (hel_phase_rank($phase) <= hel_phase_rank($prev)) {
+        return false;
+    }
+
+    if ($msg === '') {
+        $msg = '綠界反查';
+    } else {
+        $msg .= '（綠界反查）';
+    }
+    hel_set_phase($order, $phase, $code, $msg, $when);
+    return true;
+}
+
+/**
+ * 排程主程式：補同步運送中／已到店訂單
+ */
+function hel_poll_logistics_status(): void
+{
+    if (get_transient('hel_poll_logistics_running')) {
+        return;
+    }
+    set_transient('hel_poll_logistics_running', 1, 4 * MINUTE_IN_SECONDS);
+
+    try {
+        $orders = wc_get_orders([
+            'limit'        => 40,
+            'status'       => ['processing', 'completed', 'on-hold'],
+            'meta_key'     => '_hel_AllPayLogisticsID',
+            'meta_compare' => '!=',
+            'meta_value'   => '',
+            'orderby'      => 'date',
+            'order'        => 'DESC',
+        ]);
+
+        $checked = 0;
+        $updated = 0;
+        foreach ($orders as $order) {
+            if (!$order instanceof WC_Order) {
+                continue;
+            }
+            $phase = strtolower((string) $order->get_meta('_hel_LogisticsPhase'));
+            if (in_array($phase, ['picked', 'unclaimed'], true)) {
+                continue;
+            }
+            // 尚無貨態但已有物流編號 → 仍反查；已取／其他非運送階段略過
+            if ($phase !== '' && !in_array($phase, ['shipped', 'arrived'], true)) {
+                continue;
+            }
+
+            $checked++;
+
+            // 1) 先吃 RY meta（推播寫入 shipping_info 但 HEL hook 漏了）
+            if (hel_sync_from_ry_shipping_info($order)) {
+                $updated++;
+                $phase = strtolower((string) $order->get_meta('_hel_LogisticsPhase'));
+                if (in_array($phase, ['picked', 'unclaimed'], true)) {
+                    continue;
+                }
+            }
+
+            // 2) 打綠界查詢 API
+            $log_id = (string) $order->get_meta('_hel_AllPayLogisticsID');
+            if ($log_id === '') {
+                continue;
+            }
+            $result = hel_ecpay_query_logistics($log_id);
+            if (!$result) {
+                continue;
+            }
+            if (hel_apply_query_result($order, $result)) {
+                $updated++;
+            }
+        }
+
+        if ($checked > 0) {
+            update_option('hel_poll_logistics_last', [
+                'at'      => wp_date('Y-m-d H:i:s'),
+                'checked' => $checked,
+                'updated' => $updated,
+            ], false);
+        }
+    } finally {
+        delete_transient('hel_poll_logistics_running');
+    }
+}
+
+add_filter('cron_schedules', function ($schedules) {
+    if (!isset($schedules['hel_every_five_minutes'])) {
+        $schedules['hel_every_five_minutes'] = [
+            'interval' => 5 * MINUTE_IN_SECONDS,
+            'display'  => '每 5 分鐘（HOVER 貨態反查）',
+        ];
+    }
+    return $schedules;
+});
+
+add_action('hel_poll_logistics_status', 'hel_poll_logistics_status');
+
+add_action('init', function () {
+    if (wp_installing()) {
+        return;
+    }
+    if (function_exists('as_has_scheduled_action') && function_exists('as_schedule_recurring_action')) {
+        if (!as_has_scheduled_action('hel_poll_logistics_status')) {
+            as_schedule_recurring_action(
+                time() + MINUTE_IN_SECONDS,
+                5 * MINUTE_IN_SECONDS,
+                'hel_poll_logistics_status',
+                [],
+                'hover-logistics',
+                true
+            );
+        }
+        return;
+    }
+    if (!wp_next_scheduled('hel_poll_logistics_status')) {
+        wp_schedule_event(time() + MINUTE_IN_SECONDS, 'hel_every_five_minutes', 'hel_poll_logistics_status');
+    }
+});
+
+/** 訂單編輯頁：顯示上次反查結果 */
+add_action('woocommerce_admin_order_data_after_shipping_address', function ($order) {
+    if (!$order instanceof WC_Order) {
+        return;
+    }
+    $last = get_option('hel_poll_logistics_last');
+    if (!is_array($last) || empty($last['at'])) {
+        return;
+    }
+    echo '<p class="form-field" style="clear:both;"><strong>HOVER 貨態反查</strong>：上次 '
+        . esc_html((string) $last['at'])
+        . '（檢查 ' . esc_html((string) ($last['checked'] ?? 0))
+        . '／更新 ' . esc_html((string) ($last['updated'] ?? 0)) . '）</p>';
+}, 30);

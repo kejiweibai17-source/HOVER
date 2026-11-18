@@ -304,7 +304,13 @@ export function getOrderStatusLabel(order: OrderLike): string {
     return getOrderStatusLabelFromPhase(phase);
   }
 
-  if (phase === "cancelled") {
+  // 已取消絕對優先：不可被到店／已取貨等物流 meta 蓋掉（後台用下拉取消時 meta 可能仍在）
+  const status = String(order.status || "").toLowerCase();
+  if (
+    phase === "cancelled" ||
+    status === "cancelled" ||
+    status === "canceled"
+  ) {
     const reason = resolveOrderCancelReason(order);
     if (reason === "atm_expire") return "已取消（逾期未付款）";
     return "已取消";

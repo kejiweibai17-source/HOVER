@@ -13,6 +13,7 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useWishlistStore } from "@/lib/wishlistStore";
 import { wishlistProductHref } from "@/lib/wishlistItem";
 import OptimizedImage from "@/components/hover/OptimizedImage";
+import CartThumbImg from "@/components/cart/CartThumbImg";
 import { taipeiParts } from "@/lib/taipeiTime";
 import {
   formatProductPrice,
@@ -1025,12 +1026,12 @@ function OrderDetail({
               >
                 <div className="relative h-[72px] w-[72px] shrink-0 overflow-hidden bg-[#f5f5f3]">
                   {item.image ? (
-                    <Image
+                    <CartThumbImg
                       src={item.image}
                       alt={displayName}
-                      fill
-                      sizes="72px"
-                      className="object-cover"
+                      width={144}
+                      height={144}
+                      className="h-full w-full object-cover"
                     />
                   ) : (
                     <div className="flex h-full items-center justify-center text-[10px] text-[#aaa]">
@@ -1240,12 +1241,12 @@ function OrderDetail({
                 <div className="flex min-w-0 items-center gap-4">
                   <div className="relative h-[84px] w-[72px] shrink-0 overflow-hidden bg-[#f7f7f5]">
                     {item.image ? (
-                      <Image
+                      <CartThumbImg
                         src={item.image}
                         alt={displayName}
-                        fill
-                        sizes="72px"
-                        className="object-cover"
+                        width={144}
+                        height={168}
+                        className="h-full w-full object-cover"
                       />
                     ) : (
                       <div className="flex h-full items-center justify-center text-[10px] text-[#aaa]">
@@ -1691,6 +1692,20 @@ function AccountPageContent() {
       loadAvailableCoupons();
     }
   }, [loggedIn, loadOrders, loadReferral, loadAvailableCoupons]);
+
+  // 開啟訂單明細時重抓，避免貨態（到店／已取貨）停留在舊快取
+  useEffect(() => {
+    if (!loggedIn || !selectedOrderId) return;
+    loadOrders();
+  }, [loggedIn, selectedOrderId, loadOrders]);
+
+  // 回到頁面時若在訂單分頁，同步最新貨態
+  useEffect(() => {
+    if (!loggedIn || activeTab !== "orders") return;
+    const onFocus = () => loadOrders();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [loggedIn, activeTab, loadOrders]);
 
   const wishlistIdsKey = useMemo(
     () =>

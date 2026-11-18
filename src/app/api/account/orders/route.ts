@@ -382,16 +382,18 @@ export async function GET() {
         const randomColor =
           promotionKind === "gift" &&
           /^(yes|1|true)$/i.test(rawMetaValue(rawMeta, "_hover_random_color"));
+        // 優先完整原圖；前端 CartThumbImg／Photon 再縮成清晰縮圖（勿用 WC 150x150）
+        const image =
+          it.image?.src ||
+          productImages.get(Number(it.product_id || 0)) ||
+          "";
         return {
           name: lineDisplayName(it, randomColor),
           quantity: it.quantity,
           total: it.total,
           subtotal: it.subtotal,
           price: it.price,
-          image:
-            it.image?.src ||
-            productImages.get(Number(it.product_id || 0)) ||
-            "",
+          image,
           product_id: it.product_id || 0,
           variation_id: it.variation_id || 0,
           promotion_kind: promotionKind,
