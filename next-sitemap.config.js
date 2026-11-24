@@ -81,12 +81,17 @@ module.exports = {
 
   // 4. 動態抓取 WooCommerce 產品，塞進實體 sitemap.xml 裡
   additionalPaths: async (config) => {
+    // 首頁 sitelink 候選頁：提高 priority，協助搜尋引擎辨識重要子頁
     const paths = [
-      {
-        loc: "/products",
-        changefreq: "weekly",
-        priority: 0.8,
-      },
+      { loc: "/products", changefreq: "daily", priority: 0.9 },
+      { loc: "/brand", changefreq: "weekly", priority: 0.85 },
+      { loc: "/membership", changefreq: "weekly", priority: 0.85 },
+      { loc: "/how-to-buy", changefreq: "monthly", priority: 0.8 },
+      { loc: "/faq", changefreq: "weekly", priority: 0.8 },
+      { loc: "/returns", changefreq: "monthly", priority: 0.75 },
+      { loc: "/contact", changefreq: "monthly", priority: 0.75 },
+      { loc: "/privacy", changefreq: "yearly", priority: 0.4 },
+      { loc: "/terms", changefreq: "yearly", priority: 0.4 },
       {
         loc: "/products?category=tops",
         changefreq: "weekly",

@@ -1,20 +1,22 @@
 import { Metadata } from "next";
 import Link from "next/link";
-import { buildPublicPageMetadata } from "@/lib/seo";
+import {
+  buildPublicPageMetadataFromPath,
+  buildWebPageJsonLd,
+} from "@/lib/seo";
+import JsonLd from "@/components/seo/JsonLd";
 
 export const revalidate = 60;
 
-export const metadata: Metadata = buildPublicPageMetadata({
-  title: "資料刪除說明｜HOVER",
-  description:
-    "說明如何申請刪除 HOVER 透過 Facebook 登入所取得的個人資料。",
-  path: "/data-deletion",
-  keywords: ["HOVER", "資料刪除", "Facebook"],
-});
+export const metadata: Metadata = buildPublicPageMetadataFromPath("/data-deletion");
 
 export default function DataDeletionPage() {
   return (
     <div className="relative bg-white pb-24">
+      <JsonLd
+        id="json-ld-data-deletion-webpage"
+        data={buildWebPageJsonLd({ path: "/data-deletion" })}
+      />
       <div className="mx-auto max-w-[720px] px-5 pt-16 md:px-8 md:pt-24">
         <p className="mb-3 text-[12px] tracking-[0.2em] text-[#999]">HOVER</p>
         <h1 className="mb-4 text-[28px] font-semibold tracking-[0.08em] text-[#2a514d] md:text-[34px]">

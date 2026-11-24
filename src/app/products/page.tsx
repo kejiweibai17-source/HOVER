@@ -15,31 +15,67 @@ import {
 } from "@/lib/woo";
 import { fetchCategoryBannerSettings } from "@/lib/categoryBannerDefaults";
 import { buildProductFilterOptions } from "@/lib/productFilters";
-import { buildPublicPageMetadata, getSiteUrl } from "@/lib/seo";
+import {
+  buildPublicPageMetadata,
+  buildPublicPageMetadataFromPath,
+  buildWebPageJsonLd,
+  getProductCategorySeo,
+  getPublicPageSeo,
+  getSiteUrl,
+} from "@/lib/seo";
+import JsonLd from "@/components/seo/JsonLd";
 
 const SITE_URL = getSiteUrl();
 
 /**
- * 不在 Server 讀 searchParams（否則整頁變 dynamic、無法 ISR）。
- * 分類篩選改由 Client 用 useSearchParams 處理。
+ * 列表內容仍以 ISR 快取資料為主；metadata 依 ?category= 對齊
+ * 《HOVER_SEO_OG_設定 0721.xlsx》服飾／帽款／襪子／包袋分類。
  */
-/** 商品列表 60 秒 ISR，與 PDP／Woo fetch 對齊，換圖較快出現 */
 export const revalidate = 60;
 
-export const metadata: Metadata = buildPublicPageMetadata({
-  title: "所有商品｜HOVER",
-  description:
-    "探索 HOVER 全系列服飾、帽款、襪子與包袋，以舒適剪裁與簡約質感，陪伴每個日常。",
-  path: "/products",
-  keywords: ["HOVER", "服飾", "商品", "帽款", "襪子", "包袋"],
-});
+type ProductsSearchParams = { category?: string | string[] };
+
+function resolveCategorySlug(
+  searchParams?: ProductsSearchParams,
+): string {
+  const raw = searchParams?.category;
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  return String(value || "")
+    .trim()
+    .toLowerCase();
+}
+
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams?: ProductsSearchParams;
+}): Promise<Metadata> {
+  const categorySeo = getProductCategorySeo(resolveCategorySlug(searchParams));
+  if (categorySeo) {
+    // Excel：分類頁 OG Title／Description 同 SEO；無需另設 OG 圖
+    return buildPublicPageMetadata({
+      title: categorySeo.title,
+      description: categorySeo.description,
+      path: categorySeo.path,
+      keywords: categorySeo.keywords,
+    });
+  }
+  return buildPublicPageMetadataFromPath("/products");
+}
 
 type ProductsCategoryMeta = Record<
   string,
   { label: string; ids: number[] }
 >;
 
-export default async function ProductsPage() {
+export default async function ProductsPage({
+  searchParams,
+}: {
+  searchParams?: ProductsSearchParams;
+}) {
+  const categorySeo =
+    getProductCategorySeo(resolveCategorySlug(searchParams)) ||
+    getPublicPageSeo("/products");
   let items: ListProduct[] = MOCK_PRODUCTS;
   let filterCategories: WooCategoryRaw[] = [];
   let categoryMeta: ProductsCategoryMeta = {
@@ -128,6 +164,17 @@ export default async function ProductsPage() {
 
   return (
     <>
+      <JsonLd
+        id="json-ld-products-webpage"
+        data={buildWebPageJsonLd({
+          path: categorySeo.path.startsWith("/products?")
+            ? "/products"
+            : categorySeo.path,
+          title: categorySeo.title,
+          description: categorySeo.description,
+          siteUrl: SITE_URL,
+        })}
+      />
       <Script
         id="json-ld-products"
         type="application/ld+json"

@@ -11,13 +11,20 @@ import { fetchPeopleSlides } from "@/lib/peopleDefaults";
 import { fetchHomeCarouselProducts } from "@/lib/homeProductsDefaults";
 import { fetchShippingSettings } from "@/lib/shippingDefaults";
 import {
-  DEFAULT_DESCRIPTION,
   INDEXABLE_ROBOTS,
   SITE_NAME,
+  buildOrganizationJsonLd,
+  buildSitelinksJsonLd,
+  buildWebSiteJsonLd,
+  getPublicPageSeo,
+  getSitelinkPages,
   getSiteUrl,
 } from "@/lib/seo";
+import { fetchBrandPage } from "@/lib/brandPageDefaults";
+import JsonLd from "@/components/seo/JsonLd";
 
 const SITE_URL = getSiteUrl();
+const HOME_SEO = getPublicPageSeo("/");
 
 async function getHomeFaqs() {
   const shipping = await fetchShippingSettings();
@@ -40,9 +47,6 @@ async function getHomeFaqs() {
   ];
 }
 
-const HOME_TITLE = `${SITE_NAME}｜只為經典而生`;
-const HOME_DESCRIPTION = DEFAULT_DESCRIPTION;
-
 export async function generateMetadata() {
   const hero = await fetchHeroSettings();
   const heroImage =
@@ -51,8 +55,9 @@ export async function generateMetadata() {
 
   return {
     metadataBase: new URL(SITE_URL),
-    title: HOME_TITLE,
-    description: HOME_DESCRIPTION,
+    title: HOME_SEO.title,
+    description: HOME_SEO.description,
+    keywords: HOME_SEO.keywords,
     robots: INDEXABLE_ROBOTS,
     alternates: { canonical: "/" },
     openGraph: {
@@ -60,8 +65,8 @@ export async function generateMetadata() {
       locale: "zh_TW",
       url: "/",
       siteName: SITE_NAME,
-      title: HOME_TITLE,
-      description: HOME_DESCRIPTION,
+      title: HOME_SEO.title,
+      description: HOME_SEO.description,
       images: [
         {
           url: heroImage,
@@ -71,8 +76,8 @@ export async function generateMetadata() {
     },
     twitter: {
       card: "summary_large_image",
-      title: HOME_TITLE,
-      description: HOME_DESCRIPTION,
+      title: HOME_SEO.title,
+      description: HOME_SEO.description,
       images: [heroImage],
     },
   };
@@ -82,66 +87,57 @@ export const revalidate = 300;
 
 // 🚀 改為 async 函式，支援伺服器端抓取資料
 export default async function Page() {
-  const homeFAQs = await getHomeFaqs();
-  const schemaWebSite = {
-    "@context": "https://schema.org",
-    "@type": "WebSite",
-    "@id": `${SITE_URL}/#website`,
-    url: SITE_URL,
-    name: "HOVER",
-    alternateName: HOME_TITLE,
-    description: HOME_DESCRIPTION,
-    publisher: { "@id": `${SITE_URL}/#organization` },
-    inLanguage: "zh-TW",
-    potentialAction: {
-      "@type": "SearchAction",
-      target: {
-        "@type": "EntryPoint",
-        urlTemplate: `${SITE_URL}/products?q={search_term_string}`,
-      },
-      "query-input": "required name=search_term_string",
-    },
-  };
+  const [
+    homeFAQs,
+    brandPage,
+    initialHero,
+    initialBrandStory,
+    initialMidVideo,
+    initialCategoryGrid,
+    initialPeople,
+    homeCarousels,
+  ] = await Promise.all([
+    getHomeFaqs(),
+    fetchBrandPage(),
+    fetchHeroSettings(),
+    fetchBrandStorySlides(),
+    fetchMidVideoSettings(),
+    fetchCategoryTiles(),
+    fetchPeopleSlides(),
+    fetchHomeCarouselProducts(),
+  ]);
 
-  const schemaOrganization = {
-    "@context": "https://schema.org",
-    "@type": "Organization",
-    "@id": `${SITE_URL}/#organization`,
-    name: "停機坪國際文創股份有限公司",
-    alternateName: "HOVER",
-    url: SITE_URL,
-    logo: {
-      "@type": "ImageObject",
-      url: `${SITE_URL}/images/logo/logo.svg`,
+  // sitelink description 強制等於各頁自己的 meta description（品牌頁可吃後台設定）
+  const sitelinkPages = getSitelinkPages({
+    "/brand": {
+      title: brandPage.seoTitle,
+      description: brandPage.seoDescription,
+      sitelinkName: "品牌故事",
     },
-    image: `${SITE_URL}/images/hover/hero.jpg`,
-    description:
-      "HOVER 是一個為日常而設計的服飾品牌，精選兼具舒適、質感與實穿性的服飾單品。",
-    email: "service@hoverofficial.com",
-    contactPoint: {
-      "@type": "ContactPoint",
-      contactType: "customer service",
-      email: "service@hoverofficial.com",
-      areaServed: "TW",
-      availableLanguage: ["Traditional Chinese", "English"],
-    },
-  };
+  });
+  const { navigation, itemList } = buildSitelinksJsonLd(sitelinkPages, SITE_URL);
 
   const schemaWebPage = {
     "@context": "https://schema.org",
     "@type": "WebPage",
-    "@id": `${SITE_URL}/#webpage`,
-    url: SITE_URL,
-    name: HOME_TITLE,
-    isPartOf: { "@id": `${SITE_URL}/#website` },
-    about: { "@id": `${SITE_URL}/#organization` },
-    description: HOME_DESCRIPTION,
+    "@id": `${SITE_URL.replace(/\/$/, "")}/#webpage`,
+    url: SITE_URL.replace(/\/$/, ""),
+    name: HOME_SEO.title,
+    isPartOf: { "@id": `${SITE_URL.replace(/\/$/, "")}/#website` },
+    about: { "@id": `${SITE_URL.replace(/\/$/, "")}/#organization` },
+    description: HOME_SEO.description,
+    hasPart: sitelinkPages.map((page) => ({
+      "@type": "WebPage",
+      name: page.sitelinkName,
+      description: page.description,
+      url: `${SITE_URL.replace(/\/$/, "")}${page.path}`,
+    })),
   };
 
   const schemaFAQ = {
     "@context": "https://schema.org",
     "@type": "FAQPage",
-    "@id": `${SITE_URL}/#faq`,
+    "@id": `${SITE_URL.replace(/\/$/, "")}/#faq`,
     mainEntity: homeFAQs.map((faq) => ({
       "@type": "Question",
       name: faq.question,
@@ -152,67 +148,28 @@ export default async function Page() {
     })),
   };
 
-  const schemaItemList = {
-    "@context": "https://schema.org",
-    "@type": "ItemList",
-    "@id": `${SITE_URL}/#collection`,
-    name: "HOVER 精選商品",
-    description: "探索 HOVER 熱銷服飾與配件。",
-    itemListElement: [
-      {
-        "@type": "ListItem",
-        position: 1,
-        url: `${SITE_URL}/products`,
-        name: "全系列商品",
-      },
-    ],
-  };
-
-  const [
-    initialHero,
-    initialBrandStory,
-    initialMidVideo,
-    initialCategoryGrid,
-    initialPeople,
-    homeCarousels,
-  ] = await Promise.all([
-    fetchHeroSettings(),
-    fetchBrandStorySlides(),
-    fetchMidVideoSettings(),
-    fetchCategoryTiles(),
-    fetchPeopleSlides(),
-    fetchHomeCarouselProducts(),
-  ]);
-
   return (
     <>
-      <script
-        type="application/ld+json"
-        id="schema-website"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaWebSite) }}
-      />
-      <script
-        type="application/ld+json"
-        id="schema-organization"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaOrganization) }}
-      />
-      <script
-        type="application/ld+json"
-        id="schema-webpage"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaWebPage) }}
-      />
-      <script
-        type="application/ld+json"
-        id="schema-faq"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaFAQ) }}
-      />
-      <script
-        type="application/ld+json"
-        id="schema-itemlist"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaItemList) }}
-      />
+      <JsonLd id="schema-website" data={buildWebSiteJsonLd(SITE_URL)} />
+      <JsonLd id="schema-organization" data={buildOrganizationJsonLd(SITE_URL)} />
+      <JsonLd id="schema-webpage" data={schemaWebPage} />
+      <JsonLd id="schema-sitelinks-nav" data={navigation} />
+      <JsonLd id="schema-sitelinks-list" data={itemList} />
+      <JsonLd id="schema-faq" data={schemaFAQ} />
 
-      {/* 🚀 把 faqs 和 items 一起傳遞給前端畫面 */}
+      {/* 視覺／可爬的主站導覽：連到各公開頁，輔助 Google 產生 sitelinks */}
+      <nav aria-label="HOVER 主要頁面" className="sr-only">
+        <ul>
+          {sitelinkPages.map((page) => (
+            <li key={page.path}>
+              <a href={page.path} title={page.description}>
+                {page.sitelinkName}
+              </a>
+            </li>
+          ))}
+        </ul>
+      </nav>
+
       <Client
         initialHero={initialHero}
         initialBrandStory={initialBrandStory}

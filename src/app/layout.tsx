@@ -2,10 +2,10 @@
 import type { Metadata } from "next";
 import { isConstructionModeEnabled } from "@/lib/siteConstruction";
 import {
-  DEFAULT_DESCRIPTION,
   INDEXABLE_ROBOTS,
   NOINDEX_ROBOTS,
   SITE_NAME,
+  getPublicPageSeo,
   getSiteUrl,
 } from "@/lib/seo";
 import GoogleTagManager from "@/components/GoogleTagManager";
@@ -16,12 +16,12 @@ import ClientLayout from "./ClientLayout";
 export async function generateMetadata(): Promise<Metadata> {
   const constructionOn = isConstructionModeEnabled();
   const siteUrl = getSiteUrl();
-  const title = `${SITE_NAME}｜只為經典而生`;
+  const home = getPublicPageSeo("/");
 
   return {
     metadataBase: new URL(siteUrl),
-    title,
-    description: DEFAULT_DESCRIPTION,
+    title: home.title,
+    description: home.description,
     applicationName: SITE_NAME,
     // 建置中：不進搜尋；正式上線後全站預設允許收錄（私有頁可再覆寫 noindex）
     robots: constructionOn ? NOINDEX_ROBOTS : INDEXABLE_ROBOTS,
@@ -30,8 +30,8 @@ export async function generateMetadata(): Promise<Metadata> {
       locale: "zh_TW",
       url: siteUrl,
       siteName: SITE_NAME,
-      title,
-      description: DEFAULT_DESCRIPTION,
+      title: home.title,
+      description: home.description,
       images: [
         {
           url: "/images/hover/hero.jpg",
@@ -41,8 +41,8 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     twitter: {
       card: "summary_large_image",
-      title,
-      description: DEFAULT_DESCRIPTION,
+      title: home.title,
+      description: home.description,
       images: ["/images/hover/hero.jpg"],
     },
     icons: {

@@ -1,19 +1,16 @@
 import { Metadata } from "next";
-import Script from "next/script";
 import FAQClient from "./client";
 import { fetchPolicyPage } from "@/lib/fetchPolicyPage";
 import { policyPageToFaqSchema } from "@/lib/policyPagesDefaults";
-import { buildPublicPageMetadata } from "@/lib/seo";
+import {
+  buildPublicPageMetadataFromPath,
+  buildWebPageJsonLd,
+} from "@/lib/seo";
+import JsonLd from "@/components/seo/JsonLd";
 
 export const revalidate = 300;
 
-export const metadata: Metadata = buildPublicPageMetadata({
-  title: "常見問題｜HOVER",
-  description:
-    "查看 HOVER 常見問題，包含商品、會員、付款、配送、退貨及購物相關資訊。",
-  path: "/faq",
-  keywords: ["HOVER", "常見問題", "FAQ", "客服"],
-});
+export const metadata: Metadata = buildPublicPageMetadataFromPath("/faq");
 
 export default async function FAQPage() {
   const { data: page } = await fetchPolicyPage("faq");
@@ -34,11 +31,8 @@ export default async function FAQPage() {
 
   return (
     <>
-      <Script
-        id="schema-faq-page"
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(schemaFAQ) }}
-      />
+      <JsonLd id="json-ld-faq-webpage" data={buildWebPageJsonLd({ path: "/faq" })} />
+      <JsonLd id="schema-faq-page" data={schemaFAQ} />
       <FAQClient initial={page} />
     </>
   );

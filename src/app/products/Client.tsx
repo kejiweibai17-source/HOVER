@@ -28,6 +28,10 @@ import {
 import ProductCardPrice from "@/components/hover/ProductCardPrice";
 import { pickProductHoverImage } from "@/lib/productCardImages";
 import ColorSwatch from "@/components/hover/ColorSwatch";
+import {
+  getProductCategorySeo,
+  getPublicPageSeo,
+} from "@/lib/seo";
 import { pageScrollBehavior } from "@/lib/utils";
 
 type ProductsCategoryMeta = Record<
@@ -644,6 +648,19 @@ export default function Client({
     setSelectedFilters(new Set());
     setDraftFilters(new Set());
   }, [categorySlug]);
+
+  // 客戶端切換分類時同步 title／description（對齊 Excel 分類 SEO）
+  useEffect(() => {
+    const seo =
+      getProductCategorySeo(categorySlugRaw) || getPublicPageSeo("/products");
+    document.title = seo.title;
+    const meta = document.querySelector('meta[name="description"]');
+    if (meta) meta.setAttribute("content", seo.description);
+    const ogTitle = document.querySelector('meta[property="og:title"]');
+    if (ogTitle) ogTitle.setAttribute("content", seo.title);
+    const ogDesc = document.querySelector('meta[property="og:description"]');
+    if (ogDesc) ogDesc.setAttribute("content", seo.description);
+  }, [categorySlugRaw]);
 
   const toggleFilter = useCallback((val: string) => {
     setDraftFilters((prev) => {

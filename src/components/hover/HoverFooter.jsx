@@ -6,6 +6,13 @@ import HoverLogo from "@/components/hover/HoverLogo";
 import HoverIcon from "@/components/hover/HoverIcon";
 import { DEFAULT_FOOTER, normalizeFooterSettings } from "@/lib/footerDefaults";
 import { getSvgLogoProxyUrl, isSvgLogo } from "@/lib/svgLogo";
+import { PUBLIC_PAGE_SEO } from "@/lib/seo";
+
+function footerLinkTitle(href) {
+  if (!href || href.startsWith("http") || href.startsWith("mailto:")) return undefined;
+  const path = href.split("?")[0].split("#")[0];
+  return PUBLIC_PAGE_SEO[path]?.description;
+}
 
 function FooterAccordion({ title, children, defaultOpen = false }) {
   const [open, setOpen] = useState(defaultOpen);
@@ -33,14 +40,14 @@ function FooterAccordion({ title, children, defaultOpen = false }) {
   );
 }
 
-function FooterLink({ href, children, onClick }) {
+function FooterLink({ href, children, onClick, title }) {
   const external = href.startsWith("http");
   const className =
     "text-left text-[14px] tracking-[0.06em] text-white/90 transition-opacity hover:opacity-60";
 
   if (onClick) {
     return (
-      <button type="button" onClick={onClick} className={className}>
+      <button type="button" onClick={onClick} className={className} title={title}>
         {children}
       </button>
     );
@@ -53,6 +60,7 @@ function FooterLink({ href, children, onClick }) {
         target="_blank"
         rel="noopener noreferrer"
         className={className}
+        title={title}
       >
         {children}
       </a>
@@ -60,7 +68,7 @@ function FooterLink({ href, children, onClick }) {
   }
 
   return (
-    <Link href={href} className={className}>
+    <Link href={href} className={className} title={title}>
       {children}
     </Link>
   );
@@ -75,7 +83,9 @@ function FooterColumn({ title, links }) {
       <ul className="space-y-2.5 md:space-y-3">
         {links.map((l) => (
           <li key={`${title}-${l.label}`}>
-            <FooterLink href={l.href}>{l.label}</FooterLink>
+            <FooterLink href={l.href} title={footerLinkTitle(l.href)}>
+              {l.label}
+            </FooterLink>
           </li>
         ))}
       </ul>
