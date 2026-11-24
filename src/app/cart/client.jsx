@@ -33,6 +33,7 @@ import {
 } from "@/lib/shippingDefaults";
 import { useShippingSettings } from "@/lib/useShippingSettings";
 import { buildCartOrderSummary } from "@/lib/orderSummary";
+import { readRefFromDocumentCookie } from "@/lib/affiliate";
 import {
   colorSwatchBackground,
   guessColorHex,
@@ -1871,7 +1872,7 @@ function CheckoutStep({
     }
   };
 
-  const handleApplyCoupon = async (codeOverride) => {
+  const handleApplyCoupon = async (codeOverride, { silent = false } = {}) => {
     const code = String(codeOverride ?? discountCode).trim();
     if (!code) {
       setCouponError("請輸入折扣碼");
@@ -1884,7 +1885,7 @@ function CheckoutStep({
       pricing.subtotal - (pricing.memberDiscountAmount || 0),
     );
 
-    setDiscountCode(code.toUpperCase());
+    if (!silent) setDiscountCode(code.toUpperCase());
     setCouponApplying(true);
     setCouponError("");
     try {
@@ -1901,10 +1902,12 @@ function CheckoutStep({
       });
       const data = await res.json();
       if (!data.valid) {
+        if (silent) return;
         setCouponError(data.message || "折扣碼無效或已過期");
         setAppliedCoupon(null);
         return;
       }
+      if (silent) setDiscountCode(String(data.code || code).toUpperCase());
       setAppliedCoupon({
         code: data.code,
         label: data.label || `折 ${currency(data.amount)}`,
@@ -1913,12 +1916,25 @@ function CheckoutStep({
       setCouponError("");
       setMyCouponsOpen(false);
     } catch {
+      if (silent) return;
       setCouponError("驗證失敗，請稍後再試");
       setAppliedCoupon(null);
     } finally {
       setCouponApplying(false);
     }
   };
+
+  // KOL 專屬連結（?ref=CODE）帶入的優惠碼：只自動嘗試一次，無效時不打擾
+  const refAutoApplyTried = useRef(false);
+  useEffect(() => {
+    if (refAutoApplyTried.current || appliedCoupon || discountCode) return;
+    if (!(pricing?.subtotal > 0)) return;
+    const refCode = readRefFromDocumentCookie();
+    if (!refCode) return;
+    refAutoApplyTried.current = true;
+    handleApplyCoupon(refCode, { silent: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pricing?.subtotal, appliedCoupon, discountCode]);
 
   const handleSelectMyCoupon = async (coupon) => {
     const code = String(coupon?.code || "").trim();

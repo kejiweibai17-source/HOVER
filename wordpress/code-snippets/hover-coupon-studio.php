@@ -47,6 +47,7 @@ function hcs_kind_map(): array
         'birthday' => '生日禮',
         'referral' => '好友推薦',
         'promo'    => '活動促銷',
+        'kol'      => 'KOL 合作',
         'other'    => '其他',
     ];
 }

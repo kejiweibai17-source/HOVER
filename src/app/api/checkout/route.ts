@@ -43,6 +43,7 @@ import {
   type InvoicePreference,
 } from "@/lib/ecpay-invoice";
 import { getMemberSession } from "@/lib/memberSession";
+import { readRefFromCookieHeader } from "@/lib/affiliate";
 
 export const runtime = "nodejs";
 
@@ -923,6 +924,8 @@ export async function POST(req: Request) {
         }
 
         if (validatedCouponCode) meta_data.push({ key: "_used_coupon_code", value: validatedCouponCode });
+        const refCode = readRefFromCookieHeader(req.headers.get("cookie"));
+        if (refCode) meta_data.push({ key: "_hover_ref_code", value: refCode });
         if (promotionLines.length) {
           meta_data.push({
             key: "_hover_promotions",

@@ -15,6 +15,7 @@ import GoTopButton from "@/components/hover/GoTopButton";
 import HoverToast from "@/components/hover/HoverToast";
 import SearchPanel from "@/components/hover/SearchPanel";
 import CookieConsentBanner from "@/components/hover/CookieConsentBanner";
+import AffiliateTracker from "@/components/hover/AffiliateTracker";
 import { usePathname } from "next/navigation";
 
 function ScrollToTopOnNav() {
@@ -61,6 +62,7 @@ export default function ClientLayout({ children }: { children: React.ReactNode }
         <HoverToast />
         <GoTopButton />
         <CookieConsentBanner />
+        <AffiliateTracker />
 
         {/* Global HOVER footer */}
         <HoverFooter />

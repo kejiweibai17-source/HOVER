@@ -6,6 +6,12 @@ import {
   isConstructionModeEnabled,
   isConstructionPassthrough,
 } from "@/lib/siteConstruction";
+import {
+  AFFILIATE_REF_COOKIE,
+  AFFILIATE_REF_MAX_AGE,
+  AFFILIATE_REF_PARAM,
+  normalizeRefCode,
+} from "@/lib/affiliate";
 
 /** 建置中仍允許索引的政策頁 */
 const INDEXABLE_DURING_CONSTRUCTION = new Set([
@@ -152,6 +158,19 @@ export function middleware(request: NextRequest) {
   }
 
   const response = NextResponse.next();
+  const refCode = path.startsWith("/api/")
+    ? ""
+    : normalizeRefCode(request.nextUrl.searchParams.get(AFFILIATE_REF_PARAM));
+  if (refCode) {
+    // 前台需讀取以自動帶入專屬優惠碼，故不設 httpOnly
+    response.cookies.set(AFFILIATE_REF_COOKIE, refCode, {
+      httpOnly: false,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: AFFILIATE_REF_MAX_AGE,
+    });
+  }
   return applyRobotsHeader(path, response, constructionOn);
 }
 
