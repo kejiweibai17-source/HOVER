@@ -1749,7 +1749,9 @@ function CheckoutStep({
         memberDiscountAmount: checkoutPricing.memberDiscountAmount,
         couponDiscount: checkoutPricing.couponDiscount,
         couponLabel: appliedCoupon
-          ? `折扣（${appliedCoupon.code || appliedCoupon.label || "折扣碼"}）`
+          ? appliedCoupon.isPartner
+            ? `專屬優惠（${String(appliedCoupon.code || "").toUpperCase()}）`
+            : `折扣（${appliedCoupon.code || appliedCoupon.label || "折扣碼"}）`
           : undefined,
         shipMethod,
         shippingSettings,
@@ -1770,7 +1772,8 @@ function CheckoutStep({
   );
 
   const loadMyCoupons = useCallback(async () => {
-    if (!isLoggedIn) {
+    const refCode = readRefFromDocumentCookie();
+    if (!isLoggedIn && !refCode) {
       setMyCoupons([]);
       setMyCouponsLoaded(true);
       try {
@@ -1795,6 +1798,7 @@ function CheckoutStep({
       const qs = new URLSearchParams({
         subtotalAfterMember: String(subtotalAfterMember),
       });
+      if (refCode) qs.set("ref", refCode);
       const res = await fetch(`/api/account/coupons/available?${qs}`, {
         cache: "no-store",
         credentials: "include",
@@ -1880,9 +1884,16 @@ function CheckoutStep({
       return;
     }
 
+    const saleSubtotal = pricing.baseSubtotal ?? pricing.subtotal;
+    const originalSubtotal = items.reduce((sum, it) => {
+      const unitPrice = Number(it.price) || 0;
+      const regPrice = Number(it.regularPrice) || 0;
+      const orig = regPrice > unitPrice ? regPrice : unitPrice;
+      return sum + orig * (Number(it.qty) || 0);
+    }, 0);
     const subtotalAfterMember = Math.max(
       0,
-      pricing.subtotal - (pricing.memberDiscountAmount || 0),
+      saleSubtotal - (pricing.memberDiscountAmount || 0),
     );
 
     if (!silent) setDiscountCode(code.toUpperCase());
@@ -1896,6 +1907,8 @@ function CheckoutStep({
         body: JSON.stringify({
           code,
           subtotalAfterMember,
+          saleSubtotal,
+          originalSubtotal,
           hasMemberDiscount: (pricing.memberDiscountAmount || 0) > 0,
           hasSaleItems: items.some((it) => Boolean(it.onSale)),
         }),
@@ -1907,11 +1920,16 @@ function CheckoutStep({
         setAppliedCoupon(null);
         return;
       }
-      if (silent) setDiscountCode(String(data.code || code).toUpperCase());
+      const isPartner = Boolean(data.isPartner);
+      const normalizedCode = isPartner
+        ? String(data.code || code).toUpperCase()
+        : data.code;
+      if (silent || isPartner) setDiscountCode(String(normalizedCode || code).toUpperCase());
       setAppliedCoupon({
-        code: data.code,
+        code: normalizedCode,
         label: data.label || `折 ${currency(data.amount)}`,
         discount: data.amount,
+        isPartner,
       });
       setCouponError("");
       setMyCouponsOpen(false);
@@ -2666,7 +2684,7 @@ function CheckoutStep({
                 </button>
               </div>
 
-              {isLoggedIn ? (
+              {isLoggedIn || Boolean(readRefFromDocumentCookie()) ? (
                 <div className="mt-4">
                   <button
                     type="button"
@@ -2750,14 +2768,16 @@ function CheckoutStep({
                                       門檻：
                                       {minAmt > 0
                                         ? `單筆滿 ${currency(minAmt)}`
-                                        : "無最低消費"}
+                                        : "無低消限制"}
                                       <span className="mx-1.5 text-[#ccc]">｜</span>
                                       效期：{expiresLabel}
                                     </p>
                                     <p className="mt-1 text-[11px] text-[#888]">
-                                      {isPromoCode
-                                        ? "公開活動優惠碼 · 點選即可套用"
-                                        : "會員專屬優惠券 · 點選即可套用"}
+                                      {c.kind === "kol"
+                                        ? "合作夥伴專屬優惠，點選即可套用"
+                                        : isPromoCode
+                                          ? "公開活動優惠碼 · 點選即可套用"
+                                          : "會員專屬優惠券 · 點選即可套用"}
                                     </p>
                                   </button>
                                   <button

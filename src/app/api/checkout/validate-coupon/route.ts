@@ -22,22 +22,33 @@ function basicAuth() {
   return "Basic " + Buffer.from(`${CK}:${CS}`).toString("base64");
 }
 
+function isPartnerCoupon(coupon: any): boolean {
+  if (!coupon || !Array.isArray(coupon.meta_data)) return false;
+  for (const m of coupon.meta_data) {
+    const key = String(m?.key || "");
+    const val = String(m?.value ?? "").trim().toLowerCase();
+    if (key === "hover_coupon_kind" && val === "kol") return true;
+    if (key === "hover_kol_code" && val !== "") return true;
+  }
+  return false;
+}
+
 function calcDiscountAmount(
   coupon: any,
-  subtotalAfterMember: number,
+  baseAmount: number,
 ): number | null {
   const type = String(coupon.discount_type || "fixed_cart");
   const amount = Number(coupon.amount || 0);
   if (!amount || amount <= 0) return null;
 
   if (type === "percent") {
-    return Math.round(subtotalAfterMember * (amount / 100));
+    return Math.round(baseAmount * (amount / 100));
   }
   if (type === "fixed_cart") {
-    return Math.min(amount, subtotalAfterMember);
+    return Math.min(amount, baseAmount);
   }
   if (type === "fixed_product") {
-    return Math.min(amount, subtotalAfterMember);
+    return Math.min(amount, baseAmount);
   }
   return null;
 }
@@ -57,6 +68,14 @@ export async function POST(req: Request) {
     const body = await req.json().catch(() => ({}));
     const code = String(body.code || "").trim();
     const subtotalAfterMember = Math.max(0, Number(body.subtotalAfterMember) || 0);
+    const saleSubtotal = Math.max(
+      0,
+      Number(body.saleSubtotal ?? body.subtotalAfterMember) || 0,
+    );
+    const originalSubtotal = Math.max(
+      saleSubtotal,
+      Number(body.originalSubtotal ?? saleSubtotal) || 0,
+    );
     const hasSaleItems = Boolean(body.hasSaleItems);
 
     if (!code) {
@@ -226,6 +245,45 @@ export async function POST(req: Request) {
       }
     }
 
+    const partner = isPartnerCoupon(coupon);
+    const upperCode = String(coupon.code || code).trim().toUpperCase();
+
+    if (partner) {
+      // 合作夥伴專屬優惠：以商品原價計算折扣，不以官網活動價再次折扣；
+      // 若官網活動價更優惠，仍允許套用以保留導購歸因及分潤。
+      const rawDiscount = calcDiscountAmount(coupon, originalSubtotal);
+      if (rawDiscount == null || rawDiscount <= 0) {
+        return NextResponse.json(
+          { valid: false, message: "目前訂單不符合此折扣碼使用條件" },
+          { status: 200, headers: noCache },
+        );
+      }
+      const saleDiscountAlready = Math.max(0, originalSubtotal - saleSubtotal);
+      const effectiveDiscount = Math.min(
+        subtotalAfterMember,
+        Math.max(0, rawDiscount - saleDiscountAlready),
+      );
+      const betterStorePromo =
+        effectiveDiscount === 0 && saleDiscountAlready > 0;
+      const label = betterStorePromo
+        ? `專屬優惠｜${upperCode}（目前官網活動價更優惠）`
+        : `專屬優惠｜${upperCode}`;
+
+      return NextResponse.json(
+        {
+          valid: true,
+          code: upperCode,
+          amount: effectiveDiscount,
+          label,
+          discountType: coupon.discount_type,
+          isPartner: true,
+          betterStorePromo,
+          coupon,
+        },
+        { headers: noCache },
+      );
+    }
+
     const discount = calcDiscountAmount(coupon, subtotalAfterMember);
     if (discount == null || discount <= 0) {
       return NextResponse.json(
@@ -247,6 +305,7 @@ export async function POST(req: Request) {
         amount: discount,
         label,
         discountType: coupon.discount_type,
+        isPartner: false,
         coupon,
       },
       { headers: noCache },

@@ -697,7 +697,7 @@ function hoet_discount_rows(WC_Order $order): array
         }
         if (preg_match('/折扣碼\s+(.+)$/iu', $name, $m)) {
             $label = '折扣（' . trim($m[1]) . '）';
-        } elseif (strpos($name, '折扣') === 0) {
+        } elseif (strpos($name, '折扣') === 0 || strpos($name, '專屬優惠') === 0) {
             $label = $name;
         } else {
             $label = '折扣（' . $name . '）';

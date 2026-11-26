@@ -240,7 +240,13 @@ async function fetchProductPricing(
   auth: string,
   productId: number,
   variationId?: number,
-): Promise<{ price: number; onSale: boolean; size: string; color: string } | null> {
+): Promise<{
+  price: number;
+  regularPrice: number;
+  onSale: boolean;
+  size: string;
+  color: string;
+} | null> {
   try {
     const root = BASE.replace(/\/$/, "");
     const url =
@@ -272,8 +278,12 @@ async function fetchProductPricing(
         // ignore parent lookup failures
       }
     }
+    const rawRegular = Number(product?.regular_price);
+    const regularPrice =
+      Number.isFinite(rawRegular) && rawRegular > price ? rawRegular : price;
     return {
       price,
+      regularPrice,
       onSale: Boolean(product?.on_sale),
       size: spec.size,
       color: spec.color,
@@ -331,6 +341,17 @@ async function markMasterCouponUsed(
   }
 }
 
+function isPartnerCouponOnServer(coupon: any): boolean {
+  if (!coupon || !Array.isArray(coupon.meta_data)) return false;
+  for (const m of coupon.meta_data) {
+    const key = String(m?.key || "");
+    const val = String(m?.value ?? "").trim().toLowerCase();
+    if (key === "hover_coupon_kind" && val === "kol") return true;
+    if (key === "hover_kol_code" && val !== "") return true;
+  }
+  return false;
+}
+
 async function validateCouponOnServer(
   auth: string,
   code: string,
@@ -338,7 +359,9 @@ async function validateCouponOnServer(
   subtotalAfterMember: number,
   hasSaleItems = false,
   customerId = 0,
-): Promise<{ amount: number; code: string } | null> {
+  originalSubtotal?: number,
+  saleSubtotal?: number,
+): Promise<{ amount: number; code: string; isPartner: boolean } | null> {
   const res = await fetch(
     `${BASE.replace(/\/$/, "")}/wp-json/wc/v3/coupons?code=${encodeURIComponent(code)}`,
     { headers: { Authorization: auth }, cache: "no-store" },
@@ -372,7 +395,7 @@ async function validateCouponOnServer(
       discount = Math.min(amount, subtotalAfterMember);
     }
     if (discount <= 0) return null;
-    return { amount: discount, code: String(coupon.code || code) };
+    return { amount: discount, code: String(coupon.code || code), isPartner: false };
   }
 
   if (coupon.exclude_sale_items && hasSaleItems) return null;
@@ -392,13 +415,35 @@ async function validateCouponOnServer(
 
   const type = String(coupon.discount_type || "fixed_cart");
   const amount = Number(coupon.amount || 0);
+  const partner = isPartnerCouponOnServer(coupon);
+  if (partner) {
+    const safeSale = Math.max(0, saleSubtotal ?? subtotalAfterMember);
+    const safeOrig = Math.max(safeSale, originalSubtotal ?? safeSale);
+    let rawDiscount = 0;
+    if (type === "percent") rawDiscount = Math.round(safeOrig * (amount / 100));
+    else if (type === "fixed_cart" || type === "fixed_product") {
+      rawDiscount = Math.min(amount, safeOrig);
+    }
+    if (rawDiscount <= 0) return null;
+    const saleDiscountAlready = Math.max(0, safeOrig - safeSale);
+    const effectiveDiscount = Math.min(
+      subtotalAfterMember,
+      Math.max(0, rawDiscount - saleDiscountAlready),
+    );
+    return {
+      amount: effectiveDiscount,
+      code: String(coupon.code || code).trim().toUpperCase(),
+      isPartner: true,
+    };
+  }
+
   let discount = 0;
   if (type === "percent") discount = Math.round(subtotalAfterMember * (amount / 100));
   else if (type === "fixed_cart" || type === "fixed_product") {
     discount = Math.min(amount, subtotalAfterMember);
   }
   if (discount <= 0) return null;
-  return { amount: discount, code: String(coupon.code || code) };
+  return { amount: discount, code: String(coupon.code || code), isPartner: false };
 }
 
 function toTwdInt(value: unknown): number {
@@ -485,6 +530,7 @@ export async function POST(req: Request) {
     // ============================================================================
     let calculatedSubtotal = 0;
     let regularSubtotal = 0;
+    let originalSubtotal = 0;
     const resolvedBaseLines: Array<{
       item: CartItem;
       unit: number;
@@ -524,6 +570,7 @@ export async function POST(req: Request) {
       const unit = current.price;
       const lineTotal = unit * qty;
       calculatedSubtotal += lineTotal;
+      originalSubtotal += current.regularPrice * qty;
       if (!current.onSale) regularSubtotal += lineTotal;
       const spec = resolveLineSpec({
         options: item.options,
@@ -771,6 +818,7 @@ export async function POST(req: Request) {
     const subtotalAfterMember = Math.max(0, calculatedSubtotal - serverMemberDiscount);
     let serverCouponDiscount = 0;
     let validatedCouponCode: string | null = null;
+    let validatedCouponIsPartner = false;
 
     const hasSaleItems = items.some((it) => Boolean(it.onSale));
     if (coupon?.code && auth) {
@@ -781,6 +829,8 @@ export async function POST(req: Request) {
         subtotalAfterMember,
         hasSaleItems,
         Number(loggedInCustomerId) || 0,
+        originalSubtotal,
+        calculatedSubtotal,
       );
       if (!validated) {
         return NextResponse.json(
@@ -790,6 +840,7 @@ export async function POST(req: Request) {
       }
       serverCouponDiscount = validated.amount;
       validatedCouponCode = validated.code;
+      validatedCouponIsPartner = validated.isPartner;
       if (Math.abs(claimedCouponDiscount - serverCouponDiscount) > 1) {
         claimedCouponDiscount = serverCouponDiscount;
       }
@@ -948,7 +999,9 @@ export async function POST(req: Request) {
         // 以 fee_line 套用站內已驗算的折扣碼金額，避免 WC coupon_lines 依原價重算與會員折疊加不一致
         if (serverCouponDiscount > 0 && validatedCouponCode) {
           fee_lines.push({
-            name: `折扣碼 ${validatedCouponCode}`,
+            name: validatedCouponIsPartner
+              ? `專屬優惠（${validatedCouponCode.toUpperCase()}）`
+              : `折扣碼 ${validatedCouponCode}`,
             total: String(-serverCouponDiscount),
           });
         }

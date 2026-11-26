@@ -824,7 +824,7 @@ function OrderDetail({
     const codeMatch = name.match(/折扣碼\s+(.+)$/i);
     const label = codeMatch
       ? `折扣（${codeMatch[1].trim()}）`
-      : name.startsWith("折扣")
+      : name.startsWith("折扣") || name.startsWith("專屬優惠")
         ? name
         : `折扣（${name}）`;
     discountRows.push({ label, amount: Math.abs(amount) });

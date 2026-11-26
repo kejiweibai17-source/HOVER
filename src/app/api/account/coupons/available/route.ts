@@ -20,6 +20,7 @@ import {
   birthdayUsedYearKey,
 } from "@/lib/phoneGiftGuard";
 import { getMemberSession } from "@/lib/memberSession";
+import { normalizeRefCode, readRefFromCookieHeader } from "@/lib/affiliate";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -267,6 +268,39 @@ function membershipFromMeta(meta: any[]): MembershipPayload {
   };
 }
 
+function isPartnerCoupon(coupon: any): boolean {
+  if (!coupon || !Array.isArray(coupon.meta_data)) return false;
+  for (const m of coupon.meta_data) {
+    const key = String(m?.key || "");
+    const val = String(m?.value ?? "").trim().toLowerCase();
+    if (key === "hover_coupon_kind" && val === "kol") return true;
+    if (key === "hover_kol_code" && val !== "") return true;
+  }
+  return false;
+}
+
+async function fetchPartnerCouponEntry(
+  refCode: string,
+  authHeader: HeadersInit,
+) {
+  if (!refCode) return null;
+  const wcCoupon = await fetchCouponByCode(refCode, authHeader);
+  if (!wcCoupon || !isCouponEnabled(wcCoupon) || !isPartnerCoupon(wcCoupon)) {
+    return null;
+  }
+  const status = resolveStatus(wcCoupon);
+  if (status !== "usable") return null;
+  const upperCode = String(wcCoupon.code || refCode).trim().toUpperCase();
+  const mapped = mapCoupon({ ...wcCoupon, code: upperCode }, "usable", "code");
+  return {
+    ...mapped,
+    kind: "kol",
+    kindLabel: `${upperCode} 專屬優惠`,
+    code: upperCode,
+    description: "合作夥伴專屬優惠，點選即可套用",
+  };
+}
+
 export async function GET(req: Request) {
   try {
     if (!BASE || !CK || !CS) {
@@ -282,12 +316,33 @@ export async function GET(req: Request) {
       Number(searchParams.get("subtotalAfterMember")),
     ) && searchParams.has("subtotalAfterMember");
 
+    const refCode =
+      normalizeRefCode(searchParams.get("ref")) ||
+      readRefFromCookieHeader(req.headers.get("cookie"));
+    const authHeader = { Authorization: basicAuth() };
+
+    const partnerCouponPromise = refCode
+      ? fetchPartnerCouponEntry(refCode, authHeader)
+      : Promise.resolve(null);
+
     const member = await getMemberSession();
     if (!member?.email && !member?.customerId) {
-      return NextResponse.json({ ok: true, available: [], coupons: [] });
+      const partnerEntry = await partnerCouponPromise;
+      const coupons = partnerEntry ? [partnerEntry] : [];
+      const available = coupons.filter((c) => {
+        if (c.status !== "usable") return false;
+        if (
+          filterBySubtotal &&
+          c.minimumAmount > 0 &&
+          subtotalAfterMember < c.minimumAmount
+        ) {
+          return false;
+        }
+        return true;
+      });
+      return NextResponse.json({ ok: true, available, coupons });
     }
 
-    const authHeader = { Authorization: basicAuth() };
     let customerId = Number(member.customerId || 0) || 0;
     let customerEmail = String(member.email || "")
       .trim()
@@ -452,18 +507,25 @@ export async function GET(req: Request) {
     }
 
     // 會員中心正式優惠僅母券（HOVER100／HBDAY100／VIPBDAY300，依等級）
+    // 若消費者透過合作夥伴專屬連結進入，亦保留專屬優惠碼於可用選單內
+    const partnerEntry = await partnerCouponPromise;
+    if (partnerEntry) {
+      byCode.set(partnerEntry.code, partnerEntry);
+    }
 
     const coupons = Array.from(byCode.values()).sort((a, b) => {
       const rank = (k: string) =>
-        k === "welcome" || k === "legacy"
-          ? 0
-          : k === "birthday"
-            ? 1
-            : k === "promo"
-              ? 2
-              : k === "ref_friend"
-                ? 3
-                : 4;
+        k === "kol"
+          ? -1
+          : k === "welcome" || k === "legacy"
+            ? 0
+            : k === "birthday"
+              ? 1
+              : k === "promo"
+                ? 2
+                : k === "ref_friend"
+                  ? 3
+                  : 4;
       const statusRank = (s: string) =>
         s === "usable" ? 0 : s === "used" ? 1 : 2;
       const byStatus = statusRank(a.status) - statusRank(b.status);

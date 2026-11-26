@@ -54,6 +54,17 @@ function hkol_norm_code($raw): string
     return preg_match('/^[A-Z0-9][A-Z0-9_-]{1,39}$/', $code) ? $code : '';
 }
 
+function hkol_partner_types(): array
+{
+    return ['KOL', 'KOC', '直播主', '其他'];
+}
+
+function hkol_norm_partner_type($raw): string
+{
+    $val = trim((string) $raw);
+    return in_array($val, hkol_partner_types(), true) ? $val : 'KOL';
+}
+
 function hkol_partners(): array
 {
     $list = get_option(HKOL_PARTNERS_OPT, []);
@@ -222,10 +233,17 @@ function hkol_counted_statuses(): array
 
 function hkol_order_net(WC_Order $order): float
 {
+    if ($order->get_status() === 'refunded') {
+        return 0;
+    }
+    $refunded_goods = max(
+        0,
+        (float) $order->get_total_refunded() - (float) $order->get_total_shipping_refunded()
+    );
     $net = (float) $order->get_total()
         - (float) $order->get_shipping_total()
         - (float) $order->get_shipping_tax()
-        - (float) $order->get_total_refunded();
+        - $refunded_goods;
     return max(0, round($net));
 }
 
@@ -295,9 +313,10 @@ function hkol_report(string $from, string $to): array
 
     $blank = function (string $code) use ($partners) {
         return [
-            'code'       => $code,
-            'name'       => $partners[$code]['name'] ?? $code,
-            'rate'       => (float) ($partners[$code]['rate'] ?? 0),
+            'code'         => $code,
+            'name'         => $partners[$code]['name'] ?? $code,
+            'partner_type' => hkol_norm_partner_type($partners[$code]['partner_type'] ?? 'KOL'),
+            'rate'         => (float) ($partners[$code]['rate'] ?? 0),
             'status'     => $partners[$code]['status'] ?? 'deleted',
             'orders'     => 0,
             'via_coupon' => 0,
@@ -461,19 +480,19 @@ add_action('admin_post_hkol_export', function () {
     $out = fopen('php://output', 'w');
 
     if ($type === 'summary') {
-        fputcsv($out, ['代碼', '名稱', '分潤%', '點擊', '訂單', '經優惠碼', '經連結', '件數', '銷售額(不含運、扣退款)', '折扣', '退款', '佣金', '轉換率']);
+        fputcsv($out, ['代碼', '名稱', '合作類型', '分潤%', '點擊', '訂單', '經優惠碼', '經連結', '件數', '銷售額(不含運、扣退款)', '折扣', '退款', '佣金', '轉換率']);
         foreach ($r['agg'] as $a) {
             if ($only && $a['code'] !== $only) {
                 continue;
             }
             fputcsv($out, [
-                $a['code'], $a['name'], $a['rate'], $a['clicks'], $a['orders'], $a['via_coupon'], $a['via_link'],
+                $a['code'], $a['name'], $a['partner_type'] ?? 'KOL', $a['rate'], $a['clicks'], $a['orders'], $a['via_coupon'], $a['via_link'],
                 $a['qty'], $a['net'], $a['discount'], $a['refund'], $a['commission'],
                 $a['clicks'] > 0 ? round($a['orders'] / $a['clicks'] * 100, 2) . '%' : '',
             ]);
         }
     } else {
-        fputcsv($out, ['訂單編號', '下單時間', '狀態', '顧客', '夥伴代碼', '夥伴名稱', '歸因', '使用優惠碼', '件數', '訂單總額', '折扣', '退款', '分潤基準', '分潤%', '佣金']);
+        fputcsv($out, ['訂單編號', '下單時間', '狀態', '顧客', '夥伴代碼', '夥伴名稱', '合作類型', '歸因', '使用優惠碼', '件數', '訂單總額', '折扣', '退款', '分潤基準', '分潤%', '佣金']);
         foreach ($r['orders'] as $o) {
             if ($only && $o['code'] !== $only) {
                 continue;
@@ -481,6 +500,7 @@ add_action('admin_post_hkol_export', function () {
             fputcsv($out, [
                 $o['number'], $o['date'], $o['status'], $o['customer'], $o['code'],
                 $r['agg'][$o['code']]['name'] ?? $o['code'],
+                $r['agg'][$o['code']]['partner_type'] ?? 'KOL',
                 $o['via'] === 'link' ? '專屬連結' : '專屬優惠碼',
                 strtoupper($o['coupon']), $o['qty'], $o['total'], $o['discount'], $o['refund'],
                 $o['net'], $o['rate'], $o['commission'],
@@ -506,15 +526,16 @@ function hkol_create_partner(array $in): array
     }
 
     $partner = [
-        'code'        => $code,
-        'name'        => $name,
-        'rate'        => max(0, min(100, (float) ($in['rate'] ?? 0))),
-        'coupon_id'   => 0,
-        'coupon_code' => $code,
-        'contact'     => sanitize_text_field($in['contact'] ?? ''),
-        'note'        => sanitize_text_field($in['note'] ?? ''),
-        'status'      => 'active',
-        'created'     => wp_date('Y-m-d'),
+        'code'         => $code,
+        'name'         => $name,
+        'partner_type' => hkol_norm_partner_type($in['partner_type'] ?? 'KOL'),
+        'rate'         => max(0, min(100, (float) ($in['rate'] ?? 0))),
+        'coupon_id'    => 0,
+        'coupon_code'  => $code,
+        'contact'      => sanitize_text_field($in['contact'] ?? ''),
+        'note'         => sanitize_text_field($in['note'] ?? ''),
+        'status'       => 'active',
+        'created'      => wp_date('Y-m-d'),
     ];
 
     $amt = max(0, (float) ($in['amount'] ?? 0));
@@ -530,7 +551,7 @@ function hkol_create_partner(array $in): array
             $type = ($in['type'] ?? '') === 'percent' ? 'percent' : 'fixed_cart';
             $c->set_discount_type($type);
             $c->set_amount($amt);
-            $c->set_description("KOL 專屬優惠｜{$name}");
+            $c->set_description("專屬優惠｜{$code}");
             $c->set_individual_use(true);
             $c->set_exclude_sale_items(!empty($in['nosale']));
             $min = (float) ($in['min'] ?? 0);
@@ -629,6 +650,7 @@ function hkol_post(): ?array
 
     if ($act === 'update') {
         $p['name'] = sanitize_text_field($in['name'] ?? $p['name']) ?: $p['name'];
+        $p['partner_type'] = hkol_norm_partner_type($in['partner_type'] ?? ($p['partner_type'] ?? 'KOL'));
         $p['rate'] = max(0, min(100, (float) ($in['rate'] ?? $p['rate'])));
         $p['contact'] = sanitize_text_field($in['contact'] ?? '');
         $p['note'] = sanitize_text_field($in['note'] ?? '');
@@ -663,8 +685,8 @@ add_action('admin_menu', function () {
     }
     // 與「HOVER 優惠碼」同層級的左側主選單
     add_menu_page(
-        'KOL 分潤',
-        'KOL 分潤',
+        '合作夥伴分潤',
+        '合作夥伴分潤',
         'manage_options',
         'hkol',
         'hkol_page',
@@ -674,8 +696,8 @@ add_action('admin_menu', function () {
     // 備份入口：掛在 WooCommerce 底下，避免主選單被其他外掛擠掉時找不到
     add_submenu_page(
         'woocommerce',
-        'KOL 分潤',
-        'KOL 分潤',
+        '合作夥伴分潤',
+        '合作夥伴分潤',
         'manage_options',
         'hkol',
         'hkol_page'
@@ -707,7 +729,7 @@ function hkol_page(): void
     <style><?php echo hkol_css(); ?></style>
     <div class="hkol-top">
         <div>
-            <h1>KOL 合作夥伴分潤</h1>
+            <h1>合作夥伴分潤</h1>
             <p>專屬優惠碼＋專屬連結（30 天歸因），統計已付款訂單的銷售額與應付佣金。</p>
         </div>
     </div>
@@ -781,7 +803,7 @@ function hkol_render_report(): void
     </form>
 
     <div class="hkol-stats">
-        <div class="hkol-stat"><b><?php echo hkol_money($tot['net']); ?></b><span>KOL 帶來銷售額</span></div>
+        <div class="hkol-stat"><b><?php echo hkol_money($tot['net']); ?></b><span>合作夥伴帶來銷售額</span></div>
         <div class="hkol-stat"><b><?php echo (int) $tot['orders']; ?></b><span>訂單數</span></div>
         <div class="hkol-stat"><b><?php echo hkol_money($tot['commission']); ?></b><span>應付佣金</span></div>
         <div class="hkol-stat"><b><?php echo number_format((int) $tot['clicks']); ?></b><span>連結點擊</span></div>
@@ -790,7 +812,7 @@ function hkol_render_report(): void
     </div>
 
     <?php if (!$partners && !$r['orders']): ?>
-        <div class="hkol-card"><div class="hkol-empty">尚未建立合作夥伴。請到「<a href="<?php echo esc_url(hkol_url(['tab' => 'partners'])); ?>">合作夥伴與連結</a>」新增第一位 KOL。</div></div>
+        <div class="hkol-card"><div class="hkol-empty">尚未建立合作夥伴。請到「<a href="<?php echo esc_url(hkol_url(['tab' => 'partners'])); ?>">合作夥伴與連結</a>」新增第一位合作夥伴。</div></div>
         <?php return; ?>
     <?php endif; ?>
 
@@ -810,6 +832,7 @@ function hkol_render_report(): void
                         <td>
                             <a href="<?php echo esc_url(hkol_url(['range' => $preset, 'from' => $from, 'to' => $to, 'partner' => $a['code']])); ?>"><strong><?php echo esc_html($a['name']); ?></strong></a>
                             <div class="hkol-sub"><code><?php echo esc_html($a['code']); ?></code>
+                                <span class="hkol-tag b"><?php echo esc_html($a['partner_type'] ?? 'KOL'); ?></span>
                                 <?php if ($a['status'] === 'paused'): ?><span class="hkol-tag n">暫停</span><?php endif; ?>
                                 <?php if ($a['status'] === 'deleted'): ?><span class="hkol-tag n">已刪除</span><?php endif; ?>
                             </div>
@@ -845,7 +868,8 @@ function hkol_render_report(): void
                 <a href="<?php echo esc_url(hkol_url(['range' => $preset, 'from' => $from, 'to' => $to])); ?>">← 回全部夥伴</a></div>
             <div class="hkol-card-body hkol-kv">
                 <div><span>專屬連結</span><?php hkol_copy_field(hkol_link($only)); ?></div>
-                <div><span>專屬優惠碼</span><?php echo $p['coupon_id'] ? '<code>' . esc_html($p['coupon_code']) . '</code> <a href="' . esc_url(admin_url('post.php?post=' . (int) $p['coupon_id'] . '&action=edit')) . '">編輯優惠券</a>' : '—（僅追蹤連結）'; ?></div>
+                <div><span>專屬優惠碼</span><?php echo $p['coupon_id'] ? '<code>' . esc_html(strtoupper($p['coupon_code'])) . '</code> <a href="' . esc_url(admin_url('post.php?post=' . (int) $p['coupon_id'] . '&action=edit')) . '">編輯優惠券</a>' : '—（僅追蹤連結）'; ?></div>
+                <div><span>合作類型</span><?php echo esc_html(hkol_norm_partner_type($p['partner_type'] ?? 'KOL')); ?></div>
                 <div><span>目前分潤</span><?php echo esc_html((string) $p['rate']); ?>%</div>
                 <div><span>聯絡方式</span><?php echo esc_html($p['contact'] ?: '—'); ?></div>
             </div>
@@ -957,6 +981,14 @@ function hkol_render_partners(): void
             <input type="hidden" name="code" value="<?php echo esc_attr($ep['code']); ?>">
             <div class="hkol-grid">
                 <label>名稱<input type="text" name="name" value="<?php echo esc_attr($ep['name']); ?>" required></label>
+                <label>合作類型
+                    <select name="partner_type">
+                        <?php $cur_type = hkol_norm_partner_type($ep['partner_type'] ?? 'KOL'); ?>
+                        <?php foreach (hkol_partner_types() as $pt): ?>
+                            <option value="<?php echo esc_attr($pt); ?>" <?php selected($cur_type, $pt); ?>><?php echo esc_html($pt); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </label>
                 <label>分潤 %<input type="number" name="rate" min="0" max="100" step="0.1" value="<?php echo esc_attr((string) $ep['rate']); ?>"></label>
                 <label>聯絡方式<input type="text" name="contact" value="<?php echo esc_attr($ep['contact']); ?>"></label>
                 <label>備註<input type="text" name="note" value="<?php echo esc_attr($ep['note']); ?>"></label>
@@ -974,7 +1006,7 @@ function hkol_render_partners(): void
         <?php else: ?>
         <div class="hkol-scroll">
         <table class="hkol-tbl">
-            <thead><tr><th>夥伴</th><th>專屬連結</th><th>專屬優惠碼</th><th>分潤</th><th>狀態</th><th>操作</th></tr></thead>
+            <thead><tr><th>夥伴</th><th>合作類型</th><th>專屬連結</th><th>專屬優惠碼</th><th>分潤</th><th>狀態</th><th>操作</th></tr></thead>
             <tbody>
             <?php foreach ($partners as $p):
                 $coupon = $p['coupon_id'] && class_exists('WC_Coupon') ? new WC_Coupon((int) $p['coupon_id']) : null;
@@ -984,6 +1016,7 @@ function hkol_render_partners(): void
                         <div class="hkol-sub"><code><?php echo esc_html($p['code']); ?></code> · <?php echo esc_html($p['created']); ?></div>
                         <?php if ($p['contact'] || $p['note']): ?><div class="hkol-sub"><?php echo esc_html(trim($p['contact'] . ' ' . $p['note'])); ?></div><?php endif; ?>
                     </td>
+                    <td><span class="hkol-tag b"><?php echo esc_html(hkol_norm_partner_type($p['partner_type'] ?? 'KOL')); ?></span></td>
                     <td><?php hkol_copy_field(hkol_link($p['code'])); ?></td>
                     <td>
                         <?php if ($coupon && $coupon->get_id()): ?>
@@ -1026,7 +1059,7 @@ function hkol_render_partners(): void
 
     <?php if ($partners): ?>
     <div class="hkol-card">
-        <div class="hkol-card-head"><h2>商品頁專屬連結產生器</h2><span>讓 KOL 直接導到指定商品，一樣會歸因</span></div>
+        <div class="hkol-card-head"><h2>商品頁專屬連結產生器</h2><span>讓合作夥伴直接導到指定商品，一樣會歸因</span></div>
         <div class="hkol-card-body hkol-builder">
             <select id="hkol-b-code">
                 <?php foreach ($partners as $p): ?>
@@ -1048,7 +1081,14 @@ function hkol_render_partners(): void
             <div class="hkol-grid">
                 <label>名稱 *<input type="text" name="name" placeholder="Joyce" required></label>
                 <label>代碼 *<input type="text" name="code" placeholder="JOYCE" pattern="[A-Za-z0-9][A-Za-z0-9_\-]{1,39}" required>
-                    <small>同時作為優惠碼與連結參數，英數字</small></label>
+                    <small>同時作為優惠碼與連結參數，英數字（統一大寫顯示）</small></label>
+                <label>合作類型
+                    <select name="partner_type">
+                        <?php foreach (hkol_partner_types() as $pt): ?>
+                            <option value="<?php echo esc_attr($pt); ?>"><?php echo esc_html($pt); ?></option>
+                        <?php endforeach; ?>
+                    </select>
+                </label>
                 <label>分潤 %<input type="number" name="rate" min="0" max="100" step="0.1" value="10"></label>
                 <label>聯絡方式<input type="text" name="contact" placeholder="IG / LINE / Email"></label>
                 <label class="full">備註<input type="text" name="note" placeholder="合作檔期、結算方式…"></label>
@@ -1083,7 +1123,7 @@ function hkol_render_settings(): void
                 <label class="full">官網網址<input type="url" name="site_url" value="<?php echo esc_attr($s['site_url']); ?>" required>
                     <small>專屬連結會以此為首頁網址</small></label>
                 <label class="hkol-ck full"><input type="checkbox" name="utm" value="1" <?php checked($s['utm'], '1'); ?>>
-                    連結附加 UTM（utm_source=kol、utm_medium=affiliate、utm_campaign=代碼），GA4 可直接看各 KOL 流量</label>
+                    連結附加 UTM（utm_source=kol、utm_medium=affiliate、utm_campaign=代碼），GA4 可直接看各合作夥伴流量</label>
             </div>
             <button class="button button-primary">儲存</button>
         </form>
