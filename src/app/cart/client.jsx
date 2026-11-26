@@ -2732,7 +2732,7 @@ function CheckoutStep({
                               : "無期限";
                             const amountLabel =
                               c.discountType === "percent"
-                                ? `${Number(c.amount) || 0}% 折`
+                                ? `${Number(c.amount) || 0}% OFF`
                                 : currency(Number(c.amount) || 0);
                             const copied = copiedCouponCode === code;
                             return (

@@ -563,7 +563,8 @@ function hkol_create_partner(array $in): array
                 $c->set_usage_limit($limit);
             }
             if (!empty($in['date_end']) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $in['date_end'])) {
-                $c->set_date_expires(new DateTime($in['date_end'] . ' 23:59:59', wp_timezone()));
+                $exp_dt = new DateTimeImmutable($in['date_end'] . ' 23:59:59', wp_timezone());
+                $c->set_date_expires($exp_dt->getTimestamp());
             }
             $msg .= '，並建立專屬優惠碼';
         }
