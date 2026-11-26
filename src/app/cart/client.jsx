@@ -1852,7 +1852,8 @@ function CheckoutStep({
   }, [isLoggedIn]);
 
   useEffect(() => {
-    if (!isLoggedIn) {
+    const refCode = readRefFromDocumentCookie();
+    if (!isLoggedIn && !refCode) {
       setMyCoupons([]);
       setMyCouponsLoaded(false);
       setMyCouponsOpen(false);
