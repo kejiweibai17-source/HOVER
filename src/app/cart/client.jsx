@@ -531,10 +531,17 @@ function buildCheckoutPricing(
   shipMethod,
   couponDiscount = 0,
   shippingSettings = DEFAULT_SHIPPING,
+  originalBase = null,
 ) {
-  const subtotal = pricing.subtotal;
-  const baseSubtotal = pricing.baseSubtotal ?? subtotal;
   const promotionTotal = Math.max(0, Number(pricing.promotionTotal) || 0);
+  // 方案 B：合作夥伴優惠以商品原價計算時，小計改顯示原價（總額不變）
+  const useOriginal = typeof originalBase === "number" && originalBase > 0;
+  const subtotal = useOriginal
+    ? originalBase + promotionTotal
+    : pricing.subtotal;
+  const baseSubtotal = useOriginal
+    ? originalBase
+    : pricing.baseSubtotal ?? subtotal;
   const memberDiscount = pricing.memberDiscountAmount || 0;
   const subtotalAfterMember = Math.max(0, baseSubtotal - memberDiscount);
   const safeCoupon = Math.min(
@@ -1730,16 +1737,22 @@ function CheckoutStep({
     .join("")
     .trim();
 
-  const checkoutPricing = useMemo(
-    () =>
-      buildCheckoutPricing(
-        pricing,
-        shipMethod,
-        appliedCoupon?.discount || 0,
-        shippingSettings,
-      ),
-    [pricing, shipMethod, appliedCoupon, shippingSettings],
-  );
+  const checkoutPricing = useMemo(() => {
+    // 方案 B：合作夥伴優惠以原價計算時，取得商品原價小計
+    const originalBaseSubtotal = items.reduce((sum, it) => {
+      const unitPrice = Number(it.price) || 0;
+      const regPrice = Number(it.regularPrice) || 0;
+      const orig = regPrice > unitPrice ? regPrice : unitPrice;
+      return sum + orig * (Number(it.qty) || 0);
+    }, 0);
+    return buildCheckoutPricing(
+      pricing,
+      shipMethod,
+      appliedCoupon?.discount || 0,
+      shippingSettings,
+      appliedCoupon?.basis === "original" ? originalBaseSubtotal : null,
+    );
+  }, [pricing, items, shipMethod, appliedCoupon, shippingSettings]);
 
   const orderSummary = useMemo(
     () =>
@@ -1931,6 +1944,7 @@ function CheckoutStep({
         label: data.label || `折 ${currency(data.amount)}`,
         discount: data.amount,
         isPartner,
+        basis: data.basis || "sale",
       });
       setCouponError("");
       setMyCouponsOpen(false);

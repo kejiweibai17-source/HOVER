@@ -361,7 +361,7 @@ async function validateCouponOnServer(
   customerId = 0,
   originalSubtotal?: number,
   saleSubtotal?: number,
-): Promise<{ amount: number; code: string; isPartner: boolean } | null> {
+): Promise<{ amount: number; code: string; isPartner: boolean; basis?: "original" | "sale" } | null> {
   const res = await fetch(
     `${BASE.replace(/\/$/, "")}/wp-json/wc/v3/coupons?code=${encodeURIComponent(code)}`,
     { headers: { Authorization: auth }, cache: "no-store" },
@@ -417,23 +417,24 @@ async function validateCouponOnServer(
   const amount = Number(coupon.amount || 0);
   const partner = isPartnerCouponOnServer(coupon);
   if (partner) {
+    // 方案 B：與 validate-coupon 相同規則（以商品原價為基準）
     const safeSale = Math.max(0, saleSubtotal ?? subtotalAfterMember);
     const safeOrig = Math.max(safeSale, originalSubtotal ?? safeSale);
+    const memberDisc = Math.max(0, safeSale - subtotalAfterMember);
+    const originalBase = Math.max(0, safeOrig - memberDisc);
     let rawDiscount = 0;
-    if (type === "percent") rawDiscount = Math.round(safeOrig * (amount / 100));
+    if (type === "percent") rawDiscount = Math.round(originalBase * (amount / 100));
     else if (type === "fixed_cart" || type === "fixed_product") {
-      rawDiscount = Math.min(amount, safeOrig);
+      rawDiscount = Math.min(amount, originalBase);
     }
     if (rawDiscount <= 0) return null;
-    const saleDiscountAlready = Math.max(0, safeOrig - safeSale);
-    const effectiveDiscount = Math.min(
-      subtotalAfterMember,
-      Math.max(0, rawDiscount - saleDiscountAlready),
-    );
+    const storeDiscountDropped = Math.max(0, safeOrig - safeSale);
+    const partnerBetter = rawDiscount > storeDiscountDropped;
     return {
-      amount: effectiveDiscount,
+      amount: partnerBetter ? Math.min(rawDiscount, originalBase) : 0,
       code: String(coupon.code || code).trim().toUpperCase(),
       isPartner: true,
+      basis: partnerBetter ? "original" : "sale",
     };
   }
 
@@ -536,6 +537,7 @@ export async function POST(req: Request) {
       unit: number;
       qty: number;
       line: number;
+      regularLine: number;
       spec: LineSpec;
     }> = [];
     for (const item of items) {
@@ -578,7 +580,14 @@ export async function POST(req: Request) {
         wcSize: current.size,
         wcColor: current.color,
       });
-      resolvedBaseLines.push({ item, unit, qty, line: lineTotal, spec });
+      resolvedBaseLines.push({
+        item,
+        unit,
+        qty,
+        line: lineTotal,
+        regularLine: current.regularPrice * qty,
+        spec,
+      });
     }
 
     const requestedPromotions = Array.isArray(body.promotions)
@@ -819,6 +828,7 @@ export async function POST(req: Request) {
     let serverCouponDiscount = 0;
     let validatedCouponCode: string | null = null;
     let validatedCouponIsPartner = false;
+    let validatedCouponBasisOriginal = false;
 
     const hasSaleItems = items.some((it) => Boolean(it.onSale));
     if (coupon?.code && auth) {
@@ -841,18 +851,22 @@ export async function POST(req: Request) {
       serverCouponDiscount = validated.amount;
       validatedCouponCode = validated.code;
       validatedCouponIsPartner = validated.isPartner;
+      validatedCouponBasisOriginal =
+        validated.isPartner && validated.basis === "original" && serverCouponDiscount > 0;
       if (Math.abs(claimedCouponDiscount - serverCouponDiscount) > 1) {
         claimedCouponDiscount = serverCouponDiscount;
       }
     }
 
+    // 方案 B：合作夥伴優惠以原價為基準時，小計改用原價（官網活動折扣不再另外扣）
     const totalDiscount = serverMemberDiscount + serverCouponDiscount;
     const promotionTotal = promotionLines.reduce(
       (sum, line) => sum + line.price * line.qty,
       0,
     );
+    const pricingBase = validatedCouponBasisOriginal ? originalSubtotal : calculatedSubtotal;
     const discountedSubtotal =
-      Math.max(0, calculatedSubtotal - totalDiscount) + promotionTotal;
+      Math.max(0, pricingBase - totalDiscount) + promotionTotal;
 
     const shippingSettings = await fetchShippingSettings({ cache: "no-store" });
     const productFreeShipping =
@@ -1030,8 +1044,10 @@ export async function POST(req: Request) {
           shipping_lines: [{ method_id: methodId, method_title: shippingTitle, total: String(realShippingCost) }],
           fee_lines,
           line_items: [
-            ...resolvedBaseLines.map(({ item: it, qty, line, spec }) => {
+            ...resolvedBaseLines.map(({ item: it, qty, line, regularLine, spec }) => {
               const meta = buildVariantDisplayMeta(spec);
+              // 方案 B：專屬優惠以原價計算時，商品列記原價，專屬優惠以 fee line 扣除
+              const lineAmount = validatedCouponBasisOriginal ? regularLine : line;
               return {
                 product_id: Number(it.wcProductId || it.id),
                 ...(it.wcVariationId
@@ -1039,8 +1055,8 @@ export async function POST(req: Request) {
                   : {}),
                 quantity: qty,
                 // 鎖定站內購物袋單價，與綠界／發票金額一致
-                subtotal: String(line),
-                total: String(line),
+                subtotal: String(lineAmount),
+                total: String(lineAmount),
                 ...(meta.length ? { meta_data: meta } : {}),
               };
             }),

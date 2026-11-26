@@ -249,22 +249,22 @@ export async function POST(req: Request) {
     const upperCode = String(coupon.code || code).trim().toUpperCase();
 
     if (partner) {
-      // 合作夥伴專屬優惠：以商品原價計算折扣，不以官網活動價再次折扣；
-      // 若官網活動價更優惠，仍允許套用以保留導購歸因及分潤。
-      const rawDiscount = calcDiscountAmount(coupon, originalSubtotal);
-      if (rawDiscount == null || rawDiscount <= 0) {
+      // 方案 B：合作夥伴專屬優惠以「商品原價」為基準計算折扣（小計顯示原價，折扣列顯示原價的 X% OFF）。
+      // 若專屬優惠折抵金額不如官網活動價划算，則不套用（amount=0），維持官網活動價；
+      // 導購歸因仍由 _hover_ref_code／優惠碼保留。
+      const memberDisc = Math.max(0, saleSubtotal - subtotalAfterMember);
+      const originalBase = Math.max(0, originalSubtotal - memberDisc);
+      const rawDiscount = calcDiscountAmount(coupon, originalBase) ?? 0;
+      if (rawDiscount <= 0) {
         return NextResponse.json(
           { valid: false, message: "目前訂單不符合此折扣碼使用條件" },
           { status: 200, headers: noCache },
         );
       }
-      const saleDiscountAlready = Math.max(0, originalSubtotal - saleSubtotal);
-      const effectiveDiscount = Math.min(
-        subtotalAfterMember,
-        Math.max(0, rawDiscount - saleDiscountAlready),
-      );
-      const betterStorePromo =
-        effectiveDiscount === 0 && saleDiscountAlready > 0;
+      const storeDiscountDropped = Math.max(0, originalSubtotal - saleSubtotal);
+      const partnerBetter = rawDiscount > storeDiscountDropped;
+      const amount = partnerBetter ? Math.min(rawDiscount, originalBase) : 0;
+      const betterStorePromo = !partnerBetter;
       const label = betterStorePromo
         ? `專屬優惠｜${upperCode}（目前官網活動價更優惠）`
         : `專屬優惠｜${upperCode}`;
@@ -273,10 +273,11 @@ export async function POST(req: Request) {
         {
           valid: true,
           code: upperCode,
-          amount: effectiveDiscount,
+          amount,
           label,
           discountType: coupon.discount_type,
           isPartner: true,
+          basis: partnerBetter ? "original" : "sale",
           betterStorePromo,
           coupon,
         },
