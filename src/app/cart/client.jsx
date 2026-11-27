@@ -2589,6 +2589,13 @@ function CheckoutStep({
               {items.map((it) => {
                 const { color, size } = getItemMeta(it);
                 const name = it.name || it.title;
+                const unitPrice = Number(it.price) || 0;
+                const regPrice = Number(it.regularPrice) || 0;
+                const displayUnit =
+                  appliedCoupon?.basis === "original" && regPrice > unitPrice
+                    ? regPrice
+                    : unitPrice;
+                const lineAmount = displayUnit * (Number(it.qty) || 0);
                 return (
                   <div key={it.id} className="text-[13px] text-black">
                     <div className="md:hidden">
@@ -2597,7 +2604,7 @@ function CheckoutStep({
                           {name}
                         </span>
                         <span className="shrink-0 whitespace-nowrap font-semibold">
-                          {currency(Number(it.price) * it.qty)}
+                          {currency(lineAmount)}
                         </span>
                       </div>
                       <p className="mt-1 text-[12px] text-[#555]">
@@ -2610,7 +2617,7 @@ function CheckoutStep({
                       <span>{size || "—"}</span>
                       <span>{it.qty}</span>
                       <span className="whitespace-nowrap">
-                        {currency(Number(it.price) * it.qty)}
+                        {currency(lineAmount)}
                       </span>
                     </div>
                   </div>
