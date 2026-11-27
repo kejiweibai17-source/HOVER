@@ -192,8 +192,10 @@ export async function POST(req: Request) {
     }
 
     // 會員折扣可與 1 張優惠券併用；仍僅允許單張券
+    const partner = isPartnerCoupon(coupon);
 
-    if (coupon.exclude_sale_items && hasSaleItems) {
+    // 合作夥伴專屬優惠以商品原價計算（不與官網活動價疊加），不受 exclude_sale_items 阻擋
+    if (!partner && coupon.exclude_sale_items && hasSaleItems) {
       return NextResponse.json(
         {
           valid: false,
@@ -245,7 +247,6 @@ export async function POST(req: Request) {
       }
     }
 
-    const partner = isPartnerCoupon(coupon);
     const upperCode = String(coupon.code || code).trim().toUpperCase();
 
     if (partner) {

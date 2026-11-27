@@ -398,7 +398,9 @@ async function validateCouponOnServer(
     return { amount: discount, code: String(coupon.code || code), isPartner: false };
   }
 
-  if (coupon.exclude_sale_items && hasSaleItems) return null;
+  const partner = isPartnerCouponOnServer(coupon);
+  // 合作夥伴專屬優惠以商品原價計算（不與官網活動價疊加），不受 exclude_sale_items 阻擋
+  if (!partner && coupon.exclude_sale_items && hasSaleItems) return null;
   if (coupon.date_expires && new Date(coupon.date_expires).getTime() < Date.now()) return null;
 
   const usageLimit = Number(coupon.usage_limit || 0);
@@ -415,7 +417,6 @@ async function validateCouponOnServer(
 
   const type = String(coupon.discount_type || "fixed_cart");
   const amount = Number(coupon.amount || 0);
-  const partner = isPartnerCouponOnServer(coupon);
   if (partner) {
     // 方案 B：與 validate-coupon 相同規則（以商品原價為基準）
     const safeSale = Math.max(0, saleSubtotal ?? subtotalAfterMember);
